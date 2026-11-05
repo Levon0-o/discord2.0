@@ -16,7 +16,7 @@ function App() {
       <main className="app-backdrop flex min-h-screen items-center justify-center">
         <div className="text-center">
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
-          <p className="text-sm text-ink-400">Łączenie z AFTERDARK…</p>
+          <p className="text-sm text-ink-400">Connecting to AFTERDARK…</p>
         </div>
       </main>
     );
@@ -29,7 +29,7 @@ function App() {
   return (
     <ProfileBootstrap user={session.user} onSignOut={signOut}>
       <AppShell activeSection={section} onNavigate={navigate}>
-        <SectionView section={activeSection} />
+        <SectionView section={activeSection} onNavigate={navigate} />
       </AppShell>
     </ProfileBootstrap>
   );
