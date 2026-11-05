@@ -1,12 +1,18 @@
 import { Hammer } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
-import type { NavSection } from '@/config/navigation';
+import { Dashboard } from '@/components/sections/Dashboard';
+import type { NavSection, SectionId } from '@/config/navigation';
 
 interface SectionViewProps {
   section: NavSection;
+  onNavigate: (id: SectionId) => void;
 }
 
-export function SectionView({ section }: SectionViewProps) {
+export function SectionView({ section, onNavigate }: SectionViewProps) {
+  if (section.id === 'feed') {
+    return <Dashboard onNavigate={onNavigate} />;
+  }
+
   const Icon = section.icon;
 
   return (
