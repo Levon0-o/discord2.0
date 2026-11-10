@@ -57,3 +57,12 @@ export interface CreateServerInput {
   icon_url?: string | null;
   theme_color?: string;
 }
+
+export interface CreateChannelInput {
+  server_id: string;
+  name: string;
+  topic?: string;
+  category?: string;
+  position?: number;
+  is_restricted?: boolean;
+}

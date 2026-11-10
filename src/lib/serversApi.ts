@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type {
   Channel,
+  CreateChannelInput,
   CreateServerInput,
   MemberWithProfile,
   ProfileLite,
@@ -175,6 +176,30 @@ export async function fetchChannels(serverId: string): Promise<Channel[]> {
 
   if (error) throw error;
   return (data ?? []) as Channel[];
+}
+
+export async function createChannel(input: CreateChannelInput): Promise<Channel> {
+  const name = input.name.trim().toLowerCase();
+  const topic = (input.topic ?? '').trim();
+  const category = (input.category ?? 'General').trim() || 'General';
+  const position = input.position ?? 0;
+  const is_restricted = Boolean(input.is_restricted);
+
+  const { data, error } = await supabase
+    .from('channels')
+    .insert({
+      server_id: input.server_id,
+      name,
+      topic,
+      category,
+      position,
+      is_restricted,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data as Channel;
 }
 
 export async function fetchServerMembers(serverId: string): Promise<MemberWithProfile[]> {

@@ -5,17 +5,20 @@ import {
   Lock,
   LogOut,
   MessageSquare,
+  Plus,
   Shield,
   Users,
 } from 'lucide-react';
 import { ServerIcon } from '@/components/servers/ServerIcon';
+import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { cn } from '@/lib/cn';
 import {
+  createChannel,
   fetchChannels,
   fetchServerMembers,
   leaveServer,
 } from '@/lib/serversApi';
-import type { Channel, MemberWithProfile, ServerWithMeta } from '@/types/servers';
+import type { Channel, CreateChannelInput, MemberWithProfile, ServerWithMeta } from '@/types/servers';
 
 interface ServerDetailProps {
   server: ServerWithMeta;
@@ -36,6 +39,10 @@ function roleLabel(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
+function canManageChannels(role: string | null | undefined): boolean {
+  return role === 'owner' || role === 'admin';
+}
+
 export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -43,6 +50,11 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [leaving, setLeaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const isAdminOrOwner = canManageChannels(server.my_role);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +70,10 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
         if (cancelled) return;
         setChannels(channelRows);
         setMembers(memberRows);
-        setActiveChannelId(channelRows[0]?.id ?? null);
+        setActiveChannelId((current) => {
+          if (current && channelRows.some((c) => c.id === current)) return current;
+          return channelRows[0]?.id ?? null;
+        });
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Could not load server.');
@@ -97,6 +112,11 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
     [members],
   );
 
+  const nextChannelPosition = useMemo(() => {
+    if (channels.length === 0) return 0;
+    return Math.max(...channels.map((c) => c.position)) + 1;
+  }, [channels]);
+
   async function handleLeave() {
     if (server.my_role === 'owner') return;
     setLeaving(true);
@@ -107,6 +127,22 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not leave server.');
       setLeaving(false);
+    }
+  }
+
+  async function handleCreateChannel(input: CreateChannelInput) {
+    setCreateBusy(true);
+    setCreateError('');
+    try {
+      const created = await createChannel(input);
+      const refreshed = await fetchChannels(server.id);
+      setChannels(refreshed);
+      setActiveChannelId(created.id);
+      setCreateOpen(false);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not create channel.');
+    } finally {
+      setCreateBusy(false);
     }
   }
 
@@ -197,15 +233,47 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)_220px]">
+          {/* Channels */}
           <aside className="panel flex flex-col overflow-hidden">
-            <div className="border-b border-white/[0.06] px-4 py-3">
+            <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Channels</h2>
+              {isAdminOrOwner ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateError('');
+                    setCreateOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-primary-300 transition hover:bg-primary-500/15 hover:text-primary-200"
+                >
+                  <Plus size={12} />
+                  Create
+                </button>
+              ) : null}
             </div>
             <div className="flex-1 space-y-4 overflow-y-auto p-3">
               {channels.length === 0 ? (
-                <p className="px-2 py-6 text-center text-xs leading-relaxed text-ink-500">
-                  No channels yet. Administrators can create channels for this server.
-                </p>
+                <div className="px-2 py-6 text-center">
+                  <p className="text-xs leading-relaxed text-ink-500">
+                    No channels yet.
+                    {isAdminOrOwner
+                      ? ' Create the first channel for this server.'
+                      : ' Administrators can create channels for this server.'}
+                  </p>
+                  {isAdminOrOwner ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateError('');
+                        setCreateOpen(true);
+                      }}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary-500/15 px-3 py-1.5 text-xs font-semibold text-primary-200 ring-1 ring-primary-400/25 transition hover:bg-primary-500/25"
+                    >
+                      <Plus size={12} />
+                      Create channel
+                    </button>
+                  ) : null}
+                </div>
               ) : (
                 channelsByCategory.map(([category, list]) => (
                   <div key={category}>
@@ -243,6 +311,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
             </div>
           </aside>
 
+          {/* Channel main pane */}
           <section className="panel flex min-h-[320px] flex-col overflow-hidden">
             {activeChannel ? (
               <>
@@ -273,12 +342,13 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                 </div>
                 <h3 className="text-base font-semibold text-ink-100">No channel selected</h3>
                 <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-400">
-                  Pick a channel from the list, or wait until an administrator creates one.
+                  Pick a channel from the list, or create one if you are an administrator.
                 </p>
               </div>
             )}
           </section>
 
+          {/* Members */}
           <aside className="panel flex flex-col overflow-hidden">
             <div className="border-b border-white/[0.06] px-4 py-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">
@@ -327,6 +397,20 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
           </aside>
         </div>
       )}
+
+      {isAdminOrOwner ? (
+        <CreateChannelModal
+          open={createOpen}
+          busy={createBusy}
+          error={createError}
+          serverId={server.id}
+          defaultPosition={nextChannelPosition}
+          onClose={() => {
+            if (!createBusy) setCreateOpen(false);
+          }}
+          onSubmit={handleCreateChannel}
+        />
+      ) : null}
     </div>
   );
 }
