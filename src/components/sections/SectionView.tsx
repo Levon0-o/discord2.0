@@ -1,6 +1,7 @@
 import { Hammer } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Dashboard } from '@/components/sections/Dashboard';
+import { ServersSection } from '@/components/servers/ServersSection';
 import type { NavSection, SectionId } from '@/config/navigation';
 
 interface SectionViewProps {
@@ -11,6 +12,10 @@ interface SectionViewProps {
 export function SectionView({ section, onNavigate }: SectionViewProps) {
   if (section.id === 'feed') {
     return <Dashboard onNavigate={onNavigate} />;
+  }
+
+  if (section.id === 'servers') {
+    return <ServersSection />;
   }
 
   const Icon = section.icon;
