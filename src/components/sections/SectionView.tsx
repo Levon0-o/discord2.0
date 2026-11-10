@@ -1,7 +1,9 @@
+
 import { Hammer } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Dashboard } from '@/components/sections/Dashboard';
 import { ServersSection } from '@/components/servers/ServersSection';
+import { MessagesSection } from '@/components/messages/MessagesSection';
 import type { NavSection, SectionId } from '@/config/navigation';
 
 interface SectionViewProps {
@@ -18,6 +20,10 @@ export function SectionView({ section, onNavigate }: SectionViewProps) {
     return <ServersSection />;
   }
 
+  if (section.id === 'messages') {
+    return <MessagesSection />;
+  }
+
   const Icon = section.icon;
 
   return (
@@ -27,10 +33,13 @@ export function SectionView({ section, onNavigate }: SectionViewProps) {
           <Icon size={22} className="text-primary-300" />
         </div>
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-50">{section.label}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-50">
+            {section.label}
+          </h1>
           <p className="text-sm text-ink-400">{section.description}</p>
         </div>
       </header>
+
       <EmptyState
         icon={Hammer}
         title="Not built yet"
