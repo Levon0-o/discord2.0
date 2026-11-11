@@ -6,7 +6,6 @@ import {
   Paperclip,
   RefreshCw,
   Search,
-  UserRound,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -39,7 +38,10 @@ export function DirectMessagesSection() {
   const [error, setError] = useState('');
 
   const loadConversations = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -55,7 +57,11 @@ export function DirectMessagesSection() {
       );
 
       const allMembers = memberRows.flat();
-      const userIds = [...new Set(allMembers.map((member) => member.user_id))];
+      setMembers(allMembers);
+
+      const userIds = [
+        ...new Set(allMembers.map((member) => member.user_id)),
+      ];
 
       if (userIds.length > 0) {
         const { data, error: profileError } = await supabase
@@ -66,11 +72,14 @@ export function DirectMessagesSection() {
         if (profileError) throw profileError;
 
         const profileMap: Record<string, ProfileLite> = {};
+
         (data ?? []).forEach((profile) => {
           profileMap[profile.id] = profile as ProfileLite;
         });
 
         setProfiles(profileMap);
+      } else {
+        setProfiles({});
       }
 
       setActiveId((current) =>
@@ -79,7 +88,11 @@ export function DirectMessagesSection() {
           : rows[0]?.id ?? '',
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load conversations.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not load conversations.',
+      );
     } finally {
       setLoading(false);
     }
@@ -111,10 +124,15 @@ export function DirectMessagesSection() {
     activeConversation?.title ||
     'Unknown user';
 
+  function membersForConversation(conversationId: string) {
+    return members.filter(
+      (member) => member.conversation_id === conversationId,
+    );
+  }
+
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
-      setMembers([]);
       return;
     }
 
@@ -124,18 +142,18 @@ export function DirectMessagesSection() {
       setMessages([]);
 
       try {
-        const [messageRows, memberRows] = await Promise.all([
-          fetchDirectMessages(activeId),
-          fetchConversationMembers(activeId),
-        ]);
+        const messageRows = await fetchDirectMessages(activeId);
 
         if (!active) return;
 
         setMessages(messageRows);
-        setMembers(memberRows);
       } catch (err) {
         if (active) {
-          setError(err instanceof Error ? err.message : 'Could not load messages.');
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Could not load messages.',
+          );
         }
       }
     }
@@ -156,12 +174,18 @@ export function DirectMessagesSection() {
     setError('');
 
     try {
-      const message = await sendDirectMessage(activeId, messageText);
+      const message = await sendDirectMessage(activeId, messageText.trim());
+
       setMessages((current) => [...current, message]);
       setMessageText('');
+
       await loadConversations();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send message.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not send message.',
+      );
     } finally {
       setSending(false);
     }
@@ -169,31 +193,31 @@ export function DirectMessagesSection() {
 
   const filteredConversations = conversations.filter((conversation) => {
     const conversationMembers = membersForConversation(conversation.id);
-    const other = conversationMembers.find((member) => member.user_id !== userId);
+    const other = conversationMembers.find(
+      (member) => member.user_id !== userId,
+    );
+
     const profile = other ? profiles[other.user_id] : undefined;
-    const name = profile?.display_name || profile?.username || conversation.title || '';
+
+    const name =
+      profile?.display_name ||
+      profile?.username ||
+      conversation.title ||
+      '';
+
     return name.toLowerCase().includes(search.toLowerCase());
   });
-
-  function membersForConversation(conversationId: string) {
-    return allKnownMembers.filter(
-      (member) => member.conversation_id === conversationId,
-    );
-  }
-
-  const allKnownMembers = Object.values(
-    conversations.reduce<Record<string, DirectConversationMember>>(
-      (result, conversation) => result,
-      {},
-    ),
-  );
 
   return (
     <div className="flex h-[calc(100vh-7rem)] min-h-[520px] overflow-hidden rounded-2xl border border-white/[0.08] bg-ink-950">
       <aside className="flex w-64 shrink-0 flex-col border-r border-white/[0.08] bg-ink-900/70">
         <div className="border-b border-white/[0.08] p-4">
-          <h2 className="text-lg font-bold text-ink-50">Direct Messages</h2>
-          <p className="mt-1 text-xs text-ink-500">Your private conversations</p>
+          <h2 className="text-lg font-bold text-ink-50">
+            Direct Messages
+          </h2>
+          <p className="mt-1 text-xs text-ink-500">
+            Your private conversations
+          </p>
         </div>
 
         <div className="p-3">
@@ -210,11 +234,14 @@ export function DirectMessagesSection() {
 
         <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
           {filteredConversations.map((conversation) => {
-            const participant = membersForConversation(conversation.id)
-              .find((member) => member.user_id !== userId);
+            const participant = membersForConversation(conversation.id).find(
+              (member) => member.user_id !== userId,
+            );
+
             const profile = participant
               ? profiles[participant.user_id]
               : undefined;
+
             const name =
               profile?.display_name ||
               profile?.username ||
@@ -233,14 +260,23 @@ export function DirectMessagesSection() {
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 font-semibold text-primary-200">
                   {profile?.avatar_url ? (
-                    <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+                    <img
+                      src={profile.avatar_url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     name.slice(0, 1).toUpperCase()
                   )}
                 </div>
+
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{name}</p>
-                  <p className="text-[11px] text-ink-500">Private conversation</p>
+                  <p className="truncate text-sm font-semibold">
+                    {name}
+                  </p>
+                  <p className="text-[11px] text-ink-500">
+                    Private conversation
+                  </p>
                 </div>
               </button>
             );
@@ -248,13 +284,26 @@ export function DirectMessagesSection() {
 
           {!loading && conversations.length === 0 && (
             <div className="px-3 py-8 text-center">
-              <MessageSquare size={26} className="mx-auto mb-3 text-ink-600" />
-              <p className="text-sm font-medium text-ink-300">No conversations yet</p>
+              <MessageSquare
+                size={26}
+                className="mx-auto mb-3 text-ink-600"
+              />
+              <p className="text-sm font-medium text-ink-300">
+                No conversations yet
+              </p>
               <p className="mt-1 text-xs text-ink-500">
                 Your private chats will appear here.
               </p>
             </div>
           )}
+
+          {!loading &&
+            conversations.length > 0 &&
+            filteredConversations.length === 0 && (
+              <p className="px-3 py-6 text-center text-xs text-ink-500">
+                No matching conversations.
+              </p>
+            )}
         </div>
       </aside>
 
@@ -264,17 +313,31 @@ export function DirectMessagesSection() {
             <header className="flex items-center gap-3 border-b border-white/[0.08] px-5 py-4">
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 font-semibold text-primary-200">
                 {otherProfile?.avatar_url ? (
-                  <img src={otherProfile.avatar_url} alt="" className="h-full w-full object-cover" />
-                ) : displayName.slice(0, 1).toUpperCase()}
+                  <img
+                    src={otherProfile.avatar_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  displayName.slice(0, 1).toUpperCase()
+                )}
               </div>
+
               <div className="min-w-0">
-                <h3 className="truncate font-semibold text-ink-50">{displayName}</h3>
-                <p className="text-xs text-ink-500">Direct message</p>
+                <h3 className="truncate font-semibold text-ink-50">
+                  {displayName}
+                </h3>
+                <p className="text-xs text-ink-500">
+                  Direct message
+                </p>
               </div>
             </header>
 
             {error && (
-              <p role="alert" className="border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">
+              <p
+                role="alert"
+                className="border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300"
+              >
                 {error}
               </p>
             )}
@@ -282,8 +345,13 @@ export function DirectMessagesSection() {
             <div className="flex-1 space-y-5 overflow-y-auto p-5">
               {messages.length === 0 && (
                 <div className="flex h-full flex-col items-center justify-center text-center">
-                  <MessageSquare size={36} className="mb-3 text-ink-600" />
-                  <p className="font-semibold text-ink-300">This is the beginning</p>
+                  <MessageSquare
+                    size={36}
+                    className="mb-3 text-ink-600"
+                  />
+                  <p className="font-semibold text-ink-300">
+                    This is the beginning
+                  </p>
                   <p className="mt-1 text-sm text-ink-500">
                     Send the first message to {displayName}.
                   </p>
@@ -293,24 +361,37 @@ export function DirectMessagesSection() {
               {messages.map((message) => {
                 const mine = message.author_id === userId;
                 const author = profiles[message.author_id];
+
                 const name = mine
                   ? 'You'
-                  : author?.display_name || author?.username || displayName;
+                  : author?.display_name ||
+                    author?.username ||
+                    displayName;
 
                 return (
                   <article key={message.id} className="flex gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-sm font-bold text-primary-200">
                       {author?.avatar_url ? (
-                        <img src={author.avatar_url} alt="" className="h-full w-full object-cover" />
-                      ) : name.slice(0, 1).toUpperCase()}
+                        <img
+                          src={author.avatar_url}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        name.slice(0, 1).toUpperCase()
+                      )}
                     </div>
+
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-semibold text-ink-100">{name}</span>
+                        <span className="text-sm font-semibold text-ink-100">
+                          {name}
+                        </span>
                         <time className="text-[11px] text-ink-500">
                           {new Date(message.created_at).toLocaleString()}
                         </time>
                       </div>
+
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
                         {message.body}
                       </p>
@@ -320,11 +401,20 @@ export function DirectMessagesSection() {
               })}
             </div>
 
-            <form onSubmit={handleSend} className="border-t border-white/[0.08] p-4">
+            <form
+              onSubmit={handleSend}
+              className="border-t border-white/[0.08] p-4"
+            >
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 focus-within:border-primary-400/50">
-                <button type="button" disabled title="File uploads are coming later" className="text-ink-600">
+                <button
+                  type="button"
+                  disabled
+                  title="File uploads are coming later"
+                  className="text-ink-600"
+                >
                   <Paperclip size={19} />
                 </button>
+
                 <input
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
@@ -333,45 +423,80 @@ export function DirectMessagesSection() {
                   disabled={sending}
                   className="min-w-0 flex-1 bg-transparent py-2 text-sm text-ink-100 outline-none placeholder:text-ink-600"
                 />
+
                 <button
                   type="submit"
                   disabled={!messageText.trim() || sending}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40"
                   aria-label="Send message"
                 >
-                  {sending ? <RefreshCw size={17} className="animate-spin" /> : <Send size={17} />}
+                  {sending ? (
+                    <RefreshCw size={17} className="animate-spin" />
+                  ) : (
+                    <Send size={17} />
+                  )}
                 </button>
               </div>
-              <p className="mt-2 text-[10px] text-ink-600">Maximum message length: 4000 characters</p>
+
+              <p className="mt-2 text-[10px] text-ink-600">
+                Maximum message length: 4000 characters
+              </p>
             </form>
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-center">
-            <MessageSquare size={42} className="mb-4 text-ink-600" />
-            <h3 className="font-semibold text-ink-200">Your messages</h3>
-            <p className="mt-2 text-sm text-ink-500">Select a conversation to start chatting.</p>
+            <MessageSquare
+              size={42}
+              className="mb-4 text-ink-600"
+            />
+            <h3 className="font-semibold text-ink-200">
+              Your messages
+            </h3>
+            <p className="mt-2 text-sm text-ink-500">
+              Select a conversation to start chatting.
+            </p>
           </div>
         )}
       </main>
 
       <aside className="hidden w-60 shrink-0 flex-col border-l border-white/[0.08] bg-ink-900/50 xl:flex">
         <div className="border-b border-white/[0.08] p-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400">Profile</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400">
+            Profile
+          </h3>
         </div>
+
         {activeConversation && (
           <div className="p-5 text-center">
             <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-2xl font-bold text-primary-200">
               {otherProfile?.avatar_url ? (
-                <img src={otherProfile.avatar_url} alt="" className="h-full w-full object-cover" />
-              ) : displayName.slice(0, 1).toUpperCase()}
+                <img
+                  src={otherProfile.avatar_url}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                displayName.slice(0, 1).toUpperCase()
+              )}
             </div>
-            <h3 className="mt-4 font-semibold text-ink-100">{displayName}</h3>
+
+            <h3 className="mt-4 font-semibold text-ink-100">
+              {displayName}
+            </h3>
+
             {otherProfile?.username && (
-              <p className="mt-1 text-xs text-ink-500">@{otherProfile.username}</p>
+              <p className="mt-1 text-xs text-ink-500">
+                @{otherProfile.username}
+              </p>
             )}
+
             <div className="mt-5 border-t border-white/[0.08] pt-4 text-left">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-500">About</p>
-              <p className="mt-2 text-xs text-ink-400">AFTERDARK member</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
+                About
+              </p>
+              <p className="mt-2 text-xs text-ink-400">
+                AFTERDARK member
+              </p>
             </div>
           </div>
         )}
