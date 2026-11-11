@@ -20,6 +20,25 @@ export interface DirectConversationMember {
   last_read_at: string | null;
 }
 
+export async function getOrCreateDirectConversation(
+  friendId: string,
+): Promise<string> {
+  const { data, error } = await supabase.rpc(
+    'get_or_create_direct_conversation',
+    {
+      p_friend_id: friendId,
+    },
+  );
+
+  if (error) throw error;
+
+  if (!data) {
+    throw new Error('Could not open direct conversation.');
+  }
+
+  return data as string;
+}
+
 export async function fetchMyConversations(): Promise<DirectConversation[]> {
   const { data: { user }, error: authError } =
     await supabase.auth.getUser();
