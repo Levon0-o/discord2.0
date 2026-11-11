@@ -10,6 +10,7 @@ import {
   Users,
   Check,
   Clock,
+  MessageSquare,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -29,9 +30,10 @@ import type { ProfileLite } from '@/types/servers';
 
 interface FriendsPanelProps {
   onClose: () => void;
+  onMessage: (userId: string) => void;
 }
 
-export function FriendsPanel({ onClose }: FriendsPanelProps) {
+export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
   const [tab, setTab] = useState<'friends' | 'add' | 'requests'>('friends');
   const [friends, setFriends] = useState<FriendWithProfile[]>([]);
   const [incoming, setIncoming] = useState<FriendRequest[]>([]);
@@ -286,6 +288,16 @@ export function FriendsPanel({ onClose }: FriendsPanelProps) {
                           @{profile.username}
                         </p>
                       </div>
+
+                      <button
+                        onClick={() => onMessage(profile.id)}
+                        className="flex items-center gap-2 rounded-lg bg-primary-500/15 px-3 py-2 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/25"
+                        title={`Message ${profileName(profile)}`}
+                      >
+                        <MessageSquare size={15} />
+                        Message
+                      </button>
+
                       <span className="text-xs text-emerald-400">
                         <UserCheck size={17} />
                       </span>
