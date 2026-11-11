@@ -6,9 +6,11 @@ import {
   Paperclip,
   RefreshCw,
   Search,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { FriendsPanel } from '@/components/messages/FriendsPanel';
 import {
   fetchMyConversations,
   fetchConversationMembers,
@@ -36,6 +38,7 @@ export function DirectMessagesSection() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   const loadConversations = useCallback(async () => {
     if (!userId) {
@@ -218,6 +221,14 @@ export function DirectMessagesSection() {
           <p className="mt-1 text-xs text-ink-500">
             Your private conversations
           </p>
+
+          <button
+            onClick={() => setFriendsOpen(true)}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500/15 px-3 py-2.5 text-sm font-semibold text-primary-200 transition hover:bg-primary-500/25"
+          >
+            <Users size={17} />
+            Friends
+          </button>
         </div>
 
         <div className="p-3">
@@ -501,6 +512,10 @@ export function DirectMessagesSection() {
           </div>
         )}
       </aside>
+
+      {friendsOpen && (
+        <FriendsPanel onClose={() => setFriendsOpen(false)} />
+      )}
     </div>
   );
 }
