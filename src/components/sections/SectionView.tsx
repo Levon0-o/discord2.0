@@ -3,7 +3,7 @@ import { Hammer } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Dashboard } from '@/components/sections/Dashboard';
 import { ServersSection } from '@/components/servers/ServersSection';
-import { MessagesSection } from '@/components/messages/MessagesSection';
+import { DirectMessagesSection } from '@/components/messages/DirectMessagesSection';
 import type { NavSection, SectionId } from '@/config/navigation';
 
 interface SectionViewProps {
@@ -21,7 +21,7 @@ export function SectionView({ section, onNavigate }: SectionViewProps) {
   }
 
   if (section.id === 'messages') {
-    return <MessagesSection />;
+    return <DirectMessagesSection />;
   }
 
   const Icon = section.icon;
