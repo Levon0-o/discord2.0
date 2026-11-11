@@ -15,6 +15,7 @@ import {
   fetchMyConversations,
   fetchConversationMembers,
   fetchDirectMessages,
+  getOrCreateDirectConversation,
   sendDirectMessage,
 } from '@/lib/directMessagesApi';
 import type {
@@ -101,6 +102,27 @@ export function DirectMessagesSection() {
     }
   }, [userId]);
 
+  async function handleMessageFriend(friendId: string) {
+    setError('');
+
+    try {
+      const conversationId =
+        await getOrCreateDirectConversation(friendId);
+
+      setFriendsOpen(false);
+
+      await loadConversations();
+
+      setActiveId(conversationId);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not open conversation.',
+      );
+    }
+  }
+
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
@@ -143,6 +165,7 @@ export function DirectMessagesSection() {
 
     async function loadChat() {
       setMessages([]);
+      setError('');
 
       try {
         const messageRows = await fetchDirectMessages(activeId);
@@ -455,7 +478,16 @@ export function DirectMessagesSection() {
             </form>
           </>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            {error && (
+              <p
+                role="alert"
+                className="mb-4 max-w-md rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300"
+              >
+                {error}
+              </p>
+            )}
+
             <MessageSquare
               size={42}
               className="mb-4 text-ink-600"
@@ -514,7 +546,10 @@ export function DirectMessagesSection() {
       </aside>
 
       {friendsOpen && (
-        <FriendsPanel onClose={() => setFriendsOpen(false)} />
+        <FriendsPanel
+          onClose={() => setFriendsOpen(false)}
+          onMessage={handleMessageFriend}
+        />
       )}
     </div>
   );
