@@ -1,15 +1,16 @@
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Hash,
   Lock,
   LogOut,
-  MessageSquare,
   Plus,
   Shield,
   Users,
 } from 'lucide-react';
 import { ServerIcon } from '@/components/servers/ServerIcon';
+import { ChannelChat } from '@/components/servers/ChannelChat';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { cn } from '@/lib/cn';
 import {
@@ -18,7 +19,12 @@ import {
   fetchServerMembers,
   leaveServer,
 } from '@/lib/serversApi';
-import type { Channel, CreateChannelInput, MemberWithProfile, ServerWithMeta } from '@/types/servers';
+import type {
+  Channel,
+  CreateChannelInput,
+  MemberWithProfile,
+  ServerWithMeta,
+} from '@/types/servers';
 
 interface ServerDetailProps {
   server: ServerWithMeta;
@@ -62,12 +68,15 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
     async function load() {
       setLoading(true);
       setError('');
+
       try {
         const [channelRows, memberRows] = await Promise.all([
           fetchChannels(server.id),
           fetchServerMembers(server.id),
         ]);
+
         if (cancelled) return;
+
         setChannels(channelRows);
         setMembers(memberRows);
         setActiveChannelId((current) => {
@@ -84,6 +93,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
     }
 
     void load();
+
     return () => {
       cancelled = true;
     };
@@ -96,11 +106,13 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
 
   const channelsByCategory = useMemo(() => {
     const map = new Map<string, Channel[]>();
+
     for (const channel of channels) {
       const list = map.get(channel.category) ?? [];
       list.push(channel);
       map.set(channel.category, list);
     }
+
     return Array.from(map.entries());
   }, [channels]);
 
@@ -119,8 +131,10 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
 
   async function handleLeave() {
     if (server.my_role === 'owner') return;
+
     setLeaving(true);
     setError('');
+
     try {
       await leaveServer(server.id, userId);
       onLeft();
@@ -133,9 +147,11 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
   async function handleCreateChannel(input: CreateChannelInput) {
     setCreateBusy(true);
     setCreateError('');
+
     try {
       const created = await createChannel(input);
       const refreshed = await fetchChannels(server.id);
+
       setChannels(refreshed);
       setActiveChannelId(created.id);
       setCreateOpen(false);
@@ -166,6 +182,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
               : `linear-gradient(120deg, ${server.theme_color}55, #0f131b 60%, #06b6d433)`,
           }}
         />
+
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-start gap-4">
             <ServerIcon
@@ -175,9 +192,13 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
               size="lg"
               className="-mt-10 ring-4 ring-ink-900"
             />
+
             <div className="min-w-0 pt-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-semibold tracking-tight text-ink-50">{server.name}</h1>
+                <h1 className="text-xl font-semibold tracking-tight text-ink-50">
+                  {server.name}
+                </h1>
+
                 {server.visibility === 'private' ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-ink-800 px-2 py-0.5 text-[11px] font-medium text-ink-300">
                     <Lock size={11} />
@@ -189,14 +210,18 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                   </span>
                 )}
               </div>
+
               <p className="mt-1 text-sm text-ink-400">
                 {server.description || 'No description yet.'}
               </p>
+
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-500">
                 <span className="inline-flex items-center gap-1">
                   <Users size={12} />
-                  {server.member_count} {server.member_count === 1 ? 'member' : 'members'}
+                  {server.member_count}{' '}
+                  {server.member_count === 1 ? 'member' : 'members'}
                 </span>
+
                 {server.my_role ? (
                   <span className="inline-flex items-center gap-1 capitalize text-primary-300">
                     <Shield size={12} />
@@ -222,7 +247,10 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
       </header>
 
       {error ? (
-        <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/10 px-3.5 py-3 text-sm text-red-300">
+        <p
+          role="alert"
+          className="rounded-xl border border-red-400/20 bg-red-400/10 px-3.5 py-3 text-sm text-red-300"
+        >
           {error}
         </p>
       ) : null}
@@ -236,7 +264,10 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
           {/* Channels */}
           <aside className="panel flex flex-col overflow-hidden">
             <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Channels</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">
+                Channels
+              </h2>
+
               {isAdminOrOwner ? (
                 <button
                   type="button"
@@ -251,6 +282,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                 </button>
               ) : null}
             </div>
+
             <div className="flex-1 space-y-4 overflow-y-auto p-3">
               {channels.length === 0 ? (
                 <div className="px-2 py-6 text-center">
@@ -260,6 +292,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                       ? ' Create the first channel for this server.'
                       : ' Administrators can create channels for this server.'}
                   </p>
+
                   {isAdminOrOwner ? (
                     <button
                       type="button"
@@ -280,9 +313,11 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                     <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-ink-500">
                       {category}
                     </p>
+
                     <ul className="space-y-0.5">
                       {list.map((channel) => {
                         const active = channel.id === activeChannelId;
+
                         return (
                           <li key={channel.id}>
                             <button
@@ -295,8 +330,12 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                                   : 'text-ink-300 hover:bg-white/[0.04] hover:text-ink-100',
                               )}
                             >
-                              <Hash size={14} className={active ? 'text-primary-300' : 'text-ink-500'} />
+                              <Hash
+                                size={14}
+                                className={active ? 'text-primary-300' : 'text-ink-500'}
+                              />
                               <span className="truncate">{channel.name}</span>
+
                               {channel.is_restricted ? (
                                 <Lock size={11} className="ml-auto shrink-0 text-ink-500" />
                               ) : null}
@@ -312,41 +351,28 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
           </aside>
 
           {/* Channel main pane */}
-          <section className="panel flex min-h-[320px] flex-col overflow-hidden">
-            {activeChannel ? (
-              <>
-                <header className="flex items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
-                  <Hash size={18} className="text-ink-400" />
-                  <div className="min-w-0">
-                    <h2 className="truncate text-sm font-semibold text-ink-100">{activeChannel.name}</h2>
-                    {activeChannel.topic ? (
-                      <p className="truncate text-xs text-ink-500">{activeChannel.topic}</p>
-                    ) : null}
-                  </div>
-                </header>
-                <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-800 ring-1 ring-white/[0.06]">
-                    <MessageSquare size={24} className="text-secondary-300" />
-                  </div>
-                  <h3 className="text-base font-semibold text-ink-100">#{activeChannel.name}</h3>
-                  <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-400">
-                    Channel messaging is scheduled for a later stage. You can browse channels and
-                    members now.
-                  </p>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-800 ring-1 ring-white/[0.06]">
-                  <Hash size={24} className="text-secondary-300" />
-                </div>
-                <h3 className="text-base font-semibold text-ink-100">No channel selected</h3>
-                <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-400">
-                  Pick a channel from the list, or create one if you are an administrator.
-                </p>
+          {activeChannel ? (
+            <ChannelChat
+              channelId={activeChannel.id}
+              channelName={activeChannel.name}
+              channelTopic={activeChannel.topic}
+              members={members}
+            />
+          ) : (
+            <section className="panel flex min-h-[320px] flex-col items-center justify-center overflow-hidden px-6 py-12 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-800 ring-1 ring-white/[0.06]">
+                <Hash size={24} className="text-secondary-300" />
               </div>
-            )}
-          </section>
+
+              <h3 className="text-base font-semibold text-ink-100">
+                No channel selected
+              </h3>
+
+              <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-400">
+                Pick a channel from the list, or create one if you are an administrator.
+              </p>
+            </section>
+          )}
 
           {/* Members */}
           <aside className="panel flex flex-col overflow-hidden">
@@ -355,15 +381,18 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                 Members · {members.length}
               </h2>
             </div>
+
             <ul className="flex-1 space-y-1 overflow-y-auto p-3">
               {sortedMembers.map((member) => {
                 const label =
                   member.profile?.display_name ||
                   member.profile?.username ||
                   'Unknown member';
+
                 const handle = member.profile?.username
                   ? `@${member.profile.username}`
                   : null;
+
                 return (
                   <li
                     key={member.user_id}
@@ -380,8 +409,11 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                         {label.slice(0, 1).toUpperCase()}
                       </div>
                     )}
+
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-ink-100">{label}</p>
+                      <p className="truncate text-sm font-medium text-ink-100">
+                        {label}
+                      </p>
                       <p className="truncate text-[11px] text-ink-500">
                         {roleLabel(member.role)}
                         {handle ? ` · ${handle}` : ''}
@@ -390,8 +422,11 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                   </li>
                 );
               })}
+
               {members.length === 0 ? (
-                <li className="px-2 py-6 text-center text-xs text-ink-500">No members found.</li>
+                <li className="px-2 py-6 text-center text-xs text-ink-500">
+                  No members found.
+                </li>
               ) : null}
             </ul>
           </aside>
