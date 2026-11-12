@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import {
   ArrowRight,
@@ -133,6 +134,7 @@ export function Dashboard({
   async function loadDashboard(isRefresh = false) {
     if (!userId) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -144,66 +146,76 @@ export function Dashboard({
 
     setLoadError('');
 
-    const results = await Promise.allSettled([
-      supabase
-        .from('profiles')
-        .select('username, display_name, avatar_url')
-        .eq('id', userId)
-        .maybeSingle(),
+    try {
+      const results = await Promise.allSettled([
+        supabase
+          .from('profiles')
+          .select('username, display_name, avatar_url')
+          .eq('id', userId)
+          .maybeSingle(),
 
-      fetchMyServers(userId),
-      fetchMyConversations(),
-      fetchFriends(),
-      fetchFriendRequests(),
-    ]);
+        fetchMyServers(userId),
+        fetchMyConversations(),
+        fetchFriends(),
+        fetchFriendRequests(),
+      ]);
 
-    let failed = false;
+      let failed = false;
 
-    const profileResult = results[0];
-    if (profileResult.status === 'fulfilled') {
-      if (profileResult.value.error) {
-        failed = true;
+      const profileResult = results[0];
+
+      if (profileResult.status === 'fulfilled') {
+        if (profileResult.value.error) {
+          failed = true;
+        } else {
+          setProfile(profileResult.value.data);
+        }
       } else {
-        setProfile(profileResult.value.data);
+        failed = true;
       }
-    } else {
-      failed = true;
-    }
 
-    const serversResult = results[1];
-    if (serversResult.status === 'fulfilled') {
-      setServers(serversResult.value);
-    } else {
-      failed = true;
-    }
+      const serversResult = results[1];
 
-    const conversationsResult = results[2];
-    if (conversationsResult.status === 'fulfilled') {
-      setConversations(conversationsResult.value);
-    } else {
-      failed = true;
-    }
+      if (serversResult.status === 'fulfilled') {
+        setServers(serversResult.value);
+      } else {
+        failed = true;
+      }
 
-    const friendsResult = results[3];
-    if (friendsResult.status === 'fulfilled') {
-      setFriends(friendsResult.value);
-    } else {
-      failed = true;
-    }
+      const conversationsResult = results[2];
 
-    const requestsResult = results[4];
-    if (requestsResult.status === 'fulfilled') {
-      setPendingRequests(requestsResult.value.length);
-    } else {
-      failed = true;
-    }
+      if (conversationsResult.status === 'fulfilled') {
+        setConversations(conversationsResult.value);
+      } else {
+        failed = true;
+      }
 
-    if (failed) {
-      setLoadError('Some dashboard information could not be loaded.');
-    }
+      const friendsResult = results[3];
 
-    setLoading(false);
-    setRefreshing(false);
+      if (friendsResult.status === 'fulfilled') {
+        setFriends(friendsResult.value);
+      } else {
+        failed = true;
+      }
+
+      const requestsResult = results[4];
+
+      if (requestsResult.status === 'fulfilled') {
+        setPendingRequests(requestsResult.value.length);
+      } else {
+        failed = true;
+      }
+
+      if (failed) {
+        setLoadError('Some dashboard information could not be loaded.');
+      }
+    } catch (error) {
+      console.error('Dashboard loading error:', error);
+      setLoadError('Something went wrong while loading your dashboard.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   useEffect(() => {
@@ -241,25 +253,28 @@ export function Dashboard({
           className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-primary-500/15 blur-3xl"
           aria-hidden
         />
+
         <div
           className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-secondary-500/10 blur-3xl"
           aria-hidden
         />
 
-        <div className="relative flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+        <div className="relative flex flex-col gap-7">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary-300">
               <Sparkles size={14} />
               AFTERDARK
             </div>
 
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-ink-50 sm:text-4xl lg:text-5xl">
+            <h1 className="mt-4 break-words text-3xl font-semibold tracking-tight text-ink-50 sm:text-4xl lg:text-5xl">
               {loading ? (
                 <span className="inline-block h-10 w-64 animate-pulse rounded-xl bg-ink-800" />
               ) : (
                 <>
                   {greeting},{' '}
-                  <span className="text-primary-200">{displayName}</span>
+                  <span className="break-all text-primary-200">
+                    {displayName}
+                  </span>
                 </>
               )}
             </h1>
@@ -270,18 +285,18 @@ export function Dashboard({
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => void loadDashboard(true)}
               disabled={loading || refreshing}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm font-semibold text-ink-200 transition hover:bg-white/[0.08] disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm font-semibold text-ink-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw
                 size={16}
                 className={refreshing ? 'animate-spin' : ''}
               />
-              Refresh
+              {refreshing ? 'Refreshing...' : 'Refresh'}
             </button>
 
             <button
@@ -300,10 +315,12 @@ export function Dashboard({
       {loadError && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
           <p className="text-sm text-amber-200">{loadError}</p>
+
           <button
             type="button"
             onClick={() => void loadDashboard(true)}
-            className="text-sm font-semibold text-amber-100 hover:text-white"
+            disabled={refreshing}
+            className="text-sm font-semibold text-amber-100 hover:text-white disabled:opacity-50"
           >
             Try again
           </button>
@@ -317,6 +334,7 @@ export function Dashboard({
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-300">
               Your activity
             </p>
+
             <h2 className="mt-1 text-xl font-semibold text-ink-50">
               Overview
             </h2>
@@ -379,10 +397,12 @@ export function Dashboard({
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-500/10">
                 <Server size={18} className="text-primary-300" />
               </div>
+
               <div>
                 <h2 className="text-sm font-semibold text-ink-100">
                   Your servers
                 </h2>
+
                 <p className="text-xs text-ink-500">
                   Your communities
                 </p>
@@ -437,6 +457,7 @@ export function Dashboard({
                     <p className="truncate text-sm font-semibold text-ink-100">
                       {server.name}
                     </p>
+
                     <p className="mt-0.5 text-xs text-ink-500">
                       {server.member_count}{' '}
                       {server.member_count === 1 ? 'member' : 'members'}
@@ -454,12 +475,15 @@ export function Dashboard({
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-ink-800">
                   <Server size={21} className="text-ink-400" />
                 </div>
+
                 <h3 className="text-sm font-semibold text-ink-100">
                   No servers yet
                 </h3>
+
                 <p className="mt-1 max-w-xs text-xs leading-relaxed text-ink-500">
                   Join a community or create your own server to get started.
                 </p>
+
                 <button
                   type="button"
                   onClick={() => onNavigate('servers')}
@@ -480,10 +504,12 @@ export function Dashboard({
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary-500/10">
                 <MessageSquare size={18} className="text-secondary-300" />
               </div>
+
               <div>
                 <h2 className="text-sm font-semibold text-ink-100">
                   Recent conversations
                 </h2>
+
                 <p className="text-xs text-ink-500">
                   Your latest chats
                 </p>
@@ -532,6 +558,7 @@ export function Dashboard({
                           ? 'Group conversation'
                           : 'Direct message')}
                     </p>
+
                     <p className="mt-0.5 truncate text-xs text-ink-500">
                       {formatDate(conversation.last_message_at)}
                     </p>
@@ -548,12 +575,15 @@ export function Dashboard({
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-ink-800">
                   <MessageSquare size={21} className="text-ink-400" />
                 </div>
+
                 <h3 className="text-sm font-semibold text-ink-100">
                   No conversations yet
                 </h3>
+
                 <p className="mt-1 max-w-xs text-xs leading-relaxed text-ink-500">
                   Your private and group chats will appear here.
                 </p>
+
                 <button
                   type="button"
                   onClick={() => onNavigate('messages')}
@@ -575,10 +605,12 @@ export function Dashboard({
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-500/10">
               <Users size={18} className="text-accent-300" />
             </div>
+
             <div>
               <h2 className="text-sm font-semibold text-ink-100">
                 Your people
               </h2>
+
               <p className="text-xs text-ink-500">
                 Friends on AFTERDARK
               </p>
@@ -627,6 +659,7 @@ export function Dashboard({
                       getInitials(name)
                     )}
                   </div>
+
                   <span className="w-full truncate text-xs font-medium text-ink-300">
                     {name}
                   </span>
@@ -639,12 +672,15 @@ export function Dashboard({
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-ink-800">
               <UserRound size={21} className="text-ink-400" />
             </div>
+
             <h3 className="text-sm font-semibold text-ink-100">
               Your network starts here
             </h3>
+
             <p className="mt-1 max-w-sm text-xs leading-relaxed text-ink-500">
               Find people, send friend requests and build your own community.
             </p>
+
             <button
               type="button"
               onClick={() => onNavigate('explore')}
@@ -663,6 +699,7 @@ export function Dashboard({
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-300">
             Get around
           </p>
+
           <h2 className="mt-1 text-xl font-semibold text-ink-50">
             Quick access
           </h2>
@@ -712,6 +749,7 @@ export function Dashboard({
                   <p className="truncate text-sm font-semibold text-ink-100">
                     {item.label}
                   </p>
+
                   <p className="mt-0.5 truncate text-xs text-ink-500">
                     {item.description}
                   </p>
