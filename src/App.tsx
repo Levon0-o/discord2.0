@@ -1,71 +1,61 @@
 
-import { useState, type ReactNode } from 'react';
-import { BottomNav } from '@/components/layout/BottomNav';
-import { BrandMark } from '@/components/layout/BrandMark';
-import { MobileDrawer } from '@/components/layout/MobileDrawer';
-import { RightPanel } from '@/components/layout/RightPanel';
-import { SidebarNav } from '@/components/layout/SidebarNav';
-import { NAV_SECTIONS, type SectionId } from '@/config/navigation';
+import { useCallback, useState } from 'react';
+import { AppShell } from '@/components/layout/AppShell';
+import { SectionView } from '@/components/sections/SectionView';
+import { AuthPage } from '@/components/auth/AuthPage';
+import { ProfileBootstrap } from '@/components/auth/ProfileBootstrap';
+import { NAV_SECTIONS } from '@/config/navigation';
+import { useActiveSection } from '@/hooks/useActiveSection';
+import { useAuth } from '@/contexts/AuthContext';
 
-interface AppShellProps {
-  activeSection: SectionId;
-  onNavigate: (id: SectionId) => void;
-  children: ReactNode;
-}
+function App() {
+  const { section, navigate } = useActiveSection();
+  const { session, loading, configured, signOut } = useAuth();
+  const [requestedConversationId, setRequestedConversationId] = useState<string | null>(null);
 
-export function AppShell({
-  activeSection,
-  onNavigate,
-  children,
-}: AppShellProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const activeSection =
+    NAV_SECTIONS.find((item) => item.id === section) ?? NAV_SECTIONS[0];
 
-  const activeLabel =
-    NAV_SECTIONS.find((section) => section.id === activeSection)?.label ?? '';
+  const handleOpenConversation = useCallback(
+    (conversationId: string) => {
+      setRequestedConversationId(conversationId);
+      navigate('messages');
+    },
+    [navigate]
+  );
 
-  const handleNavigate = (id: SectionId) => {
-    onNavigate(id);
-    setMenuOpen(false);
-  };
+  const handleInitialConversationHandled = useCallback(() => {
+    setRequestedConversationId(null);
+  }, []);
+
+  if (loading) {
+    return (
+      <main className="app-backdrop flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
+          <p className="text-sm text-ink-400">Connecting to AFTERDARK…</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!configured || !session) {
+    return <AuthPage configurationMissing={!configured} />;
+  }
 
   return (
-    <div className="app-backdrop h-dvh w-full overflow-hidden">
-      <div className="flex h-full min-h-0 w-full">
-        <SidebarNav
-          activeSection={activeSection}
-          onNavigate={handleNavigate}
+    <ProfileBootstrap user={session.user} onSignOut={signOut}>
+      <AppShell activeSection={section} onNavigate={navigate}>
+        <SectionView
+          section={activeSection}
+          onNavigate={navigate}
+          onOpenConversation={handleOpenConversation}
+          initialConversationId={requestedConversationId}
+          onInitialConversationHandled={handleInitialConversationHandled}
         />
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-white/[0.06] bg-ink-950/90 px-4 backdrop-blur-xl md:hidden">
-            <BrandMark compact />
-            <span className="text-sm font-semibold text-ink-100">
-              {activeLabel}
-            </span>
-          </header>
-
-          <div className="flex min-h-0 min-w-0 flex-1 gap-4 px-3 pb-24 pt-3 sm:px-5 md:gap-6 md:px-6 md:py-6 md:pb-6 xl:px-8">
-            <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-              {children}
-            </main>
-
-            <RightPanel />
-          </div>
-        </div>
-      </div>
-
-      <BottomNav
-        activeSection={activeSection}
-        onNavigate={handleNavigate}
-        onOpenMenu={() => setMenuOpen(true)}
-      />
-
-      <MobileDrawer
-        open={menuOpen}
-        activeSection={activeSection}
-        onNavigate={handleNavigate}
-        onClose={() => setMenuOpen(false)}
-      />
-    </div>
+      </AppShell>
+    </ProfileBootstrap>
   );
 }
+
+export default App;
