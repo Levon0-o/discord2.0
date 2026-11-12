@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { SectionView } from '@/components/sections/SectionView';
 import { AuthPage } from '@/components/auth/AuthPage';
@@ -9,7 +10,22 @@ import { useAuth } from '@/contexts/AuthContext';
 function App() {
   const { section, navigate } = useActiveSection();
   const { session, loading, configured, signOut } = useAuth();
-  const activeSection = NAV_SECTIONS.find((item) => item.id === section) ?? NAV_SECTIONS[0];
+  const [requestedConversationId, setRequestedConversationId] = useState<string | null>(null);
+
+  const activeSection =
+    NAV_SECTIONS.find((item) => item.id === section) ?? NAV_SECTIONS[0];
+
+  const handleOpenConversation = useCallback(
+    (conversationId: string) => {
+      setRequestedConversationId(conversationId);
+      navigate('messages');
+    },
+    [navigate]
+  );
+
+  const handleInitialConversationHandled = useCallback(() => {
+    setRequestedConversationId(null);
+  }, []);
 
   if (loading) {
     return (
@@ -29,7 +45,13 @@ function App() {
   return (
     <ProfileBootstrap user={session.user} onSignOut={signOut}>
       <AppShell activeSection={section} onNavigate={navigate}>
-        <SectionView section={activeSection} onNavigate={navigate} />
+        <SectionView
+          section={activeSection}
+          onNavigate={navigate}
+          onOpenConversation={handleOpenConversation}
+          initialConversationId={requestedConversationId}
+          onInitialConversationHandled={handleInitialConversationHandled}
+        />
       </AppShell>
     </ProfileBootstrap>
   );
