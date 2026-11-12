@@ -6,12 +6,14 @@ import {
   Lock,
   LogOut,
   Plus,
+  Settings2,
   Shield,
   Users,
 } from 'lucide-react';
 import { ServerIcon } from '@/components/servers/ServerIcon';
 import { ChannelChat } from '@/components/servers/ChannelChat';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
+import { RoleManager } from '@/components/servers/RoleManager';
 import { cn } from '@/lib/cn';
 import {
   createChannel,
@@ -49,7 +51,12 @@ function canManageChannels(role: string | null | undefined): boolean {
   return role === 'owner' || role === 'admin';
 }
 
-export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailProps) {
+export function ServerDetail({
+  server,
+  userId,
+  onBack,
+  onLeft,
+}: ServerDetailProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
@@ -59,6 +66,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [rolesOpen, setRolesOpen] = useState(false);
 
   const isAdminOrOwner = canManageChannels(server.my_role);
 
@@ -80,12 +88,17 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
         setChannels(channelRows);
         setMembers(memberRows);
         setActiveChannelId((current) => {
-          if (current && channelRows.some((c) => c.id === current)) return current;
+          if (current && channelRows.some((c) => c.id === current)) {
+            return current;
+          }
+
           return channelRows[0]?.id ?? null;
         });
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Could not load server.');
+          setError(
+            err instanceof Error ? err.message : 'Could not load server.',
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -139,7 +152,9 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
       await leaveServer(server.id, userId);
       onLeft();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not leave server.');
+      setError(
+        err instanceof Error ? err.message : 'Could not leave server.',
+      );
       setLeaving(false);
     }
   }
@@ -156,7 +171,9 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
       setActiveChannelId(created.id);
       setCreateOpen(false);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Could not create channel.');
+      setCreateError(
+        err instanceof Error ? err.message : 'Could not create channel.',
+      );
     } finally {
       setCreateBusy(false);
     }
@@ -204,7 +221,9 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                     {server.name}
                   </h1>
                   <p className="truncate text-[10px] text-ink-500">
-                    {server.visibility === 'private' ? 'Private server' : 'Public server'}
+                    {server.visibility === 'private'
+                      ? 'Private server'
+                      : 'Public server'}
                   </p>
                 </div>
               </div>
@@ -233,6 +252,17 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                   <Shield size={10} />
                   {roleLabel(server.my_role)}
                 </p>
+              )}
+
+              {isAdminOrOwner && (
+                <button
+                  type="button"
+                  onClick={() => setRolesOpen(true)}
+                  className="mt-3 flex w-full items-center gap-2 rounded-lg border border-white/[0.07] px-2.5 py-2 text-left text-xs text-ink-300 transition hover:border-primary-400/30 hover:bg-primary-500/[0.07] hover:text-primary-200"
+                >
+                  <Settings2 size={14} />
+                  Manage roles
+                </button>
               )}
             </div>
 
@@ -303,7 +333,9 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                                 size={13}
                                 className={cn(
                                   'shrink-0',
-                                  active ? 'text-primary-300' : 'text-ink-600',
+                                  active
+                                    ? 'text-primary-300'
+                                    : 'text-ink-600',
                                 )}
                               />
                               <span className="min-w-0 flex-1 truncate">
@@ -311,7 +343,10 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                               </span>
 
                               {channel.is_restricted && (
-                                <Lock size={10} className="shrink-0 text-ink-600" />
+                                <Lock
+                                  size={10}
+                                  className="shrink-0 text-ink-600"
+                                />
                               )}
                             </button>
                           </li>
@@ -324,9 +359,14 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
             </div>
           </aside>
 
-          {/* CENTER: CHAT */}
+          {/* CENTER: CHAT OR ROLE MANAGER */}
           <div className="min-h-0 min-w-0 overflow-hidden">
-            {activeChannel ? (
+            {rolesOpen ? (
+              <RoleManager
+                serverId={server.id}
+                onBack={() => setRolesOpen(false)}
+              />
+            ) : activeChannel ? (
               <ChannelChat
                 channelId={activeChannel.id}
                 channelName={activeChannel.name}
@@ -387,10 +427,16 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                     )}
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[11px] font-semibold text-ink-100" title={label}>
+                      <p
+                        className="truncate text-[11px] font-semibold text-ink-100"
+                        title={label}
+                      >
                         {label}
                       </p>
-                      <p className="truncate text-[9px] text-ink-500" title={handle || roleLabel(member.role)}>
+                      <p
+                        className="truncate text-[9px] text-ink-500"
+                        title={handle || roleLabel(member.role)}
+                      >
                         {roleLabel(member.role)}
                         {handle ? ` · ${handle}` : ''}
                       </p>
