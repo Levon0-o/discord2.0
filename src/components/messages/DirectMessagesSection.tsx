@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
@@ -55,6 +54,28 @@ function formatConversationTime(value?: string) {
   return date.toLocaleDateString([], {
     day: '2-digit',
     month: '2-digit',
+  });
+}
+
+function formatMessageDate(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  const yesterday = new Date();
+
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date.toDateString() === now.toDateString()) {
+    return 'Today';
+  }
+
+  if (date.toDateString() === yesterday.toDateString()) {
+    return 'Yesterday';
+  }
+
+  return date.toLocaleDateString([], {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   });
 }
 
@@ -528,7 +549,7 @@ export function DirectMessagesSection({
             )}
 
             {/* MESSAGES */}
-            <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-6">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
               {messages.length === 0 && (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-300">
@@ -543,7 +564,7 @@ export function DirectMessagesSection({
                 </div>
               )}
 
-              {messages.map((message) => {
+              {messages.map((message, index) => {
                 const mine = message.author_id === userId;
                 const author = profiles[message.author_id];
 
@@ -553,38 +574,86 @@ export function DirectMessagesSection({
                     author?.username ||
                     displayName;
 
-                return (
-                  <article
-                    key={message.id}
-                    className="flex min-w-0 gap-3"
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-sm font-bold text-primary-200">
-                      {author?.avatar_url ? (
-                        <img
-                          src={author.avatar_url}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        name.slice(0, 1).toUpperCase()
-                      )}
-                    </div>
+                const date = new Date(message.created_at);
+                const previousMessage = messages[index - 1];
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                        <span className="text-sm font-bold text-ink-100">
-                          {name}
+                const isNewDay =
+                  !previousMessage ||
+                  date.toDateString() !==
+                    new Date(previousMessage.created_at).toDateString();
+
+                const isGrouped = Boolean(
+                  previousMessage &&
+                  previousMessage.author_id === message.author_id &&
+                  date.toDateString() ===
+                    new Date(previousMessage.created_at).toDateString() &&
+                  date.getTime() -
+                    new Date(previousMessage.created_at).getTime() <=
+                    5 * 60 * 1000
+                );
+
+                return (
+                  <div key={message.id}>
+                    {isNewDay && (
+                      <div className="my-6 flex items-center gap-4">
+                        <div className="h-px flex-1 bg-white/[0.08]" />
+                        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+                          {formatMessageDate(message.created_at)}
                         </span>
-                        <time className="text-[11px] text-ink-500">
-                          {new Date(message.created_at).toLocaleString()}
-                        </time>
+                        <div className="h-px flex-1 bg-white/[0.08]" />
+                      </div>
+                    )}
+
+                    <article
+                      className={`group flex min-w-0 gap-3 rounded-lg px-2 py-1 transition hover:bg-white/[0.025] ${
+                        isGrouped ? 'mt-0' : 'mt-3'
+                      }`}
+                    >
+                      <div className="flex w-10 shrink-0 justify-center">
+                        {isGrouped ? (
+                          <span className="pt-1 text-[9px] text-transparent group-hover:text-ink-500">
+                            {date.toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        ) : (
+                          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-sm font-bold text-primary-200">
+                            {author?.avatar_url ? (
+                              <img
+                                src={author.avatar_url}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              name.slice(0, 1).toUpperCase()
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-base">
-                        {message.body}
-                      </p>
-                    </div>
-                  </article>
+                      <div className="min-w-0 flex-1">
+                        {!isGrouped && (
+                          <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <span className="text-sm font-bold text-ink-100">
+                              {name}
+                            </span>
+
+                            <time className="text-[11px] text-ink-500">
+                              {date.toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </time>
+                          </div>
+                        )}
+
+                        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
+                          {message.body}
+                        </p>
+                      </div>
+                    </article>
+                  </div>
                 );
               })}
             </div>
