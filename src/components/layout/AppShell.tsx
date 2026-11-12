@@ -1,3 +1,4 @@
+
 import { useState, type ReactNode } from 'react';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { BrandMark } from '@/components/layout/BrandMark';
@@ -12,9 +13,15 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-export function AppShell({ activeSection, onNavigate, children }: AppShellProps) {
+export function AppShell({
+  activeSection,
+  onNavigate,
+  children,
+}: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const activeLabel = NAV_SECTIONS.find((section) => section.id === activeSection)?.label ?? '';
+
+  const activeLabel =
+    NAV_SECTIONS.find((section) => section.id === activeSection)?.label ?? '';
 
   const handleNavigate = (id: SectionId) => {
     onNavigate(id);
@@ -22,24 +29,37 @@ export function AppShell({ activeSection, onNavigate, children }: AppShellProps)
   };
 
   return (
-    <div className="app-backdrop min-h-screen">
-      <div className="mx-auto flex min-h-screen max-w-[1600px]">
-        <SidebarNav activeSection={activeSection} onNavigate={handleNavigate} />
+    <div className="app-backdrop min-h-dvh w-full">
+      <div className="flex min-h-dvh w-full">
+        <SidebarNav
+          activeSection={activeSection}
+          onNavigate={handleNavigate}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-white/[0.06] bg-ink-950/85 px-4 backdrop-blur-xl md:hidden">
+          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-white/[0.06] bg-ink-950/90 px-4 backdrop-blur-xl md:hidden">
             <BrandMark compact />
-            <span className="text-sm font-medium text-ink-200">{activeLabel}</span>
+            <span className="text-sm font-semibold text-ink-100">
+              {activeLabel}
+            </span>
           </header>
 
-          <div className="flex flex-1 gap-6 px-4 pb-28 pt-4 md:px-6 md:pb-10 lg:pt-8">
-            <main className="min-w-0 flex-1 max-w-3xl">{children}</main>
+          <div className="flex min-w-0 flex-1 gap-4 px-3 pb-24 pt-3 sm:px-5 md:gap-6 md:px-6 md:py-6 md:pb-6 xl:px-8">
+            <main className="min-w-0 flex-1">
+              {children}
+            </main>
+
             <RightPanel />
           </div>
         </div>
       </div>
 
-      <BottomNav activeSection={activeSection} onNavigate={handleNavigate} onOpenMenu={() => setMenuOpen(true)} />
+      <BottomNav
+        activeSection={activeSection}
+        onNavigate={handleNavigate}
+        onOpenMenu={() => setMenuOpen(true)}
+      />
+
       <MobileDrawer
         open={menuOpen}
         activeSection={activeSection}
