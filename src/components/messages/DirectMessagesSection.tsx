@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
@@ -30,6 +31,33 @@ interface DirectMessagesSectionProps {
   onInitialConversationHandled?: () => void;
 }
 
+function formatConversationTime(value?: string) {
+  if (!value) return '';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  return date.toLocaleDateString([], {
+    day: '2-digit',
+    month: '2-digit',
+  });
+}
+
 export function DirectMessagesSection({
   initialConversationId = null,
   onInitialConversationHandled,
@@ -41,6 +69,9 @@ export function DirectMessagesSection({
   const [profiles, setProfiles] = useState<Record<string, ProfileLite>>({});
   const [members, setMembers] = useState<DirectConversationMember[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [lastMessages, setLastMessages] = useState<
+    Record<string, Message | null>
+  >({});
   const [activeId, setActiveId] = useState('');
   const [messageText, setMessageText] = useState('');
   const [search, setSearch] = useState('');
@@ -94,6 +125,25 @@ export function DirectMessagesSection({
       } else {
         setProfiles({});
       }
+
+      const latestMessageResults = await Promise.all(
+        rows.map(async (conversation) => {
+          try {
+            const conversationMessages = await fetchDirectMessages(
+              conversation.id
+            );
+
+            return [
+              conversation.id,
+              conversationMessages[conversationMessages.length - 1] ?? null,
+            ] as const;
+          } catch {
+            return [conversation.id, null] as const;
+          }
+        })
+      );
+
+      setLastMessages(Object.fromEntries(latestMessageResults));
 
       setActiveId((current) =>
         current && rows.some((row) => row.id === current)
@@ -235,6 +285,10 @@ export function DirectMessagesSection({
       );
 
       setMessages((current) => [...current, message]);
+      setLastMessages((current) => ({
+        ...current,
+        [activeId]: message,
+      }));
       setMessageText('');
 
       await loadConversations();
@@ -341,6 +395,11 @@ export function DirectMessagesSection({
               'Unknown user';
 
             const selected = activeId === conversation.id;
+            const lastMessage = lastMessages[conversation.id];
+
+            const preview = lastMessage
+              ? `${lastMessage.author_id === userId ? 'You: ' : ''}${lastMessage.body}`
+              : 'No messages yet';
 
             return (
               <button
@@ -350,7 +409,7 @@ export function DirectMessagesSection({
                   setActiveId(conversation.id);
                   setMobileChatOpen(true);
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3.5 text-left transition ${
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
                   selected
                     ? 'bg-primary-500/15 text-primary-100'
                     : 'text-ink-300 hover:bg-white/[0.05]'
@@ -368,18 +427,28 @@ export function DirectMessagesSection({
                   )}
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">
-                    {name}
-                  </p>
-                  <p className="mt-1 text-xs text-ink-500">
-                    Private conversation
-                  </p>
-                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">
+                      {name}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-ink-500">
+                      {preview}
+                    </p>
+                  </div>
 
-                {selected && (
-                  <div className="h-2 w-2 shrink-0 rounded-full bg-primary-400" />
-                )}
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    {lastMessage && (
+                      <span className="text-[10px] text-ink-500">
+                        {formatConversationTime(lastMessage.created_at)}
+                      </span>
+                    )}
+
+                    {selected && (
+                      <div className="h-2 w-2 rounded-full bg-primary-400" />
+                    )}
+                  </div>
+                </div>
               </button>
             );
           })}
