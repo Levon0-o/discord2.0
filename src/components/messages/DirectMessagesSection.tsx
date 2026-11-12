@@ -26,7 +26,15 @@ import type {
 import type { Message } from '@/types/messages';
 import type { ProfileLite } from '@/types/servers';
 
-export function DirectMessagesSection() {
+interface DirectMessagesSectionProps {
+  initialConversationId?: string | null;
+  onInitialConversationHandled?: () => void;
+}
+
+export function DirectMessagesSection({
+  initialConversationId = null,
+  onInitialConversationHandled,
+}: DirectMessagesSectionProps) {
   const { session } = useAuth();
   const userId = session?.user?.id ?? '';
 
@@ -128,6 +136,26 @@ export function DirectMessagesSection() {
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    if (!initialConversationId || loading) return;
+
+    const conversationExists = conversations.some(
+      (conversation) => conversation.id === initialConversationId
+    );
+
+    if (conversationExists) {
+      setActiveId(initialConversationId);
+      setMobileChatOpen(true);
+    }
+
+    onInitialConversationHandled?.();
+  }, [
+    initialConversationId,
+    loading,
+    conversations,
+    onInitialConversationHandled,
+  ]);
 
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeId
