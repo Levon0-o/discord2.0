@@ -152,7 +152,6 @@ export function MessagesSection() {
 
     try {
       const older = await fetchChannelMessages(channelId, messages[0]);
-
       setMessages((current) => [...older, ...current]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load older messages.');
@@ -240,8 +239,8 @@ export function MessagesSection() {
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-between border-b border-white/[0.08] px-5 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <Hash size={19} className="shrink-0 text-primary-300" />
             <div className="min-w-0">
@@ -261,12 +260,12 @@ export function MessagesSection() {
         </header>
 
         {error && (
-          <div role="alert" className="border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">
+          <div role="alert" className="shrink-0 border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">
             {error}
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {channelId && messages.length >= 100 && (
             <div className="mb-5 text-center">
               <button
@@ -289,38 +288,73 @@ export function MessagesSection() {
             </div>
           )}
 
-          <div className="space-y-5">
-            {messages.map((message) => {
+          <div>
+            {messages.map((message, index) => {
               const author = membersById.get(message.author_id);
               const displayName =
                 author?.profile?.display_name ||
                 author?.profile?.username ||
                 'Unknown user';
 
+              const date = new Date(message.created_at);
+              const previousMessage = messages[index - 1];
+
+              const previousDate = previousMessage
+                ? new Date(previousMessage.created_at)
+                : null;
+
+              const timeDifference = previousDate
+                ? date.getTime() - previousDate.getTime()
+                : Infinity;
+
+              const isGrouped =
+                !!previousMessage &&
+                previousMessage.author_id === message.author_id &&
+                date.toDateString() === previousDate!.toDateString() &&
+                timeDifference >= 0 &&
+                timeDifference <= 15 * 60 * 1000;
+
               return (
-                <article key={message.id} className="flex gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-sm font-bold text-primary-200">
-                    {author?.profile?.avatar_url ? (
-                      <img
-                        src={author.profile.avatar_url}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
+                <article
+                  key={message.id}
+                  className={`flex gap-3 ${index === 0 ? 'mt-0' : isGrouped ? 'mt-1' : 'mt-4'}`}
+                >
+                  <div className="flex w-9 shrink-0 justify-center">
+                    {isGrouped ? (
+                      <span className="pt-1 text-[9px] text-transparent hover:text-ink-500">
+                        {date.toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
                     ) : (
-                      displayName.slice(0, 1).toUpperCase()
+                      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-sm font-bold text-primary-200">
+                        {author?.profile?.avatar_url ? (
+                          <img
+                            src={author.profile.avatar_url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          displayName.slice(0, 1).toUpperCase()
+                        )}
+                      </div>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="text-sm font-semibold text-ink-100">
-                        {displayName}
-                      </span>
-                      <time className="text-[11px] text-ink-500">
-                        {new Date(message.created_at).toLocaleString()}
-                      </time>
-                    </div>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
+                    {!isGrouped && (
+                      <div className="mb-1 flex flex-wrap items-baseline gap-2">
+                        <span className="text-sm font-semibold text-ink-100">
+                          {message.author_id === userId ? 'You' : displayName}
+                        </span>
+                        <time className="text-[11px] text-ink-500">
+                          {date.toLocaleString()}
+                        </time>
+                      </div>
+                    )}
+
+                    <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
                       {message.body}
                     </p>
                   </div>
@@ -330,7 +364,7 @@ export function MessagesSection() {
           </div>
         </div>
 
-        <form onSubmit={handleSend} className="border-t border-white/[0.08] p-4">
+        <form onSubmit={handleSend} className="shrink-0 border-t border-white/[0.08] p-4">
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 focus-within:border-primary-400/50">
             <button
               type="button"
@@ -380,7 +414,7 @@ export function MessagesSection() {
           </h3>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {members.map((member) => {
             const name =
               member.profile?.display_name ||
