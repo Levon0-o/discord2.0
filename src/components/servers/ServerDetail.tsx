@@ -163,17 +163,17 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-col gap-4 lg:h-full lg:overflow-hidden">
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex items-center gap-2 text-sm font-medium text-ink-400 transition hover:text-ink-100"
+        className="inline-flex shrink-0 items-center gap-2 text-sm font-medium text-ink-400 transition hover:text-ink-100"
       >
         <ArrowLeft size={16} />
         Back to servers
       </button>
 
-      <header className="panel overflow-hidden">
+      <header className="panel shrink-0 overflow-hidden">
         <div
           className="h-24 w-full sm:h-28"
           style={{
@@ -249,21 +249,21 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
       {error ? (
         <p
           role="alert"
-          className="rounded-xl border border-red-400/20 bg-red-400/10 px-3.5 py-3 text-sm text-red-300"
+          className="shrink-0 rounded-xl border border-red-400/20 bg-red-400/10 px-3.5 py-3 text-sm text-red-300"
         >
           {error}
         </p>
       ) : null}
 
       {loading ? (
-        <div className="panel flex items-center justify-center py-16">
+        <div className="panel flex min-h-0 flex-1 items-center justify-center py-16">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)_220px]">
+        <div className="grid min-h-0 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[240px_minmax(0,1fr)_220px] lg:grid-rows-1">
           {/* Channels */}
-          <aside className="panel flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
+          <aside className="panel flex min-h-0 flex-col overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">
                 Channels
               </h2>
@@ -283,7 +283,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
               ) : null}
             </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
               {channels.length === 0 ? (
                 <div className="px-2 py-6 text-center">
                   <p className="text-xs leading-relaxed text-ink-500">
@@ -375,14 +375,14 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
           )}
 
           {/* Members */}
-          <aside className="panel flex flex-col overflow-hidden">
-            <div className="border-b border-white/[0.06] px-4 py-3">
+          <aside className="panel flex min-h-0 flex-col overflow-hidden">
+            <div className="shrink-0 border-b border-white/[0.06] px-4 py-3">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">
                 Members · {members.length}
               </h2>
             </div>
 
-            <ul className="flex-1 space-y-1 overflow-y-auto p-3">
+            <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
               {sortedMembers.map((member) => {
                 const label =
                   member.profile?.display_name ||
