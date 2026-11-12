@@ -31,6 +31,7 @@ import type { SectionId } from '@/config/navigation';
 
 interface DashboardProps {
   onNavigate: (id: SectionId) => void;
+  onOpenConversation: (conversationId: string) => void;
 }
 
 interface ProfileSnippet {
@@ -112,7 +113,10 @@ function MetricCard({
   );
 }
 
-export function Dashboard({ onNavigate }: DashboardProps) {
+export function Dashboard({
+  onNavigate,
+  onOpenConversation,
+}: DashboardProps) {
   const { session } = useAuth();
 
   const [profile, setProfile] = useState<ProfileSnippet | null>(null);
@@ -342,7 +346,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             icon={MessageSquare}
             accent="from-secondary-500/15 to-secondary-600/[0.02]"
             iconColor="text-secondary-300"
-            onClick={() => onNavigate('messages')}
+            onClick={() => onOpenConversation(conversation.id)}
           />
 
           <MetricCard
@@ -352,7 +356,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             icon={Users}
             accent="from-accent-500/15 to-accent-600/[0.02]"
             iconColor="text-accent-300"
-            onClick={() => onNavigate('messages')}
+            onClick={() => onOpenConversation(conversation.id)}
           />
 
           <MetricCard
@@ -362,7 +366,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             icon={Bell}
             accent="from-primary-400/10 to-secondary-500/[0.04]"
             iconColor="text-primary-200"
-            onClick={() => onNavigate('messages')}
+            onClick={() => onOpenConversation(conversation.id)}
           />
         </div>
       </section>
@@ -489,7 +493,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
             <button
               type="button"
-              onClick={() => onNavigate('messages')}
+              onClick={() => onOpenConversation(conversation.id)}
               className="inline-flex items-center gap-1 text-xs font-semibold text-primary-300 transition hover:text-primary-200"
             >
               Inbox <ArrowRight size={14} />
@@ -511,7 +515,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                 <button
                   key={conversation.id}
                   type="button"
-                  onClick={() => onNavigate('messages')}
+                  onClick={() => onOpenConversation(conversation.id)}
                   className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-white/[0.025]"
                 >
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary-500/10 ring-1 ring-secondary-400/15">
@@ -553,7 +557,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                 </p>
                 <button
                   type="button"
-                  onClick={() => onNavigate('messages')}
+                  onClick={() => onOpenConversation(conversation.id)}
                   className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-500/15 px-4 py-2 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/25"
                 >
                   <MessageSquare size={14} />
@@ -584,7 +588,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
           <button
             type="button"
-            onClick={() => onNavigate('messages')}
+            onClick={() => onOpenConversation(conversation.id)}
             className="inline-flex items-center gap-1 text-xs font-semibold text-primary-300 transition hover:text-primary-200"
           >
             Find people <ArrowRight size={14} />
@@ -644,7 +648,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </p>
             <button
               type="button"
-              onClick={() => onNavigate('messages')}
+              onClick={() => onOpenConversation(conversation.id)}
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-500/15 px-4 py-2 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/25"
             >
               <Users size={14} />
