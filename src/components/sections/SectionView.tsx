@@ -50,11 +50,15 @@ export function SectionView({
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-500/15 ring-1 ring-primary-400/20">
           <Icon size={22} className="text-primary-300" />
         </div>
+
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-ink-50">
             {section.label}
           </h1>
-          <p className="text-sm text-ink-400">{section.description}</p>
+
+          <p className="text-sm text-ink-400">
+            {section.description}
+          </p>
         </div>
       </header>
 
