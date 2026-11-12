@@ -110,8 +110,8 @@ export function ChannelChat({
   );
 
   return (
-    <section className="panel flex min-h-[520px] flex-col overflow-hidden">
-      <header className="flex items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
+    <section className="panel flex h-full min-h-0 flex-col overflow-hidden">
+      <header className="flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
         <Hash size={18} className="text-ink-400" />
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-ink-100">
@@ -128,13 +128,13 @@ export function ChannelChat({
       {error ? (
         <p
           role="alert"
-          className="border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300"
+          className="shrink-0 border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300"
         >
           {error}
         </p>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {messages.length >= 100 ? (
           <div className="mb-5 text-center">
             <button
@@ -242,7 +242,7 @@ export function ChannelChat({
 
       <form
         onSubmit={handleSend}
-        className="border-t border-white/[0.06] p-4"
+        className="shrink-0 border-t border-white/[0.06] p-4"
       >
         <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 focus-within:border-primary-400/50">
           <button
