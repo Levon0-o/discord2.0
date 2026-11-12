@@ -1,4 +1,3 @@
-
 import { Hammer } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Dashboard } from '@/components/sections/Dashboard';
@@ -9,11 +8,25 @@ import type { NavSection, SectionId } from '@/config/navigation';
 interface SectionViewProps {
   section: NavSection;
   onNavigate: (id: SectionId) => void;
+  onOpenConversation: (conversationId: string) => void;
+  initialConversationId: string | null;
+  onInitialConversationHandled: () => void;
 }
 
-export function SectionView({ section, onNavigate }: SectionViewProps) {
+export function SectionView({
+  section,
+  onNavigate,
+  onOpenConversation,
+  initialConversationId,
+  onInitialConversationHandled,
+}: SectionViewProps) {
   if (section.id === 'feed') {
-    return <Dashboard onNavigate={onNavigate} />;
+    return (
+      <Dashboard
+        onNavigate={onNavigate}
+        onOpenConversation={onOpenConversation}
+      />
+    );
   }
 
   if (section.id === 'servers') {
@@ -21,7 +34,12 @@ export function SectionView({ section, onNavigate }: SectionViewProps) {
   }
 
   if (section.id === 'messages') {
-    return <DirectMessagesSection />;
+    return (
+      <DirectMessagesSection
+        initialConversationId={initialConversationId}
+        onInitialConversationHandled={onInitialConversationHandled}
+      />
+    );
   }
 
   const Icon = section.icon;
