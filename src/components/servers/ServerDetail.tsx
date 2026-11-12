@@ -163,154 +163,123 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-4 lg:h-full lg:overflow-hidden">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex shrink-0 items-center gap-2 text-sm font-medium text-ink-400 transition hover:text-ink-100"
-      >
-        <ArrowLeft size={16} />
-        Back to servers
-      </button>
-
-      <header className="panel shrink-0 overflow-hidden">
-        <div
-          className="h-24 w-full sm:h-28"
-          style={{
-            background: server.banner_url
-              ? `center / cover url(${server.banner_url})`
-              : `linear-gradient(120deg, ${server.theme_color}55, #0f131b 60%, #06b6d433)`,
-          }}
-        />
-
-        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex items-start gap-4">
-            <ServerIcon
-              name={server.name}
-              iconUrl={server.icon_url}
-              themeColor={server.theme_color}
-              size="lg"
-              className="-mt-10 ring-4 ring-ink-900"
-            />
-
-            <div className="min-w-0 pt-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-semibold tracking-tight text-ink-50">
-                  {server.name}
-                </h1>
-
-                {server.visibility === 'private' ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-ink-800 px-2 py-0.5 text-[11px] font-medium text-ink-300">
-                    <Lock size={11} />
-                    Private
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-500/15 px-2 py-0.5 text-[11px] font-medium text-primary-200">
-                    Public
-                  </span>
-                )}
-              </div>
-
-              <p className="mt-1 text-sm text-ink-400">
-                {server.description || 'No description yet.'}
-              </p>
-
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-500">
-                <span className="inline-flex items-center gap-1">
-                  <Users size={12} />
-                  {server.member_count}{' '}
-                  {server.member_count === 1 ? 'member' : 'members'}
-                </span>
-
-                {server.my_role ? (
-                  <span className="inline-flex items-center gap-1 capitalize text-primary-300">
-                    <Shield size={12} />
-                    {roleLabel(server.my_role)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {server.my_role && server.my_role !== 'owner' ? (
-            <button
-              type="button"
-              disabled={leaving}
-              onClick={() => void handleLeave()}
-              className="inline-flex items-center gap-2 self-start rounded-xl border border-white/[0.08] px-3 py-2 text-sm font-medium text-ink-300 transition hover:border-red-400/30 hover:bg-red-400/10 hover:text-red-300 disabled:opacity-50 sm:self-auto"
-            >
-              <LogOut size={15} />
-              {leaving ? 'Leaving…' : 'Leave server'}
-            </button>
-          ) : null}
-        </div>
-      </header>
-
-      {error ? (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {error && (
         <p
           role="alert"
-          className="shrink-0 rounded-xl border border-red-400/20 bg-red-400/10 px-3.5 py-3 text-sm text-red-300"
+          className="mb-2 shrink-0 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-300"
         >
           {error}
         </p>
-      ) : null}
+      )}
 
       {loading ? (
-        <div className="panel flex min-h-0 flex-1 items-center justify-center py-16">
+        <div className="panel flex min-h-0 flex-1 items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
         </div>
       ) : (
-        <div className="grid min-h-0 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[240px_minmax(0,1fr)_220px] lg:grid-rows-1">
-          {/* Channels */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[190px_minmax(0,1fr)_170px]">
+          {/* LEFT: SERVER AND CHANNELS */}
           <aside className="panel flex min-h-0 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">
+            <div className="shrink-0 border-b border-white/[0.06] p-3">
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-3 flex items-center gap-1.5 text-[11px] text-ink-500 transition hover:text-ink-200"
+              >
+                <ArrowLeft size={13} />
+                Back to servers
+              </button>
+
+              <div className="flex min-w-0 items-center gap-2">
+                <ServerIcon
+                  name={server.name}
+                  iconUrl={server.icon_url}
+                  themeColor={server.theme_color}
+                  size="md"
+                />
+
+                <div className="min-w-0 flex-1">
+                  <h1 className="truncate text-sm font-bold text-ink-100">
+                    {server.name}
+                  </h1>
+                  <p className="truncate text-[10px] text-ink-500">
+                    {server.visibility === 'private' ? 'Private server' : 'Public server'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between">
+                <span className="flex items-center gap-1 text-[10px] text-ink-500">
+                  <Users size={11} />
+                  {server.member_count} members
+                </span>
+
+                {server.my_role && server.my_role !== 'owner' && (
+                  <button
+                    type="button"
+                    disabled={leaving}
+                    onClick={() => void handleLeave()}
+                    className="flex items-center gap-1 text-[10px] text-red-300 transition hover:text-red-200 disabled:opacity-50"
+                  >
+                    <LogOut size={11} />
+                    {leaving ? 'Leaving…' : 'Leave'}
+                  </button>
+                )}
+              </div>
+
+              {server.my_role && (
+                <p className="mt-1 flex items-center gap-1 text-[10px] text-primary-300">
+                  <Shield size={10} />
+                  {roleLabel(server.my_role)}
+                </p>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-3">
+              <h2 className="text-[10px] font-bold uppercase tracking-widest text-ink-500">
                 Channels
               </h2>
 
-              {isAdminOrOwner ? (
+              {isAdminOrOwner && (
                 <button
                   type="button"
                   onClick={() => {
                     setCreateError('');
                     setCreateOpen(true);
                   }}
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-primary-300 transition hover:bg-primary-500/15 hover:text-primary-200"
+                  className="rounded-md p-1 text-ink-500 transition hover:bg-white/[0.06] hover:text-primary-300"
+                  title="Create channel"
                 >
-                  <Plus size={12} />
-                  Create
+                  <Plus size={15} />
                 </button>
-              ) : null}
+              )}
             </div>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-3">
               {channels.length === 0 ? (
-                <div className="px-2 py-6 text-center">
-                  <p className="text-xs leading-relaxed text-ink-500">
+                <div className="px-2 py-5 text-center">
+                  <p className="text-[11px] leading-relaxed text-ink-500">
                     No channels yet.
-                    {isAdminOrOwner
-                      ? ' Create the first channel for this server.'
-                      : ' Administrators can create channels for this server.'}
                   </p>
 
-                  {isAdminOrOwner ? (
+                  {isAdminOrOwner && (
                     <button
                       type="button"
                       onClick={() => {
                         setCreateError('');
                         setCreateOpen(true);
                       }}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary-500/15 px-3 py-1.5 text-xs font-semibold text-primary-200 ring-1 ring-primary-400/25 transition hover:bg-primary-500/25"
+                      className="mt-2 text-[11px] font-semibold text-primary-300 hover:text-primary-200"
                     >
-                      <Plus size={12} />
-                      Create channel
+                      + Create channel
                     </button>
-                  ) : null}
+                  )}
                 </div>
               ) : (
                 channelsByCategory.map(([category, list]) => (
                   <div key={category}>
-                    <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+                    <p className="mb-1 px-2 text-[9px] font-bold uppercase tracking-widest text-ink-600">
                       {category}
                     </p>
 
@@ -324,21 +293,26 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                               type="button"
                               onClick={() => setActiveChannelId(channel.id)}
                               className={cn(
-                                'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition',
+                                'flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition',
                                 active
                                   ? 'bg-primary-500/15 text-primary-100'
-                                  : 'text-ink-300 hover:bg-white/[0.04] hover:text-ink-100',
+                                  : 'text-ink-400 hover:bg-white/[0.04] hover:text-ink-100',
                               )}
                             >
                               <Hash
-                                size={14}
-                                className={active ? 'text-primary-300' : 'text-ink-500'}
+                                size={13}
+                                className={cn(
+                                  'shrink-0',
+                                  active ? 'text-primary-300' : 'text-ink-600',
+                                )}
                               />
-                              <span className="truncate">{channel.name}</span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {channel.name}
+                              </span>
 
-                              {channel.is_restricted ? (
-                                <Lock size={11} className="ml-auto shrink-0 text-ink-500" />
-                              ) : null}
+                              {channel.is_restricted && (
+                                <Lock size={10} className="shrink-0 text-ink-600" />
+                              )}
                             </button>
                           </li>
                         );
@@ -350,39 +324,41 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
             </div>
           </aside>
 
-          {/* Channel main pane */}
-          {activeChannel ? (
-            <ChannelChat
-              channelId={activeChannel.id}
-              channelName={activeChannel.name}
-              channelTopic={activeChannel.topic}
-              members={members}
-            />
-          ) : (
-            <section className="panel flex min-h-[320px] flex-col items-center justify-center overflow-hidden px-6 py-12 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-800 ring-1 ring-white/[0.06]">
-                <Hash size={24} className="text-secondary-300" />
-              </div>
+          {/* CENTER: CHAT */}
+          <div className="min-h-0 min-w-0 overflow-hidden">
+            {activeChannel ? (
+              <ChannelChat
+                channelId={activeChannel.id}
+                channelName={activeChannel.name}
+                channelTopic={activeChannel.topic}
+                members={members}
+              />
+            ) : (
+              <section className="panel flex h-full min-h-[320px] flex-col items-center justify-center overflow-hidden px-6 text-center">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-800 ring-1 ring-white/[0.06]">
+                  <Hash size={24} className="text-secondary-300" />
+                </div>
 
-              <h3 className="text-base font-semibold text-ink-100">
-                No channel selected
-              </h3>
+                <h3 className="text-base font-semibold text-ink-100">
+                  No channel selected
+                </h3>
 
-              <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-400">
-                Pick a channel from the list, or create one if you are an administrator.
-              </p>
-            </section>
-          )}
+                <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-400">
+                  Pick a channel from the list, or create one if you are an administrator.
+                </p>
+              </section>
+            )}
+          </div>
 
-          {/* Members */}
+          {/* RIGHT: MEMBERS */}
           <aside className="panel flex min-h-0 flex-col overflow-hidden">
-            <div className="shrink-0 border-b border-white/[0.06] px-4 py-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">
-                Members · {members.length}
+            <div className="shrink-0 border-b border-white/[0.06] px-3 py-2.5">
+              <h2 className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
+                Members — {members.length}
               </h2>
             </div>
 
-            <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
+            <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
               {sortedMembers.map((member) => {
                 const label =
                   member.profile?.display_name ||
@@ -396,25 +372,25 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                 return (
                   <li
                     key={member.user_id}
-                    className="flex items-center gap-2.5 rounded-lg px-2 py-2"
+                    className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 transition hover:bg-white/[0.04]"
                   >
                     {member.profile?.avatar_url ? (
                       <img
                         src={member.profile.avatar_url}
                         alt=""
-                        className="h-8 w-8 rounded-full object-cover ring-1 ring-white/[0.08]"
+                        className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-white/[0.08]"
                       />
                     ) : (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500/20 text-xs font-semibold text-primary-200">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-500/20 text-[10px] font-semibold text-primary-200">
                         {label.slice(0, 1).toUpperCase()}
                       </div>
                     )}
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-ink-100">
+                      <p className="truncate text-[11px] font-semibold text-ink-100" title={label}>
                         {label}
                       </p>
-                      <p className="truncate text-[11px] text-ink-500">
+                      <p className="truncate text-[9px] text-ink-500" title={handle || roleLabel(member.role)}>
                         {roleLabel(member.role)}
                         {handle ? ` · ${handle}` : ''}
                       </p>
@@ -423,17 +399,17 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
                 );
               })}
 
-              {members.length === 0 ? (
-                <li className="px-2 py-6 text-center text-xs text-ink-500">
+              {members.length === 0 && (
+                <li className="px-2 py-6 text-center text-[11px] text-ink-500">
                   No members found.
                 </li>
-              ) : null}
+              )}
             </ul>
           </aside>
         </div>
       )}
 
-      {isAdminOrOwner ? (
+      {isAdminOrOwner && (
         <CreateChannelModal
           open={createOpen}
           busy={createBusy}
@@ -445,7 +421,7 @@ export function ServerDetail({ server, userId, onBack, onLeft }: ServerDetailPro
           }}
           onSubmit={handleCreateChannel}
         />
-      ) : null}
+      )}
     </div>
   );
 }
