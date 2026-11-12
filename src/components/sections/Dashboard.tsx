@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import {
   ArrowRight,
@@ -346,7 +345,7 @@ export function Dashboard({
             icon={MessageSquare}
             accent="from-secondary-500/15 to-secondary-600/[0.02]"
             iconColor="text-secondary-300"
-            onClick={() => onOpenConversation(conversation.id)}
+            onClick={() => onNavigate('messages')}
           />
 
           <MetricCard
@@ -356,7 +355,7 @@ export function Dashboard({
             icon={Users}
             accent="from-accent-500/15 to-accent-600/[0.02]"
             iconColor="text-accent-300"
-            onClick={() => onOpenConversation(conversation.id)}
+            onClick={() => onNavigate('explore')}
           />
 
           <MetricCard
@@ -366,7 +365,7 @@ export function Dashboard({
             icon={Bell}
             accent="from-primary-400/10 to-secondary-500/[0.04]"
             iconColor="text-primary-200"
-            onClick={() => onOpenConversation(conversation.id)}
+            onClick={() => onNavigate('explore')}
           />
         </div>
       </section>
@@ -493,7 +492,7 @@ export function Dashboard({
 
             <button
               type="button"
-              onClick={() => onOpenConversation(conversation.id)}
+              onClick={() => onNavigate('messages')}
               className="inline-flex items-center gap-1 text-xs font-semibold text-primary-300 transition hover:text-primary-200"
             >
               Inbox <ArrowRight size={14} />
@@ -557,7 +556,7 @@ export function Dashboard({
                 </p>
                 <button
                   type="button"
-                  onClick={() => onOpenConversation(conversation.id)}
+                  onClick={() => onNavigate('messages')}
                   className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-500/15 px-4 py-2 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/25"
                 >
                   <MessageSquare size={14} />
@@ -588,7 +587,7 @@ export function Dashboard({
 
           <button
             type="button"
-            onClick={() => onOpenConversation(conversation.id)}
+            onClick={() => onNavigate('explore')}
             className="inline-flex items-center gap-1 text-xs font-semibold text-primary-300 transition hover:text-primary-200"
           >
             Find people <ArrowRight size={14} />
@@ -648,7 +647,7 @@ export function Dashboard({
             </p>
             <button
               type="button"
-              onClick={() => onOpenConversation(conversation.id)}
+              onClick={() => onNavigate('explore')}
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-500/15 px-4 py-2 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/25"
             >
               <Users size={14} />
