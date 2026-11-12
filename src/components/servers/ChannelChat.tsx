@@ -134,9 +134,9 @@ export function ChannelChat({
         </p>
       ) : null}
 
-      <div className="flex-1 space-y-5 overflow-y-auto p-5">
+      <div className="flex-1 overflow-y-auto p-5">
         {messages.length >= 100 ? (
-          <div className="text-center">
+          <div className="mb-5 text-center">
             <button
               type="button"
               onClick={() => void handleLoadOlder()}
@@ -163,43 +163,80 @@ export function ChannelChat({
             <RefreshCw size={22} className="animate-spin text-primary-300" />
           </div>
         ) : (
-          messages.map((message) => {
-            const author = membersById.get(message.author_id);
-            const displayName =
-              author?.profile?.display_name ||
-              author?.profile?.username ||
-              'Unknown user';
+          <div>
+            {messages.map((message, index) => {
+              const author = membersById.get(message.author_id);
+              const displayName =
+                author?.profile?.display_name ||
+                author?.profile?.username ||
+                'Unknown user';
 
-            return (
-              <article key={message.id} className="flex gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-sm font-bold text-primary-200">
-                  {author?.profile?.avatar_url ? (
-                    <img
-                      src={author.profile.avatar_url}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    displayName.slice(0, 1).toUpperCase()
-                  )}
-                </div>
+              const date = new Date(message.created_at);
+              const previousMessage = messages[index - 1];
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-sm font-semibold text-ink-100">
-                      {message.author_id === userId ? 'You' : displayName}
-                    </span>
-                    <time className="text-[11px] text-ink-500">
-                      {new Date(message.created_at).toLocaleString()}
-                    </time>
+              const previousDate = previousMessage
+                ? new Date(previousMessage.created_at)
+                : null;
+
+              const timeDifference = previousDate
+                ? date.getTime() - previousDate.getTime()
+                : Infinity;
+
+              const isGrouped =
+                !!previousMessage &&
+                previousMessage.author_id === message.author_id &&
+                date.toDateString() === previousDate!.toDateString() &&
+                timeDifference >= 0 &&
+                timeDifference <= 15 * 60 * 1000;
+
+              return (
+                <article
+                  key={message.id}
+                  className={`flex gap-3 ${index === 0 ? 'mt-0' : isGrouped ? 'mt-1' : 'mt-4'}`}
+                >
+                  <div className="flex w-9 shrink-0 justify-center">
+                    {isGrouped ? (
+                      <span className="pt-1 text-[9px] text-transparent hover:text-ink-500">
+                        {date.toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-sm font-bold text-primary-200">
+                        {author?.profile?.avatar_url ? (
+                          <img
+                            src={author.profile.avatar_url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          displayName.slice(0, 1).toUpperCase()
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
-                    {message.body}
-                  </p>
-                </div>
-              </article>
-            );
-          })
+
+                  <div className="min-w-0 flex-1">
+                    {!isGrouped && (
+                      <div className="mb-1 flex flex-wrap items-baseline gap-2">
+                        <span className="text-sm font-semibold text-ink-100">
+                          {message.author_id === userId ? 'You' : displayName}
+                        </span>
+                        <time className="text-[11px] text-ink-500">
+                          {date.toLocaleString()}
+                        </time>
+                      </div>
+                    )}
+
+                    <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
+                      {message.body}
+                    </p>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
       </div>
 
