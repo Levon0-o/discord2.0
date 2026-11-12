@@ -595,7 +595,7 @@ const isGrouped =
   previousMessage.author_id === message.author_id &&
   date.toDateString() === previousDate!.toDateString() &&
   timeDifference >= 0 &&
-  timeDifference <= 5 * 60 * 1000;
+  timeDifference <= 15 * 60 * 1000;
 
                 return (
                   <div key={message.id}>
