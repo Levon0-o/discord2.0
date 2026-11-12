@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,10 +6,43 @@
 @layer base {
   html {
     color-scheme: dark;
+    min-height: 100%;
+    background: #07090e;
+    scrollbar-color: #30394a #07090e;
+    scrollbar-width: thin;
   }
 
   body {
-    @apply bg-ink-950 font-sans text-ink-100 antialiased;
+    @apply min-h-screen bg-ink-950 font-sans text-ink-100 antialiased;
+    margin: 0;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input,
+  textarea {
+    min-width: 0;
+  }
+
+  ::selection {
+    background: rgba(47, 124, 255, 0.35);
+    color: #ffffff;
   }
 
   :focus-visible {
@@ -18,14 +52,64 @@
 
 @layer components {
   .app-backdrop {
+    background-color: #07090e;
     background-image:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(47, 124, 255, 0.14), transparent 70%),
-      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(34, 211, 238, 0.06), transparent 70%);
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        rgba(47, 124, 255, 0.14),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 100% 100%,
+        rgba(34, 211, 238, 0.06),
+        transparent 70%
+      );
     background-attachment: fixed;
   }
 
   .panel {
     @apply rounded-2xl border border-white/[0.06] bg-ink-900/80 backdrop-blur-sm;
+    transition:
+      border-color 180ms ease,
+      background-color 180ms ease;
+  }
+
+  .panel:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #30394a transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #30394a;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #46536a;
+  }
+}
+
+@media (max-width: 767px) {
+  html,
+  body {
+    overscroll-behavior-x: none;
+  }
+
+  .app-backdrop {
+    background-attachment: scroll;
   }
 }
 
@@ -33,7 +117,9 @@
   *,
   *::before,
   *::after {
+    scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
