@@ -17,6 +17,8 @@ import {
   fetchDirectMessages,
   getOrCreateDirectConversation,
   sendDirectMessage,
+  markConversationAsRead,
+  fetchUnreadMessageCount,
 } from '@/lib/directMessagesApi';
 import type {
   DirectConversation,
@@ -93,6 +95,7 @@ export function DirectMessagesSection({
   const [lastMessages, setLastMessages] = useState<
     Record<string, Message | null>
   >({});
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [activeId, setActiveId] = useState('');
   const [messageText, setMessageText] = useState('');
   const [search, setSearch] = useState('');
@@ -171,6 +174,33 @@ export function DirectMessagesSection({
       );
 
       setLastMessages(Object.fromEntries(latestMessageResults));
+
+      const unreadResults = await Promise.all(
+        rows.map(async (conversation) => {
+          const ownMembership = allMembers.find(
+            (member) =>
+              member.conversation_id === conversation.id &&
+              member.user_id === userId
+          );
+
+          if (!ownMembership?.last_read_at) {
+            return [conversation.id, 0] as const;
+          }
+
+          try {
+            const count = await fetchUnreadMessageCount(
+              conversation.id,
+              ownMembership.last_read_at,
+              userId
+            );
+            return [conversation.id, count] as const;
+          } catch {
+            return [conversation.id, 0] as const;
+          }
+        })
+      );
+
+      setUnreadCounts(Object.fromEntries(unreadResults));
 
       setActiveId((current) =>
         current && rows.some((row) => row.id === current)
@@ -261,6 +291,24 @@ export function DirectMessagesSection({
     );
   }
 
+  const markActiveConversationRead = useCallback(async (conversationId: string) => {
+    if (!conversationId || !userId) return;
+
+    try {
+      const readAt = await markConversationAsRead(conversationId);
+      setMembers((current) =>
+        current.map((member) =>
+          member.conversation_id === conversationId && member.user_id === userId
+            ? { ...member, last_read_at: readAt }
+            : member
+        )
+      );
+      setUnreadCounts((current) => ({ ...current, [conversationId]: 0 }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update read status.');
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
@@ -279,6 +327,7 @@ export function DirectMessagesSection({
         if (!active) return;
 
         setMessages(messageRows);
+        await markActiveConversationRead(activeId);
       } catch (err) {
         if (active) {
           setError(
@@ -295,7 +344,7 @@ export function DirectMessagesSection({
     return () => {
       active = false;
     };
-  }, [activeId]);
+  }, [activeId, markActiveConversationRead]);
 
   useEffect(() => {
     if (!userId) return;
@@ -326,6 +375,14 @@ export function DirectMessagesSection({
                 ? current
                 : [...current, incoming]
             );
+            if (incoming.author_id !== userId) {
+              void markActiveConversationRead(conversationId);
+            }
+          } else if (incoming.author_id !== userId) {
+            setUnreadCounts((current) => ({
+              ...current,
+              [conversationId]: (current[conversationId] ?? 0) + 1,
+            }));
           }
 
           setLastMessages((current) => ({
@@ -357,7 +414,7 @@ export function DirectMessagesSection({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, markActiveConversationRead]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -489,6 +546,7 @@ export function DirectMessagesSection({
 
             const selected = activeId === conversation.id;
             const lastMessage = lastMessages[conversation.id];
+            const unreadCount = unreadCounts[conversation.id] ?? 0;
 
             const preview = lastMessage
               ? `${lastMessage.author_id === userId ? 'You: ' : ''}${lastMessage.body}`
@@ -537,6 +595,11 @@ export function DirectMessagesSection({
                       </span>
                     )}
 
+                    {unreadCount > 0 && !selected && (
+                      <span className="min-w-5 rounded-full bg-primary-500 px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-white">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                     {selected && (
                       <div className="h-2 w-2 rounded-full bg-primary-400" />
                     )}
