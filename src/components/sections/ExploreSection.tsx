@@ -644,7 +644,7 @@ export function ExploreSection() {
                       ['Instagram', profile.instagram_url],
                       ['Twitch', profile.twitch_url],
                       ['YouTube', profile.youtube_url],
-                    ] as const).filter((item): item is readonly [string, string] => Boolean(item[1])).map(([label, url]) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-primary-300 transition hover:bg-white/[0.07]">{label}<ExternalLink size={12} /></a>)}
+                    ] as const).flatMap(([label, url]) => url ? [{ label, url }] : []).map(({ label, url }) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-primary-300 transition hover:bg-white/[0.07]">{label}<ExternalLink size={12} /></a>)}
                   </div>}
                   <div className="mt-4 flex flex-wrap items-center gap-5 text-xs text-ink-400">
                     <span><strong className="text-ink-100">{profileStats.followers}</strong> followers</span>
