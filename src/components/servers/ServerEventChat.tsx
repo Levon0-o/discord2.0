@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { AlertTriangle, Bookmark, Check, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, Bookmark, Check, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -22,6 +22,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [savedOpen, setSavedOpen] = useState(false);
   const [reports, setReports] = useState<ServerEventChatReport[]>([]);
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [notificationPreference, setNotificationPreference] = useState<ServerEventChatNotificationPreference | null>(null);
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
+  const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
   const [reportingMessage, setReportingMessage] = useState<ServerEventChatMessage | null>(null);
   const [reportReason, setReportReason] = useState<ServerEventChatReportReason>('spam');
   const [reportDetails, setReportDetails] = useState('');
@@ -87,9 +90,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     let active = true;
     const load = async () => {
       try {
-        const [page, reactionRows, receiptRows, savedRows, pinRows, reportRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId), fetchServerEventChatReadReceipts(eventId), fetchServerEventChatSavedMessages(eventId), fetchServerEventChatPins(eventId), fetchServerEventChatReports(eventId)]);
+        const [page, reactionRows, receiptRows, savedRows, pinRows, reportRows, notificationRow] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId), fetchServerEventChatReadReceipts(eventId), fetchServerEventChatSavedMessages(eventId), fetchServerEventChatPins(eventId), fetchServerEventChatReports(eventId), fetchServerEventChatNotificationPreference(eventId)]);
         const ownReceipt = await markServerEventChatRead(eventId);
-        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); setPins(pinRows); setSavedMessages(savedRows); setReports(reportRows); setReadReceipts([...receiptRows.filter((row) => row.user_id !== userId), ownReceipt]); lastReadAtRef.current = ownReceipt.last_read_at; }
+        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); setPins(pinRows); setSavedMessages(savedRows); setReports(reportRows); setNotificationPreference(notificationRow); setReadReceipts([...receiptRows.filter((row) => row.user_id !== userId), ownReceipt]); lastReadAtRef.current = ownReceipt.last_read_at; }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Could not load event chat.');
       } finally {
@@ -444,6 +447,30 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     }
   }
 
+  async function handleNotificationMute(duration: '1h' | '8h' | '24h' | 'forever' | 'off') {
+    if (savingNotificationPreference) return;
+    setSavingNotificationPreference(true);
+    setError('');
+    try {
+      await setServerEventChatNotificationsMuted(eventId, duration);
+      setNotificationPreference(duration === 'off' ? null : {
+        event_id: eventId,
+        user_id: userId,
+        muted_until: duration === 'forever' ? null : new Date(Date.now() + ({ '1h': 60, '8h': 480, '24h': 1440 }[duration] * 60_000)).toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      setNotificationMenuOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update notification settings.');
+    } finally {
+      setSavingNotificationPreference(false);
+    }
+  }
+
+  const notificationsMuted = Boolean(notificationPreference && (
+    notificationPreference.muted_until === null || new Date(notificationPreference.muted_until).getTime() > Date.now()
+  ));
+
   async function handleSubmitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!reportingMessage || reportSubmitting) return;
@@ -556,6 +583,13 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={exportLoadedMessages} disabled={messages.length === 0} className="rounded-md p-1.5 text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Export loaded messages" title="Export loaded messages"><Download size={13} /></button>
+          <div className="relative">
+            <button type="button" onClick={() => setNotificationMenuOpen((value) => !value)} className={'rounded-md p-1.5 transition ' + (notificationsMuted ? 'bg-amber-500/15 text-amber-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-label="Event chat notification settings" aria-expanded={notificationMenuOpen} title={notificationsMuted ? 'Notifications muted' : 'Notification settings'}>{notificationsMuted ? <BellOff size={13} /> : <Bell size={13} />}</button>
+            {notificationMenuOpen ? <div className="absolute right-0 top-full z-30 mt-2 w-44 rounded-lg border border-white/10 bg-ink-950 p-2 shadow-xl">
+              <p className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-ink-500">Mute event notifications</p>
+              {([['1h', 'For 1 hour'], ['8h', 'For 8 hours'], ['24h', 'For 24 hours'], ['forever', 'Until I unmute'], ['off', 'Turn notifications on']] as const).map(([duration, label]) => <button key={duration} type="button" disabled={savingNotificationPreference} onClick={() => void handleNotificationMute(duration)} className="block w-full rounded-md px-2 py-1.5 text-left text-[10px] text-ink-200 transition hover:bg-white/[0.07] disabled:opacity-40">{label}</button>)}
+            </div> : null}
+          </div>
           <button type="button" onClick={() => { setSearchOpen((value) => !value); setPinnedOpen(false); }} className={'rounded-md p-1.5 transition ' + (searchOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-label="Search event chat" aria-expanded={searchOpen}><Search size={13} /></button>
           <button type="button" onClick={() => { setSavedOpen((value) => !value); setPinnedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (savedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={savedOpen}><Bookmark size={12} /> Saved {savedMessages.length}</button>
           <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
