@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { Bookmark, Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Bookmark, Check, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -20,6 +20,12 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [pins, setPins] = useState<ServerEventChatPin[]>([]);
   const [savedMessages, setSavedMessages] = useState<ServerEventChatSavedMessage[]>([]);
   const [savedOpen, setSavedOpen] = useState(false);
+  const [reports, setReports] = useState<ServerEventChatReport[]>([]);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [reportingMessage, setReportingMessage] = useState<ServerEventChatMessage | null>(null);
+  const [reportReason, setReportReason] = useState<ServerEventChatReportReason>('spam');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,9 +87,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     let active = true;
     const load = async () => {
       try {
-        const [page, reactionRows, receiptRows, savedRows, pinRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId), fetchServerEventChatReadReceipts(eventId), fetchServerEventChatSavedMessages(eventId), fetchServerEventChatPins(eventId)]);
+        const [page, reactionRows, receiptRows, savedRows, pinRows, reportRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId), fetchServerEventChatReadReceipts(eventId), fetchServerEventChatSavedMessages(eventId), fetchServerEventChatPins(eventId), fetchServerEventChatReports(eventId)]);
         const ownReceipt = await markServerEventChatRead(eventId);
-        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); setPins(pinRows); setSavedMessages(savedRows); setReadReceipts([...receiptRows.filter((row) => row.user_id !== userId), ownReceipt]); lastReadAtRef.current = ownReceipt.last_read_at; }
+        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); setPins(pinRows); setSavedMessages(savedRows); setReports(reportRows); setReadReceipts([...receiptRows.filter((row) => row.user_id !== userId), ownReceipt]); lastReadAtRef.current = ownReceipt.last_read_at; }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Could not load event chat.');
       } finally {
@@ -435,6 +441,34 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       setSavedMessages(rows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update saved messages.');
+    }
+  }
+
+  async function handleSubmitReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reportingMessage || reportSubmitting) return;
+    setReportSubmitting(true);
+    setError('');
+    try {
+      await submitServerEventChatReport(reportingMessage, reportReason, reportDetails);
+      setReports(await fetchServerEventChatReports(eventId));
+      setReportingMessage(null);
+      setReportDetails('');
+      setReportReason('spam');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not submit report.');
+    } finally {
+      setReportSubmitting(false);
+    }
+  }
+
+  async function handleReviewReport(reportId: string, status: 'resolved' | 'dismissed') {
+    setError('');
+    try {
+      await reviewServerEventChatReport(reportId, status);
+      setReports(await fetchServerEventChatReports(eventId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update report.');
     }
   }
 
