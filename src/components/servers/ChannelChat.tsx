@@ -454,7 +454,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
           <Hash size={18} className="text-ink-400" />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-ink-100">{channelName}</h2>
-            {channelTopic ? <p className="truncate text-xs text-ink-500">{channelTopic}</p> : null}
+            {(channelTopic || slowmodeSeconds > 0) ? <p className="truncate text-xs text-ink-500">{[channelTopic, slowmodeSeconds > 0 ? `Slowmode: ${slowmodeSeconds >= 60 ? `${slowmodeSeconds / 60} min` : `${slowmodeSeconds}s`} between messages` : ''].filter(Boolean).join(' · ')}</p> : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
