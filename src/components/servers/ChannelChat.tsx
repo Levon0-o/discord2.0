@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
-  fetchChannelMessages, fetchChannelThreadMessages, sendChannelMessage, editMessage, deleteMessage,
+  fetchChannelMessages, fetchChannelThreadMessages, fetchChannelThreadCounts, sendChannelMessage, editMessage, deleteMessage,
   fetchChannelReactions, toggleChannelReaction, fetchPinnedChannelMessages,
   toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
   fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
@@ -59,6 +59,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [activeThreadRoot, setActiveThreadRoot] = useState<Message | null>(null);
   const [threadMessages, setThreadMessages] = useState<Message[]>([]);
+  const [threadCounts, setThreadCounts] = useState<Record<string, number>>({});
   const [threadDraft, setThreadDraft] = useState('');
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadSending, setThreadSending] = useState(false);
@@ -85,6 +86,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       const result = await fetchChannelMessages(channelId);
       setMessages(result);
       setHasMore(result.length === 100);
+      setThreadCounts(await fetchChannelThreadCounts(result.map((message) => message.id)));
       const [reactionRows, pinRows, savedRows] = await Promise.all([
         fetchChannelReactions(result.map((message) => message.id)),
         fetchPinnedChannelMessages(channelId),
@@ -244,6 +246,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         if (payload.eventType === 'INSERT' && next?.id) {
           if (next.thread_id) {
             if (next.thread_id === activeThreadRoot?.id) setThreadMessages((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
+            setThreadCounts((current) => ({ ...current, [next.thread_id]: (current[next.thread_id] ?? 0) + 1 }));
           } else {
             setMessages((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
             if (next.author_id !== userId) shouldScrollToBottomRef.current = true;
@@ -253,6 +256,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
           else setMessages((current) => current.map((item) => item.id === next.id ? next : item));
         } else if (payload.eventType === 'DELETE' && old?.id) {
           setThreadMessages((current) => current.filter((item) => item.id !== old.id));
+          if (old.thread_id) setThreadCounts((current) => ({ ...current, [old.thread_id as string]: Math.max(0, (current[old.thread_id as string] ?? 1) - 1) }));
           setMessages((current) => current.filter((item) => item.id !== old.id));
           setReactions((current) => current.filter((item) => item.message_id !== old.id));
           setPinned((current) => current.filter((item) => item.message_id !== old.id));
@@ -685,6 +689,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                       {groupedReactions.length ? <div className="mt-1.5 flex flex-wrap gap-1">{groupedReactions.map(({ emoji, users }) => <button key={emoji} type="button" onClick={() => void handleReaction(message.id, emoji)} className={`rounded-full border px-2 py-0.5 text-xs transition ${users.some((item) => item.user_id === userId) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-300 hover:border-white/20'}`}>{emoji} {users.length}</button>)}</div> : null}
                       <div className="mt-1.5 flex flex-wrap items-center gap-1 opacity-100 transition-opacity sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <button type="button" title="Open thread" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><MessageSquare size={13} /></button>
+                        <button type="button" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md px-1.5 py-1 text-[10px] text-ink-500 hover:text-primary-200">{threadCounts[message.id] ?? 0} replies</button>
                         <button type="button" title="Reply" onClick={() => setReplyingTo(message)} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Reply size={13} /></button>
                         <button type="button" title={isSaved ? "Remove saved message" : "Save message"} onClick={() => void handleSaveMessage(message.id)} className={`rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 ${isSaved ? "text-primary-200" : "text-ink-400 hover:text-primary-200"}`}><Bookmark size={13} /></button>
                         <button type="button" title="Pin / unpin" disabled={busyMessageId === message.id} onClick={() => void handlePin(message.id)} className={`rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 ${isPinned ? 'text-primary-200' : 'text-ink-400 hover:text-primary-200'}`}><Pin size={13} /></button>
@@ -724,7 +729,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
               return <article key={item.id} className="rounded-lg bg-white/[0.035] px-3 py-2"><div className="mb-1 flex items-center justify-between gap-2"><span className="truncate text-xs font-semibold text-ink-200">{item.author_id === userId ? 'You' : name}</span><time className="shrink-0 text-[10px] text-ink-500">{formatTime(item.created_at)}</time></div><p className="whitespace-pre-wrap break-words text-sm text-ink-300">{item.body}</p></article>;
             })}
           </div>
-          <form onSubmit={async (event) => { event.preventDefault(); if (!threadDraft.trim() || threadSending || !activeThreadRoot) return; setThreadSending(true); try { const sent = await sendChannelMessage(channelId, threadDraft, undefined, undefined, activeThreadRoot.id); setThreadMessages((current) => current.some((item) => item.id === sent.id) ? current : [...current, sent]); setThreadDraft(''); } catch (err) { setError(err instanceof Error ? err.message : 'Could not send thread reply.'); } finally { setThreadSending(false); } }} className="border-t border-white/[0.07] p-3">
+          <form onSubmit={async (event) => { event.preventDefault(); if (!threadDraft.trim() || threadSending || !activeThreadRoot) return; setThreadSending(true); try { const sent = await sendChannelMessage(channelId, threadDraft, undefined, undefined, activeThreadRoot.id); setThreadMessages((current) => current.some((item) => item.id === sent.id) ? current : [...current, sent]); setThreadCounts((current) => ({ ...current, [activeThreadRoot.id]: (current[activeThreadRoot.id] ?? 0) + 1 })); setThreadDraft(''); } catch (err) { setError(err instanceof Error ? err.message : 'Could not send thread reply.'); } finally { setThreadSending(false); } }} className="border-t border-white/[0.07] p-3">
             <textarea value={threadDraft} onChange={(event) => setThreadDraft(event.target.value)} maxLength={4000} rows={2} placeholder="Reply in thread…" className="w-full resize-none rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/50" />
             <div className="mt-2 flex justify-end"><button type="submit" disabled={!threadDraft.trim() || threadSending} className="inline-flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Send size={13} /> Send reply</button></div>
           </form>
