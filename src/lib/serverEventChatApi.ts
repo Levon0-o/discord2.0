@@ -473,3 +473,12 @@ export async function deleteServerEventChatPoll(pollId: string): Promise<void> {
   const { error } = await supabase.rpc('delete_server_event_chat_poll', { p_poll_id: pollId });
   if (error) throw error;
 }
+
+
+export async function updateServerEventChatPoll(pollId: string, question: string, options: string[], allowMultiple: boolean): Promise<ServerEventChatPoll> {
+  const { error } = await supabase.rpc('update_server_event_chat_poll', { p_poll_id: pollId, p_question: question, p_options: options, p_allow_multiple: allowMultiple });
+  if (error) throw error;
+  const { data, error: fetchError } = await supabase.from('server_event_chat_polls').select('id, event_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at').eq('id', pollId).single();
+  if (fetchError) throw fetchError;
+  return data as ServerEventChatPoll;
+}
