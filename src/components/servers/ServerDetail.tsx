@@ -12,6 +12,7 @@ import {
   Shield,
   Pencil,
   Trash2,
+  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 
@@ -20,6 +21,7 @@ import { ChannelChat } from '@/components/servers/ChannelChat';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { RoleManager } from '@/components/servers/RoleManager';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
+import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 
 import { cn } from '@/lib/cn';
 
@@ -90,6 +92,7 @@ export function ServerDetail({
   const [editRestricted, setEditRestricted] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
+  const [permissionsChannel, setPermissionsChannel] = useState<Channel | null>(null);
   const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -537,6 +540,14 @@ export function ServerDetail({
                                 </button>
                                 <button
                                   type="button"
+                                  title={`Permissions for #${channel.name}`}
+                                  onClick={() => setPermissionsChannel(channel)}
+                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300"
+                                >
+                                  <SlidersHorizontal size={11} />
+                                </button>
+                                <button
+                                  type="button"
                                   title={`Delete #${channel.name}`}
                                   onClick={() => {
                                     setDeleteError('');
@@ -698,6 +709,15 @@ export function ServerDetail({
       )}
 
 
+
+      {permissionsChannel && (
+        <ChannelPermissionsModal
+          channelId={permissionsChannel.id}
+          channelName={permissionsChannel.name}
+          members={members}
+          onClose={() => setPermissionsChannel(null)}
+        />
+      )}
 
       {deletingChannel && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
