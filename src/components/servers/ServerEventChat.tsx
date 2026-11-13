@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Check, MessageCircle, Pencil, Pin, Reply, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
@@ -23,16 +23,20 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollHeightRef = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const [rows, reactionRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId)]);
-        if (active) { setMessages(rows); setReactions(reactionRows); }
+        const [page, reactionRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId)]);
+        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Could not load event chat.');
       } finally {
@@ -82,9 +86,39 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     };
   }, [eventId]);
 
+  useLayoutEffect(() => {
+    const list = messageListRef.current;
+    if (list && pendingScrollHeightRef.current !== null) {
+      list.scrollTop += list.scrollHeight - pendingScrollHeightRef.current;
+      pendingScrollHeightRef.current = null;
+    }
+  }, [messages]);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length]);
+    if (!loadingOlder) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length, loadingOlder]);
+
+  async function handleLoadOlder() {
+    const oldest = messages[0];
+    const list = messageListRef.current;
+    if (!oldest || !list || loadingOlder || !hasMore) return;
+    setLoadingOlder(true);
+    setError('');
+    pendingScrollHeightRef.current = list.scrollHeight;
+    try {
+      const page = await fetchServerEventChatMessages(eventId, oldest.created_at);
+      setMessages((current) => {
+        const known = new Set(current.map((message) => message.id));
+        return [...page.messages.filter((message) => !known.has(message.id)), ...current];
+      });
+      setHasMore(page.hasMore);
+    } catch (err) {
+      pendingScrollHeightRef.current = null;
+      setError(err instanceof Error ? err.message : 'Could not load older messages.');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -186,7 +220,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           </div>}
         </div>
       ) : null}
-      <div className="max-h-64 min-h-32 space-y-3 overflow-y-auto p-3">
+      <div ref={messageListRef} className="max-h-64 min-h-32 space-y-3 overflow-y-auto p-3">
+        {hasMore ? <div className="pb-1 text-center"><button type="button" onClick={() => void handleLoadOlder()} disabled={loadingOlder} className="rounded-md border border-white/[0.08] px-3 py-1.5 text-[10px] text-ink-400 transition hover:border-primary-400/30 hover:text-primary-200 disabled:opacity-50">{loadingOlder ? 'Loading…' : 'Load older messages'}</button></div> : null}
         {loading ? <p className="py-8 text-center text-xs text-ink-500">Loading chat…</p> : messages.length === 0 ? <div className="py-8 text-center"><MessageCircle size={20} className="mx-auto mb-2 text-ink-600" /><p className="text-xs text-ink-400">No messages yet</p><p className="mt-1 text-[10px] text-ink-600">Start coordinating with event attendees.</p></div> : messages.map((message) => {
           const member = members.find((entry) => entry.user_id === message.author_id);
           const label = member?.profile?.display_name || member?.profile?.username || 'Server member';
