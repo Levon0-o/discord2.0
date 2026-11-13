@@ -20,6 +20,8 @@ interface ProfileData {
   featured_post_id: string | null;
   profile_layout: 'standard' | 'creator' | 'minimal';
   profile_sections: { about: boolean; featured: boolean; links: boolean; stats: boolean; posts: boolean };
+  profile_accent_color: string;
+  profile_card_style: 'glass' | 'solid' | 'gradient';
   created_at: string;
 }
 
@@ -47,6 +49,8 @@ interface ProfileDraft {
   featured_post_id: string;
   profile_layout: 'standard' | 'creator' | 'minimal';
   profile_sections: { about: boolean; featured: boolean; links: boolean; stats: boolean; posts: boolean };
+  profile_accent_color: string;
+  profile_card_style: 'glass' | 'solid' | 'gradient';
 }
 
 const emptyProfile: ProfileDraft = {
@@ -62,6 +66,8 @@ const emptyProfile: ProfileDraft = {
   featured_post_id: '',
   profile_layout: 'standard',
   profile_sections: { about: true, featured: true, links: true, stats: true, posts: true },
+  profile_accent_color: '#38bdf8',
+  profile_card_style: 'glass',
 };
 
 const badgeLabels: Record<string, { label: string; description: string }> = {
@@ -125,7 +131,7 @@ export function ProfileSection() {
     setError('');
     const [profileResult, postsResult, postCountResult, followersResult, followingResult, badgesResult] = await Promise.all([
       supabase.from('profiles')
-        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, created_at')
+        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, profile_accent_color, profile_card_style, created_at')
         .eq('id', userId)
         .maybeSingle(),
       supabase.from('posts')
@@ -151,6 +157,8 @@ export function ProfileSection() {
         featured_post_id: data.featured_post_id ?? '',
         profile_layout: data.profile_layout ?? 'standard',
         profile_sections: data.profile_sections ?? emptyProfile.profile_sections,
+        profile_accent_color: data.profile_accent_color ?? '#38bdf8',
+        profile_card_style: data.profile_card_style ?? 'glass',
         bio: data.bio ?? '',
         website_url: data.website_url ?? '',
         instagram_url: data.instagram_url ?? '',
@@ -237,9 +245,11 @@ export function ProfileSection() {
       featured_post_id: draft.featured_post_id || null,
       profile_layout: draft.profile_layout,
       profile_sections: draft.profile_sections,
+      profile_accent_color: draft.profile_accent_color,
+      profile_card_style: draft.profile_card_style,
       ...links,
     }).eq('id', userId)
-      .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, created_at')
+      .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, profile_accent_color, profile_card_style, created_at')
       .single();
     if (updateError) setError(updateError.message);
     else {
@@ -275,15 +285,15 @@ export function ProfileSection() {
       ) : profile ? (
         <>
           <section className="overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60">
-            <div className={`relative h-36 bg-gradient-to-br ${selectedTheme.panel} sm:h-48`}>
+            <div className={`relative z-0 h-36 bg-gradient-to-br ${selectedTheme.panel} sm:h-48`}>
               {profile.banner_url && <img src={profile.banner_url} alt="Profile banner" className="h-full w-full object-cover" />}
               <label className="absolute bottom-3 right-3 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-black/65 px-3 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/80">
                 {uploading === 'banner_url' ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />} Change banner
                 <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" disabled={Boolean(uploading)} onChange={(event) => void uploadImage(event, 'banner_url')} />
               </label>
             </div>
-            <div className="flex flex-wrap items-end gap-4 px-5 pb-5">
-              <div className="-mt-12 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border-4 border-ink-900 bg-ink-800 text-2xl font-bold text-ink-200">
+            <div className="relative z-10 flex flex-wrap items-end gap-4 px-5 pb-5">
+              <div className="relative z-20 -mt-12 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border-4 border-ink-900 bg-ink-800 text-2xl font-bold text-ink-200 shadow-xl">
                 {profile.avatar_url ? <img src={profile.avatar_url} alt="Profile avatar" className="h-full w-full object-cover" /> : initials(profile.display_name || profile.username)}
               </div>
               <div className="min-w-0 flex-1 pb-1">
@@ -327,6 +337,14 @@ export function ProfileSection() {
               <div className="mt-3 flex flex-wrap gap-2">{themeOptions.map((theme) => <button key={theme.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_theme: theme.value }))} aria-pressed={draft.profile_theme === theme.value} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${draft.profile_theme === theme.value ? 'border-white/30 bg-white/[0.09] text-white' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.04]'}`}><span className="h-3 w-3 rounded-full" style={{ backgroundColor: theme.swatch }} />{theme.label}</button>)}</div>
             </div>
             <div className="border-t border-white/[0.06] pt-5">
+              <h3 className="text-sm font-semibold text-white">Custom accent</h3>
+              <p className="mt-1 text-xs text-ink-500">Choose the highlight color used across your profile.</p>
+              <div className="mt-3 flex flex-wrap gap-2">{([{ value: '#38bdf8', label: 'Ice' }, { value: '#a78bfa', label: 'Violet' }, { value: '#fb7185', label: 'Rose' }, { value: '#34d399', label: 'Mint' }, { value: '#fbbf24', label: 'Amber' }, { value: '#f8fafc', label: 'White' }] as const).map((accent) => <button key={accent.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_accent_color: accent.value }))} aria-pressed={draft.profile_accent_color === accent.value} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${draft.profile_accent_color === accent.value ? 'border-white/40 bg-white/[0.09] text-white' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.04]'}`}><span className="h-3 w-3 rounded-full" style={{ backgroundColor: accent.value }} />{accent.label}</button>)}</div>
+              <h3 className="mt-5 text-sm font-semibold text-white">Card finish</h3>
+              <p className="mt-1 text-xs text-ink-500">Set the surface treatment for your profile cards.</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">{([{ value: 'glass', label: 'Glass', detail: 'Translucent surfaces' }, { value: 'solid', label: 'Solid', detail: 'Clean opaque panels' }, { value: 'gradient', label: 'Gradient', detail: 'Soft color wash' }] as const).map((style) => <button key={style.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_card_style: style.value }))} aria-pressed={draft.profile_card_style === style.value} className={`rounded-xl border p-3 text-left transition ${draft.profile_card_style === style.value ? 'border-primary-400/50 bg-primary-400/10' : 'border-white/[0.08] bg-ink-950/50 hover:bg-white/[0.04]'}`}><span className="block text-sm font-semibold text-white">{style.label}</span><span className="mt-1 block text-[11px] text-ink-500">{style.detail}</span></button>)}</div>
+            </div>
+            <div className="border-t border-white/[0.06] pt-5">
               <h3 className="text-sm font-semibold text-white">Profile layout</h3>
               <p className="mt-1 text-xs text-ink-500">Choose the structure of your public profile.</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-3">{([{ value: 'standard', label: 'Standard', detail: 'Balanced profile' }, { value: 'creator', label: 'Creator', detail: 'Wide featured content' }, { value: 'minimal', label: 'Minimal', detail: 'Compact and clean' }] as const).map((layout) => <button key={layout.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_layout: layout.value }))} aria-pressed={draft.profile_layout === layout.value} className={`rounded-xl border p-3 text-left transition ${draft.profile_layout === layout.value ? 'border-primary-400/50 bg-primary-400/10' : 'border-white/[0.08] bg-ink-950/50 hover:bg-white/[0.04]'}`}><span className="block text-sm font-semibold text-white">{layout.label}</span><span className="mt-1 block text-[11px] text-ink-500">{layout.detail}</span></button>)}</div>
@@ -368,7 +386,7 @@ export function ProfileSection() {
               <div><h2 className="text-base font-semibold text-white">Public profile preview</h2><p className="mt-1 text-xs text-ink-500">This is what other AFTERDARK users can see.</p></div>
               <span className="text-xs text-ink-500">Joined {new Date(profile.created_at).toLocaleDateString()}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-ink-950/70 px-3 py-1.5 text-xs text-ink-200"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusOptions.find((item) => item.value === draft.user_status)?.color }} />{statusOptions.find((item) => item.value === draft.user_status)?.label}</span>{draft.status_message && <span className="text-xs text-ink-400">{draft.status_message}</span>}</div>
+            <div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs text-ink-200" style={{ borderColor: draft.profile_accent_color + '55', color: draft.profile_accent_color }}><span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusOptions.find((item) => item.value === draft.user_status)?.color }} />{statusOptions.find((item) => item.value === draft.user_status)?.label}</span>{draft.status_message && <span className="text-xs text-ink-400">{draft.status_message}</span>}</div>
             {badges.length > 0 && <div className="flex flex-wrap gap-2">{badges.map((key) => <span key={key} title={badgeLabels[key]?.description} className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-semibold text-amber-200">{badgeLabels[key]?.label ?? key}</span>)}</div>}
             {draft.featured_post_id && posts.find((post) => post.id === draft.featured_post_id) && <article className="overflow-hidden rounded-2xl border border-primary-400/20 bg-primary-400/[0.04]"><div className="border-b border-primary-400/10 px-3 py-2 text-xs font-semibold text-primary-200">Featured post preview</div>{posts.find((post) => post.id === draft.featured_post_id)?.media_type === 'video' && posts.find((post) => post.id === draft.featured_post_id)?.image_url && <video src={posts.find((post) => post.id === draft.featured_post_id)?.image_url ?? undefined} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{posts.find((post) => post.id === draft.featured_post_id)?.media_type === 'image' && posts.find((post) => post.id === draft.featured_post_id)?.image_url && <img src={posts.find((post) => post.id === draft.featured_post_id)?.image_url ?? undefined} alt="Featured post" className="max-h-64 w-full object-cover" />}{posts.find((post) => post.id === draft.featured_post_id)?.body && <p className="whitespace-pre-wrap break-words p-3 text-sm text-ink-200">{posts.find((post) => post.id === draft.featured_post_id)?.body}</p>}</article>}
             {draft.bio && <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">{draft.bio}</p>}
