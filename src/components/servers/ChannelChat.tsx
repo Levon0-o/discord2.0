@@ -18,6 +18,7 @@ interface ChannelChatProps {
   channelId: string;
   channelName: string;
   channelTopic?: string;
+  slowmodeSeconds?: number;
   members: MemberWithProfile[];
 }
 
@@ -27,7 +28,7 @@ function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function ChannelChat({ channelId, channelName, channelTopic, members }: ChannelChatProps) {
+export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeconds = 0, members }: ChannelChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [draftRestored, setDraftRestored] = useState(false);
