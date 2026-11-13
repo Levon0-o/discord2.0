@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark,
+  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark, BarChart3,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -10,7 +10,8 @@ import {
   toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
   fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
   fetchSavedChannelMessages, toggleSavedChannelMessage,
-  type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage,
+  fetchChannelPolls, createChannelPoll, castChannelPollVote, closeChannelPoll,
+  type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage, type ChannelPoll,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
 import type { MemberWithProfile } from '@/types/servers';
@@ -44,6 +45,13 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [reactions, setReactions] = useState<ChannelMessageReaction[]>([]);
   const [pinned, setPinned] = useState<PinnedChannelMessage[]>([]);
   const [savedMessages, setSavedMessages] = useState<SavedChannelMessage[]>([]);
+  const [polls, setPolls] = useState<ChannelPoll[]>([]);
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
+  const [pollExpiresIn, setPollExpiresIn] = useState('never');
+  const [pollBusy, setPollBusy] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [showPins, setShowPins] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -87,19 +95,25 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       setMessages(result);
       setHasMore(result.length === 100);
       setThreadCounts(await fetchChannelThreadCounts(result.map((message) => message.id)));
-      const [reactionRows, pinRows, savedRows] = await Promise.all([
+      const [reactionRows, pinRows, savedRows, pollRows] = await Promise.all([
         fetchChannelReactions(result.map((message) => message.id)),
         fetchPinnedChannelMessages(channelId),
         fetchSavedChannelMessages(channelId),
+        fetchChannelPolls(channelId),
       ]);
       setReactions(reactionRows);
       setPinned(pinRows);
       setSavedMessages(savedRows);
+      setPolls(pollRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load channel messages.');
     } finally {
       setLoading(false);
     }
+  }, [channelId]);
+
+  const refreshPolls = useCallback(async () => {
+    setPolls(await fetchChannelPolls(channelId));
   }, [channelId]);
 
   useEffect(() => {
@@ -246,7 +260,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         if (payload.eventType === 'INSERT' && next?.id) {
           if (next.thread_id) {
             if (next.thread_id === activeThreadRoot?.id) setThreadMessages((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
-            setThreadCounts((current) => ({ ...current, [next.thread_id]: (current[next.thread_id] ?? 0) + 1 }));
+            { const parentThreadId = next.thread_id; setThreadCounts((current) => ({ ...current, [parentThreadId]: (current[parentThreadId] ?? 0) + 1 })); }
           } else {
             setMessages((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
             if (next.author_id !== userId) shouldScrollToBottomRef.current = true;
@@ -271,6 +285,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
           setReactions((current) => current.filter((item) => !(item.message_id === old.message_id && item.user_id === old.user_id && item.emoji === old.emoji)));
         }
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_polls', filter: `channel_id=eq.${channelId}` }, () => { void refreshPolls(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_poll_votes' }, () => { void refreshPolls(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_pinned_messages', filter: `channel_id=eq.${channelId}` }, (payload) => {
         const next = payload.new as PinnedChannelMessage;
         const old = payload.old as Partial<PinnedChannelMessage>;
@@ -282,7 +298,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [channelId, userId, activeThreadRoot?.id]);
+  }, [channelId, userId, activeThreadRoot?.id, refreshPolls]);
 
   useEffect(() => {
     let active = true;
@@ -323,6 +339,54 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       setError(err instanceof Error ? err.message : 'Could not send message.');
     } finally {
       setSending(false);
+    }
+  }
+
+
+  async function handleCreatePoll(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const options = pollOptions.map((option) => option.trim()).filter(Boolean);
+    if (!pollQuestion.trim() || options.length < 2 || pollBusy) return;
+    setPollBusy(true);
+    setError('');
+    try {
+      const durations: Record<string, number> = {
+        '1h': 3600000,
+        '24h': 86400000,
+        '7d': 604800000,
+      };
+      const expiresAt = pollExpiresIn === 'never' ? null : new Date(Date.now() + durations[pollExpiresIn]).toISOString();
+      await createChannelPoll({ channelId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt });
+      setPollQuestion('');
+      setPollOptions(['', '']);
+      setPollAllowMultiple(false);
+      setPollExpiresIn('never');
+      setShowPollCreator(false);
+      await loadMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create poll.');
+    } finally {
+      setPollBusy(false);
+    }
+  }
+
+  async function handlePollVote(poll: ChannelPoll, optionId: string) {
+    const selected = poll.votes.some((vote) => vote.user_id === userId && vote.option_id === optionId);
+    if (selected && !poll.allow_multiple) return;
+    try {
+      await castChannelPollVote(poll.id, optionId, poll.allow_multiple ? !selected : true);
+      await refreshPolls();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not submit your vote.');
+    }
+  }
+
+  async function handleClosePoll(pollId: string) {
+    try {
+      await closeChannelPoll(pollId);
+      await refreshPolls();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not close this poll.');
     }
   }
 
@@ -670,6 +734,44 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                           )}
                         </p>
                       ) : null}
+
+                      {polls.filter((poll) => poll.message_id === message.id).map((poll) => {
+                        const totalVotes = poll.votes.length;
+                        const isExpired = Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
+                        const isClosed = Boolean(poll.closed_at || isExpired);
+                        const canClose = poll.created_by === userId || ['owner', 'admin', 'moderator'].includes(membersById.get(userId)?.role ?? '');
+                        return (
+                          <div key={poll.id} className="mt-3 max-w-xl rounded-xl border border-white/10 bg-ink-900/80 p-4">
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-primary-300"><BarChart3 size={13} /> Poll</div>
+                                <h4 className="break-words text-sm font-semibold text-ink-100">{poll.question}</h4>
+                              </div>
+                              <span className={'shrink-0 rounded-full px-2 py-1 text-[10px] ' + (isClosed ? 'bg-white/[0.06] text-ink-500' : 'bg-emerald-400/10 text-emerald-300')}>{isClosed ? 'Closed' : 'Open'}</span>
+                            </div>
+                            <div className="space-y-2">
+                              {poll.options.map((option) => {
+                                const count = poll.votes.filter((vote) => vote.option_id === option.id).length;
+                                const percent = totalVotes ? Math.round((count / totalVotes) * 100) : 0;
+                                const selected = poll.votes.some((vote) => vote.user_id === userId && vote.option_id === option.id);
+                                return (
+                                  <button key={option.id} type="button" disabled={isClosed} onClick={() => void handlePollVote(poll, option.id)} className={'relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition ' + (selected ? 'border-primary-400/50 bg-primary-500/10' : 'border-white/[0.08] bg-ink-950/70 hover:border-white/20') + ' disabled:cursor-default'}>
+                                    <span className="absolute inset-y-0 left-0 bg-primary-500/10 transition-all" style={{ width: percent + '%' }} />
+                                    <span className="relative flex items-center justify-between gap-3 text-xs">
+                                      <span className={selected ? 'font-semibold text-primary-200' : 'text-ink-200'}>{option.label}</span>
+                                      <span className="shrink-0 tabular-nums text-ink-500">{count} · {percent}%</span>
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-[10px] text-ink-500">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} · {poll.allow_multiple ? 'Multiple choices' : 'One choice'}{poll.expires_at && !isExpired ? ' · Ends ' + new Date(poll.expires_at).toLocaleString() : ''}</span>
+                              {canClose && !isClosed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded-md px-2 py-1 text-[10px] font-medium text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100">Close poll</button> : null}
+                            </div>
+                          </div>
+                        );
+                      })}
                       {message.image_url ? (
                         <div className="mt-2">
                           {attachmentUrls[message.id] ? (
@@ -778,6 +880,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 focus-within:border-primary-400/50">
           <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || loading} title="Attach a file (15 MB max)" aria-label="Attach a file" className="shrink-0 text-ink-400 transition hover:text-primary-200 disabled:opacity-40"><Paperclip size={19} /></button>
+          <button type="button" onClick={() => setShowPollCreator(true)} disabled={sending || loading} title="Create poll" aria-label="Create poll" className="shrink-0 text-ink-400 transition hover:text-primary-200 disabled:opacity-40"><BarChart3 size={18} /></button>
           <input value={messageText} onChange={(event) => handleMessageTextChange(event.target.value)} placeholder={`Message #${channelName}`} maxLength={4000} disabled={sending || loading} className="min-w-0 flex-1 bg-transparent py-2 text-sm text-ink-100 outline-none placeholder:text-ink-600" />
           <button type="submit" disabled={(!messageText.trim() && !selectedFile) || sending || loading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40" aria-label="Send message">{sending ? <RefreshCw size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
