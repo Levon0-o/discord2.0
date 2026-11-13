@@ -111,7 +111,6 @@ export function ChannelPermissionsModal({
                       </div>
                       {PERMISSIONS.map((permission) => {
                         const value = row?.[permission.key] ?? null;
-                        const key = `${member.user_id}:${permission.key}`;
                         return (
                           <select
                             key={permission.key}
