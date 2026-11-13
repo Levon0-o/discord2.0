@@ -4,10 +4,6 @@ create table if not exists public.conversation_pinned_messages (
   pinned_by uuid not null default auth.uid() references public.profiles(id) on delete cascade,
   pinned_at timestamptz not null default now(),
   primary key (conversation_id, message_id),
-  constraint conversation_pinned_messages_message_conversation_fk
-    foreign key (message_id, conversation_id)
-    references public.messages(id, conversation_id)
-    on delete cascade
 );
 
 alter table public.conversation_pinned_messages enable row level security;
@@ -32,6 +28,11 @@ with check (
     select 1 from public.conversation_members cm
     where cm.conversation_id = conversation_pinned_messages.conversation_id
       and cm.user_id = auth.uid()
+  )
+  and exists (
+    select 1 from public.messages m
+    where m.id = conversation_pinned_messages.message_id
+      and m.conversation_id = conversation_pinned_messages.conversation_id
   )
 );
 
