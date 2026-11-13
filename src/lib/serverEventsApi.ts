@@ -76,3 +76,27 @@ export async function setServerEventRsvp(eventId: string, status: ServerEventRsv
   });
   if (error) throw error;
 }
+
+export async function updateServerEvent(input: {
+  eventId: string;
+  title: string;
+  description: string;
+  location: string;
+  startsAt: string;
+  endsAt?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.rpc('update_server_event', {
+    p_event_id: input.eventId,
+    p_title: input.title,
+    p_description: input.description,
+    p_location: input.location,
+    p_starts_at: input.startsAt,
+    p_ends_at: input.endsAt ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function deleteServerEvent(eventId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_server_event', { p_event_id: eventId });
+  if (error) throw error;
+}
