@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Users,
   CalendarDays,
+  X,
   MapPin,
   Clock,
   CheckCircle2,
