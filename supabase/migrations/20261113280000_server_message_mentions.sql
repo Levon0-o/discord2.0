@@ -61,7 +61,7 @@ BEGIN
       AND sm.user_id <> NEW.author_id
   LOOP
     IF target_member.username IS NOT NULL
-       AND position('@' || lower(target_member.username) IN normalized_body) > 0 THEN
+       AND normalized_body ~ ('(^|[^[:alnum:]_])@' || lower(target_member.username) || '([^[:alnum:]_]|$)') THEN
       INSERT INTO public.notifications (recipient_id, actor_id, type, entity_id)
       VALUES (target_member.user_id, NEW.author_id, 'mention', NEW.id);
     END IF;
