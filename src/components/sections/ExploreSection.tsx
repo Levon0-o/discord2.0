@@ -51,6 +51,8 @@ export function ExploreSection() {
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [people, setPeople] = useState<ProfileLite[]>([]);
   const [search, setSearch] = useState('');
+  const [postSearch, setPostSearch] = useState('');
+  const [appliedPostSearch, setAppliedPostSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +63,7 @@ export function ExploreSection() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadPosts = useCallback(async (refresh = false) => {
+  const loadPosts = useCallback(async (refresh = false, searchTerm = '') => {
     if (refresh) setRefreshing(true);
     else setLoading(true);
     setError('');
@@ -69,6 +71,8 @@ export function ExploreSection() {
       .from('posts')
       .select('id, author_id, body, image_url, media_type, created_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
       .is('server_id', null)
+      .ilike('body', `%${searchTerm.replace(/[\\%_]/g, '\\      .is('server_id', null)
+      .order('created_at', { ascending: false })')}%`)
       .order('created_at', { ascending: false })
       .limit(80);
     if (queryError) setError(queryError.message);
@@ -78,14 +82,14 @@ export function ExploreSection() {
   }, []);
 
   useEffect(() => {
-    void loadPosts();
+    void loadPosts(false, appliedPostSearch);
     const channel = supabase
       .channel('explore-global-feed')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { void loadPosts(true); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => { void loadPosts(true); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { void loadPosts(true, appliedPostSearch); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => { void loadPosts(true, appliedPostSearch); })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [loadPosts]);
+  }, [loadPosts, appliedPostSearch]);
 
   useEffect(() => {
     let active = true;
@@ -146,7 +150,7 @@ export function ExploreSection() {
       setVideoFile(null);
       const picker = document.getElementById('explore-video-picker') as HTMLInputElement | null;
       if (picker) picker.value = '';
-      await loadPosts(true);
+      await loadPosts(true, appliedPostSearch);
     }
     setPublishing(false);
   };
@@ -222,6 +226,42 @@ export function ExploreSection() {
       </nav>
 
       {tab !== 'people' && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setAppliedPostSearch(postSearch.trim());
+          }}
+          className="flex flex-col gap-2 rounded-2xl border border-white/[0.07] bg-ink-900/65 p-3 sm:flex-row"
+        >
+          <div className="relative min-w-0 flex-1">
+            <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-500" />
+            <input
+              value={postSearch}
+              onChange={(event) => setPostSearch(event.target.value)}
+              placeholder="Search posts and video descriptions..."
+              aria-label="Search posts and videos by description"
+              className="w-full rounded-xl border border-white/[0.08] bg-ink-950/70 py-3 pl-11 pr-4 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40"
+            />
+          </div>
+          <button type="submit" className="rounded-xl bg-primary-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-400">
+            Search
+          </button>
+          {appliedPostSearch && (
+            <button
+              type="button"
+              onClick={() => {
+                setPostSearch('');
+                setAppliedPostSearch('');
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm text-ink-300 transition hover:bg-white/[0.05]"
+            >
+              <X size={15} /> Clear
+            </button>
+          )}
+        </form>
+      )}
+
+      {tab !== 'people' && (
         <section className="rounded-2xl border border-white/[0.07] bg-ink-900/65 p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-500/15 text-primary-300"><Send size={17} /></div><div><h2 className="text-sm font-semibold text-ink-100">Share with the world</h2><p className="text-xs text-ink-500">Post an update or upload a short video.</p></div></div>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value.slice(0, 2000))} rows={3} maxLength={2000} placeholder="What's happening?" className="w-full resize-y rounded-xl border border-white/[0.07] bg-ink-950/70 px-4 py-3 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
@@ -244,7 +284,7 @@ export function ExploreSection() {
       ) : loading ? (
         <div className="flex items-center justify-center gap-3 rounded-2xl border border-white/[0.06] bg-ink-900/50 py-16 text-sm text-ink-400"><Loader2 size={18} className="animate-spin" />Loading the world…</div>
       ) : visiblePosts.length === 0 ? (
-        <div className="rounded-2xl border border-white/[0.06] bg-ink-900/50 px-6 py-16 text-center"><Compass size={30} className="mx-auto text-ink-500" /><h3 className="mt-3 text-base font-semibold text-ink-100">Nothing here yet</h3><p className="mt-1 text-sm text-ink-500">{tab === 'videos' ? 'The first short video on AFTERDARK could be yours.' : 'Be one of the first people to share something with the community.'}</p></div>
+        <div className="rounded-2xl border border-white/[0.06] bg-ink-900/50 px-6 py-16 text-center"><Compass size={30} className="mx-auto text-ink-500" /><h3 className="mt-3 text-base font-semibold text-ink-100">Nothing here yet</h3><p className="mt-1 text-sm text-ink-500">{appliedPostSearch ? `No posts or videos match "${appliedPostSearch}". Try another phrase.` : tab === 'videos' ? 'The first short video on AFTERDARK could be yours.' : 'Be one of the first people to share something with the community.'}</p></div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {visiblePosts.map((post) => {
