@@ -9,6 +9,10 @@ import {
   Users,
   Reply,
   X,
+  Pencil,
+  Trash2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -24,6 +28,8 @@ import {
   fetchMessageReactions,
   addMessageReaction,
   removeMessageReaction,
+  updateDirectMessage,
+  deleteDirectMessage,
 } from '@/lib/directMessagesApi';
 import type {
   DirectConversation,
@@ -109,6 +115,11 @@ export function DirectMessagesSection({
   const [activeId, setActiveId] = useState('');
   const [messageText, setMessageText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -607,6 +618,48 @@ export function DirectMessagesSection({
           );
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const updated = payload.new as Message;
+          if (!updated?.id || !updated.conversation_id) return;
+
+          setMessages((current) =>
+            current.map((message) => message.id === updated.id ? updated : message)
+          );
+          setLastMessages((current) => {
+            const entry = Object.entries(current).find(([, message]) => message?.id === updated.id);
+            if (!entry) return current;
+            return { ...current, [entry[0]]: updated };
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const deleted = payload.old as Partial<Message>;
+          if (!deleted?.id) return;
+
+          setMessages((current) => current.filter((message) => message.id !== deleted.id));
+          setReactions((current) => current.filter((reaction) => reaction.message_id !== deleted.id));
+          setLastMessages((current) => {
+            const entry = Object.entries(current).find(([, message]) => message?.id === deleted.id);
+            if (!entry) return current;
+            return { ...current, [entry[0]]: null };
+          });
+          setEditingMessageId((current) => current === deleted.id ? null : current);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -617,6 +670,74 @@ export function DirectMessagesSection({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+
+  function startEditingMessage(message: Message) {
+    setEditingMessageId(message.id);
+    setEditingText(message.body);
+    setError('');
+  }
+
+  function cancelEditingMessage() {
+    setEditingMessageId(null);
+    setEditingText('');
+  }
+
+  async function handleSaveEdit(messageId: string) {
+    if (!editingText.trim() || savingEdit) return;
+
+    setSavingEdit(true);
+    setError('');
+    try {
+      const updated = await updateDirectMessage(messageId, editingText);
+      setMessages((current) =>
+        current.map((message) => message.id === messageId ? updated : message)
+      );
+      setLastMessages((current) => {
+        const entry = Object.entries(current).find(([, message]) => message?.id === messageId);
+        return entry ? { ...current, [entry[0]]: updated } : current;
+      });
+      cancelEditingMessage();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not edit message.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleDeleteMessage(messageId: string) {
+    if (deletingMessageId) return;
+
+    setDeletingMessageId(messageId);
+    setError('');
+    try {
+      await deleteDirectMessage(messageId);
+      setMessages((current) => current.filter((message) => message.id !== messageId));
+      setReactions((current) => current.filter((reaction) => reaction.message_id !== messageId));
+      setLastMessages((current) => {
+        const entry = Object.entries(current).find(([, message]) => message?.id === messageId);
+        return entry ? { ...current, [entry[0]]: null } : current;
+      });
+      if (editingMessageId === messageId) cancelEditingMessage();
+      await loadConversations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete message.');
+    } finally {
+      setDeletingMessageId(null);
+    }
+  }
+
+  async function handleCopyMessage(message: Message) {
+    try {
+      await navigator.clipboard.writeText(message.body);
+      setCopiedMessageId(message.id);
+      window.setTimeout(() => {
+        setCopiedMessageId((current) => current === message.id ? null : current);
+      }, 1600);
+    } catch {
+      setError('Could not copy message to clipboard.');
+    }
+  }
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1020,13 +1141,85 @@ const isGrouped =
                             </button>
                           );
                         })()}
-                        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
-                          {message.body}
-                        </p>
+                        {editingMessageId === message.id ? (
+                          <div className="mt-2 space-y-2">
+                            <textarea
+                              value={editingText}
+                              onChange={(event) => setEditingText(event.target.value)}
+                              maxLength={4000}
+                              rows={Math.min(6, Math.max(2, editingText.split('\n').length))}
+                              autoFocus
+                              className="w-full resize-y rounded-xl border border-primary-400/30 bg-ink-900 px-3 py-2 text-sm leading-6 text-ink-100 outline-none focus:border-primary-400/60"
+                              aria-label="Edit message"
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveEdit(message.id)}
+                                disabled={!editingText.trim() || savingEdit}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:opacity-50"
+                              >
+                                <Check size={14} />
+                                {savingEdit ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditingMessage}
+                                disabled={savingEdit}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-ink-300 transition hover:bg-white/[0.06]"
+                              >
+                                <X size={14} />
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
+                            {message.body}
+                            {message.updated_at && new Date(message.updated_at).getTime() > new Date(message.created_at).getTime() + 1000 && (
+                              <span className="ml-2 text-[10px] text-ink-600">(edited)</span>
+                            )}
+                          </p>
+                        )}
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => setReplyingTo(message)}
+                            onClick={() => void handleCopyMessage(message)}
+                            className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-ink-100"
+                            aria-label="Copy message"
+                            title="Copy message"
+                          >
+                            {copiedMessageId === message.id ? <Check size={13} /> : <Copy size={13} />}
+                            {copiedMessageId === message.id ? 'Copied' : 'Copy'}
+                          </button>
+                          {mine && editingMessageId !== message.id && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEditingMessage(message)}
+                                className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
+                                aria-label="Edit message"
+                                title="Edit message"
+                              >
+                                <Pencil size={13} />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteMessage(message.id)}
+                                disabled={deletingMessageId === message.id}
+                                className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-red-400/15 bg-ink-900/70 px-2 py-1 text-xs text-red-300/80 transition hover:border-red-400/40 hover:bg-red-400/10 hover:text-red-200 disabled:opacity-50"
+                                aria-label="Delete message"
+                                title="Delete message"
+                              >
+                                <Trash2 size={13} />
+                                {deletingMessageId === message.id ? 'Deleting…' : 'Delete'}
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setReplyingTo(message)
                             className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
                             aria-label={`Reply to ${name}'s message`}
                             title="Reply"
