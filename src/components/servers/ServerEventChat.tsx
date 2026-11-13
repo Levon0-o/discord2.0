@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Copy, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
 import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, deleteServerEventChatPoll, updateServerEventChatPoll, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
@@ -225,6 +225,15 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not submit vote.'); }
   }
 
+
+  function startDuplicatingPoll(poll: ServerEventChatPoll) {
+    setEditingPollId(null);
+    setPollQuestion(poll.question);
+    setPollOptions(poll.options.map((option) => option.label));
+    setPollAllowMultiple(poll.allow_multiple);
+    setPollExpiresIn('never');
+    setPollCreatorOpen(true);
+  }
 
   function startEditingPoll(poll: ServerEventChatPoll) {
     setEditingPollId(poll.id);
@@ -706,7 +715,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           const canClose = poll.created_by === userId || canModerate;
           return <div key={poll.id} className="rounded-lg border border-white/[0.08] bg-ink-950/70 p-3">
             <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-ink-100">{poll.question}</p><p className="mt-1 text-[9px] text-ink-500">{total} {total === 1 ? 'vote' : 'votes'} · {closed ? 'Closed' : poll.allow_multiple ? 'Multiple choices' : 'Choose one'}</p></div>
-              <div className="flex shrink-0 items-center gap-1">{canClose && !closed && votes.length === 0 ? <button type="button" onClick={() => startEditingPoll(poll)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-primary-200">Edit</button> : null}{canClose && !closed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-ink-200">Close</button> : null}{canClose ? <button type="button" onClick={() => void handleDeletePoll(poll)} className="rounded p-1 text-ink-500 hover:bg-red-500/10 hover:text-red-300" title="Delete poll" aria-label="Delete poll"><Trash2 size={12} /></button> : null}</div>
+              <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={() => startDuplicatingPoll(poll)} className="rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-primary-200" title="Duplicate poll" aria-label="Duplicate poll"><Copy size={12} /></button>{canClose && !closed && votes.length === 0 ? <button type="button" onClick={() => startEditingPoll(poll)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-primary-200">Edit</button> : null}{canClose && !closed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-ink-200">Close</button> : null}{canClose ? <button type="button" onClick={() => void handleDeletePoll(poll)} className="rounded p-1 text-ink-500 hover:bg-red-500/10 hover:text-red-300" title="Delete poll" aria-label="Delete poll"><Trash2 size={12} /></button> : null}</div>
             </div>
             <div className="mt-2 space-y-1.5">{poll.options.map((option) => {
               const count = votes.filter((vote) => vote.option_id === option.id).length;
