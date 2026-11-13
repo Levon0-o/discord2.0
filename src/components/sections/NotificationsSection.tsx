@@ -16,6 +16,9 @@ function notificationCopy(item: NotificationItem) {
   if (item.type === 'reply') return { title: actor, detail: 'replied to your message in a server channel', Icon: MessageCircle };
   if (item.type === 'event_rsvp') return { title: actor, detail: 'responded to your server event', Icon: CalendarDays };
   if (item.type === 'event_update') return { title: actor, detail: 'updated an event you are attending or interested in', Icon: CalendarDays };
+  if (item.type === 'event_reminder_24h') return { title: actor, detail: 'reminded you that a server event starts in 24 hours', Icon: CalendarDays };
+  if (item.type === 'event_reminder_1h') return { title: actor, detail: 'reminded you that a server event starts in 1 hour', Icon: CalendarDays };
+  if (item.type === 'event_reminder_15m') return { title: actor, detail: 'reminded you that a server event starts in 15 minutes', Icon: CalendarDays };
   return { title: actor, detail: 'commented on your post', Icon: MessageCircle };
 }
 
