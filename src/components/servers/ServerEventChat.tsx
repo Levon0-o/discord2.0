@@ -25,6 +25,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [body, setBody] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFilePreview, setSelectedFilePreview] = useState<string | null>(null);
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string | null>>({});
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const dragDepthRef = useRef(0);
@@ -101,6 +102,16 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       void supabase.removeChannel(channel);
     };
   }, [eventId]);
+
+  useEffect(() => {
+    if (!selectedFile?.type.startsWith('image/')) {
+      setSelectedFilePreview(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(selectedFile);
+    setSelectedFilePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [selectedFile]);
 
   useEffect(() => {
     let active = true;
@@ -481,7 +492,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
         <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => selectAttachment(event.target.files?.[0])} />
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-ink-400 transition hover:border-primary-400/40 hover:text-primary-200 disabled:opacity-40" aria-label="Attach file"><Paperclip size={14} /></button>
-        <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-ink-300"><span className="truncate">{selectedFile.name} · {(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="text-ink-500 hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<textarea value={body} onChange={(event) => handleBodyChange(event.target.value)} onPaste={handleComposerPaste} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
+        <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-2 flex items-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] p-2">{selectedFilePreview ? <img src={selectedFilePreview} alt="Attachment preview" className="h-10 w-10 shrink-0 rounded object-cover" /> : <FileText size={16} className="shrink-0 text-primary-300" />}<div className="min-w-0 flex-1"><p className="truncate text-[10px] text-ink-200">{selectedFile.name}</p><p className="text-[9px] text-ink-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p></div><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="shrink-0 rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<textarea value={body} onChange={(event) => handleBodyChange(event.target.value)} onPaste={handleComposerPaste} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
         <button type="submit" disabled={sending || (!body.trim() && !selectedFile)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
       </form>
     </section>
