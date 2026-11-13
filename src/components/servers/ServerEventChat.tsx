@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { Check, MessageCircle, Pencil, Pin, Reply, Send, Trash2, X } from 'lucide-react';
+import { Check, MessageCircle, Pencil, Pin, Reply, Search, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -18,6 +18,10 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);
   const [pins, setPins] = useState<ServerEventChatPin[]>([]);
   const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<ServerEventChatMessage[]>([]);
+  const [searching, setSearching] = useState(false);
   const [body, setBody] = useState('');
   const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -31,6 +35,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollHeightRef = useRef<number | null>(null);
   const skipAutoScrollRef = useRef(false);
+  const pendingJumpIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -88,6 +93,13 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   }, [eventId]);
 
   useLayoutEffect(() => {
+    if (pendingJumpIdRef.current) {
+      const target = document.getElementById('event-chat-message-' + pendingJumpIdRef.current);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        pendingJumpIdRef.current = null;
+      }
+    }
     const list = messageListRef.current;
     if (list && pendingScrollHeightRef.current !== null) {
       list.scrollTop += list.scrollHeight - pendingScrollHeightRef.current;
@@ -125,6 +137,30 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     } finally {
       setLoadingOlder(false);
     }
+  }
+
+  async function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (searchQuery.trim().length < 2 || searching) return;
+    setSearching(true);
+    setError('');
+    try {
+      setSearchResults(await searchServerEventChatMessages(eventId, searchQuery));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not search event chat.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function jumpToSearchResult(message: ServerEventChatMessage) {
+    pendingJumpIdRef.current = message.id;
+    setMessages((current) => {
+      const merged = current.some((item) => item.id === message.id) ? current : [...current, message];
+      return merged.sort((left, right) => left.created_at.localeCompare(right.created_at));
+    });
+    setSearchOpen(false);
+    setSearchResults([]);
   }
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
@@ -209,10 +245,24 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <div className="min-w-0"><p className="text-xs font-semibold text-ink-100">Event chat</p><p className="truncate text-[10px] text-ink-500">{eventTitle}</p></div>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={() => setPinnedOpen((value) => !value)} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
+          <button type="button" onClick={() => { setSearchOpen((value) => !value); setPinnedOpen(false); }} className={'rounded-md p-1.5 transition ' + (searchOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-label="Search event chat" aria-expanded={searchOpen}><Search size={13} /></button>
+          <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSearchOpen(false); }}((value) => !value)} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
         </div>
       </div>
+      {searchOpen ? (
+        <div className="border-b border-white/[0.07] bg-white/[0.02] p-3">
+          <form onSubmit={(event) => void handleSearch(event)} className="flex gap-2">
+            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} minLength={2} maxLength={100} placeholder="Search event messages…" className="min-w-0 flex-1 rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
+            <button type="submit" disabled={searching || searchQuery.trim().length < 2} className="rounded-md bg-primary-500/15 px-3 py-2 text-[10px] font-semibold text-primary-200 hover:bg-primary-500/25 disabled:opacity-40">{searching ? 'Searching…' : 'Search'}</button>
+          </form>
+          {searchResults.length > 0 ? <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">{searchResults.map((result) => {
+            const author = members.find((entry) => entry.user_id === result.author_id);
+            const name = author?.profile?.display_name || author?.profile?.username || 'Server member';
+            return <button key={result.id} type="button" onClick={() => jumpToSearchResult(result)} className="block w-full rounded-md bg-white/[0.03] px-2.5 py-2 text-left hover:bg-white/[0.07]"><span className="block text-[10px] font-semibold text-ink-300">{name} · {new Date(result.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span><span className="block truncate text-[10px] text-ink-500">{result.body}</span></button>;
+          })}</div> : searchQuery.trim().length >= 2 && !searching ? <p className="mt-2 text-[10px] text-ink-500">No matching messages. Run a search to see results.</p> : null}
+        </div>
+      ) : null}
       {pinnedOpen ? (
         <div className="border-b border-white/[0.07] bg-primary-500/[0.04] p-3">
           <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary-200"><Pin size={11} /> Pinned messages</p>
