@@ -22,6 +22,8 @@ interface FeedPost {
   id: string;
   author_id: string;
   body: string;
+  image_url: string | null;
+  media_type: 'text' | 'image' | 'video';
   created_at: string;
   author: FeedAuthor | null;
   likes: { user_id: string }[];
