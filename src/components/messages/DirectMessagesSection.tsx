@@ -175,6 +175,8 @@ export function DirectMessagesSection({
   const [pinnedMessages, setPinnedMessages] = useState<PinnedDirectMessage[]>([]);
   const [showPinnedMessages, setShowPinnedMessages] = useState(false);
   const [pinningMessageId, setPinningMessageId] = useState<string | null>(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -182,6 +184,9 @@ export function DirectMessagesSection({
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const loadingOlderRef = useRef(false);
+  const previousScrollHeightRef = useRef(0);
   const messageRefs = useRef(new Map<string, HTMLElement>());
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSentAtRef = useRef(0);
@@ -420,6 +425,7 @@ export function DirectMessagesSection({
         if (!active) return;
 
         setMessages(messageRows);
+        setHasMoreMessages(messageRows.length === 100);
         await markActiveConversationRead(activeId);
       } catch (err) {
         if (active) {
@@ -805,8 +811,42 @@ export function DirectMessagesSection({
   }, [userId, markActiveConversationRead]);
 
   useEffect(() => {
+    if (loadingOlderRef.current) {
+      const container = messagesScrollRef.current;
+      if (container) container.scrollTop += container.scrollHeight - previousScrollHeightRef.current;
+      loadingOlderRef.current = false;
+      setLoadingOlderMessages(false);
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  async function handleLoadOlderMessages() {
+    const oldestMessage = messages[0];
+    if (!activeId || !oldestMessage || loadingOlderMessages || !hasMoreMessages) return;
+    const container = messagesScrollRef.current;
+    previousScrollHeightRef.current = container?.scrollHeight ?? 0;
+    loadingOlderRef.current = true;
+    setLoadingOlderMessages(true);
+    try {
+      const olderMessages = await fetchDirectMessages(activeId, oldestMessage);
+      if (olderMessages.length === 0) {
+        loadingOlderRef.current = false;
+        setLoadingOlderMessages(false);
+        setHasMoreMessages(false);
+        return;
+      }
+      setMessages((current) => {
+        const existingIds = new Set(current.map((message) => message.id));
+        return [...olderMessages.filter((message) => !existingIds.has(message.id)), ...current];
+      });
+      setHasMoreMessages(olderMessages.length === 100);
+    } catch (err) {
+      loadingOlderRef.current = false;
+      setLoadingOlderMessages(false);
+      setError(err instanceof Error ? err.message : 'Could not load older messages.');
+    }
+  }
 
 
   function startEditingMessage(message: Message) {
@@ -1229,7 +1269,15 @@ export function DirectMessagesSection({
             )}
 
             {/* MESSAGES */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+            <div ref={messagesScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+              {messages.length > 0 && hasMoreMessages && (
+                <div className="mb-4 flex justify-center">
+                  <button type="button" onClick={handleLoadOlderMessages} disabled={loadingOlderMessages} className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-semibold text-ink-300 transition hover:border-primary-400/40 hover:text-primary-200 disabled:cursor-wait disabled:opacity-50">
+                    {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
+                  </button>
+                </div>
+              )}
+
               {messages.length === 0 && (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-300">
