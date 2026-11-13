@@ -27,7 +27,19 @@ interface ProfilePost {
   is_pinned: boolean;
 }
 
-const emptyProfile = {
+type ProfileTheme = 'blue' | 'violet' | 'crimson' | 'emerald' | 'amber';
+
+interface ProfileDraft {
+  display_name: string;
+  profile_theme: ProfileTheme;
+  bio: string;
+  website_url: string;
+  instagram_url: string;
+  twitch_url: string;
+  youtube_url: string;
+}
+
+const emptyProfile: ProfileDraft = {
   display_name: '',
   profile_theme: 'blue' as const,
   bio: '',
@@ -64,7 +76,7 @@ export function ProfileSection() {
   const { session } = useAuth();
   const userId = session?.user.id;
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [draft, setDraft] = useState(emptyProfile);
+  const [draft, setDraft] = useState<ProfileDraft>(emptyProfile);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [postTab, setPostTab] = useState<'all' | 'videos'>('all');
