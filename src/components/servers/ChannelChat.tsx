@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy, FileText,
+  Trash2, Pin, X, Check, Copy, FileText, AtSign,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -241,6 +241,20 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   }
 
   const pinnedMessages = pinned.map((item) => messagesById.get(item.message_id)).filter((item): item is Message => Boolean(item));
+  const mentionMatch = messageText.match(/(?:^|\\s)@([a-zA-Z0-9_]*)$/);
+  const mentionQuery = mentionMatch?.[1]?.toLowerCase() ?? '';
+  const mentionSuggestions = mentionMatch
+    ? members.filter((member) => {
+        const username = member.profile?.username?.toLowerCase() ?? '';
+        const displayName = member.profile?.display_name?.toLowerCase() ?? '';
+        return username.includes(mentionQuery) || displayName.includes(mentionQuery);
+      }).slice(0, 6)
+    : [];
+  const canMentionEveryone = members.some((member) => member.user_id === userId && ['owner', 'admin', 'moderator'].includes(member.role));
+
+  function insertMention(username: string) {
+    setMessageText((current) => current.replace(/(^|\\s)@[a-zA-Z0-9_]*$/, `$1@${username} `));
+  }
 
   return (
     <section className="panel flex h-full min-h-0 flex-col overflow-hidden">
@@ -325,7 +339,15 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
                             <button type="button" onClick={() => { setEditingId(null); setEditingText(''); }} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-400 hover:bg-white/[0.05]"><X size={12} /> Cancel</button>
                           </div>
                         </div>
-                      ) : message.body ? <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">{message.body}</p> : null}
+                      ) : message.body ? (
+                        <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
+                          {message.body.split(/(@[a-zA-Z0-9_]+)/g).map((part, partIndex) =>
+                            part.startsWith('@')
+                              ? <span key={partIndex} className="rounded bg-primary-500/15 px-0.5 font-medium text-primary-200">{part}</span>
+                              : part
+                          )}
+                        </p>
+                      ) : null}
                       {message.image_url ? (
                         <div className="mt-2">
                           {attachmentUrls[message.id] ? (
@@ -364,6 +386,31 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
       </div>
 
       <form onSubmit={handleSend} className="shrink-0 border-t border-white/[0.06] p-3 sm:p-4">
+        {mentionMatch ? (
+          <div className="mb-2 overflow-hidden rounded-xl border border-white/10 bg-ink-900 shadow-xl">
+            {canMentionEveryone && (!mentionQuery || 'everyone'.includes(mentionQuery)) ? (
+              <button type="button" onClick={() => insertMention('everyone')} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary-200 transition hover:bg-primary-500/10">
+                <AtSign size={15} /> <span className="font-semibold">@everyone</span><span className="text-xs text-ink-500">Notify server members</span>
+              </button>
+            ) : null}
+            {mentionSuggestions.map((member) => {
+              const username = member.profile?.username;
+              if (!username) return null;
+              const label = member.profile?.display_name || username;
+              return (
+                <button key={member.user_id} type="button" onClick={() => insertMention(username)} className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-white/[0.05]">
+                  <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-xs font-semibold text-primary-200">
+                    {member.profile?.avatar_url ? <img src={member.profile.avatar_url} alt="" className="h-full w-full object-cover" /> : label.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="min-w-0"><span className="block truncate text-sm text-ink-100">{label}</span><span className="block text-[11px] text-ink-500">@{username}</span></span>
+                </button>
+              );
+            })}
+            {mentionSuggestions.length === 0 && !(canMentionEveryone && (!mentionQuery || 'everyone'.includes(mentionQuery))) ? (
+              <p className="px-3 py-2 text-xs text-ink-500">No matching members</p>
+            ) : null}
+          </div>
+        ) : null}
         {replyingTo ? <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border-l-2 border-primary-400 bg-ink-900 px-3 py-2">
           <div className="min-w-0"><p className="text-[10px] font-semibold text-primary-300">Replying to {replyingTo.author_id === userId ? 'yourself' : membersById.get(replyingTo.author_id)?.profile?.display_name || membersById.get(replyingTo.author_id)?.profile?.username || 'member'}</p><p className="truncate text-xs text-ink-400">{replyingTo.body || 'Attachment'}</p></div>
           <button type="button" onClick={() => setReplyingTo(null)} className="rounded-md p-1 text-ink-500 hover:text-ink-200" aria-label="Cancel reply"><X size={15} /></button>
