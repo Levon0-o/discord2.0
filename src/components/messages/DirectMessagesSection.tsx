@@ -7,6 +7,8 @@ import {
   RefreshCw,
   Search,
   Users,
+  Reply,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -106,6 +108,7 @@ export function DirectMessagesSection({
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [activeId, setActiveId] = useState('');
   const [messageText, setMessageText] = useState('');
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -114,6 +117,7 @@ export function DirectMessagesSection({
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef(new Map<string, HTMLElement>());
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSentAtRef = useRef(0);
   const activeIdRef = useRef(activeId);
@@ -625,7 +629,8 @@ export function DirectMessagesSection({
     try {
       const message = await sendDirectMessage(
         activeId,
-        messageText.trim()
+        messageText.trim(),
+        replyingTo?.id
       );
 
       setMessages((current) => [...current, message]);
@@ -634,6 +639,7 @@ export function DirectMessagesSection({
         [activeId]: message,
       }));
       setMessageText('');
+      setReplyingTo(null);
 
       await loadConversations();
     } catch (err) {
@@ -752,6 +758,7 @@ export function DirectMessagesSection({
                 type="button"
                 onClick={() => {
                   setActiveId(conversation.id);
+                  setReplyingTo(null);
                   setMobileChatOpen(true);
                 }}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
@@ -927,7 +934,14 @@ const isGrouped =
   timeDifference <= 15 * 60 * 1000;
 
                 return (
-                  <div key={message.id}>
+                  <div
+                    key={message.id}
+                    ref={(node) => {
+                      if (node) messageRefs.current.set(message.id, node);
+                      else messageRefs.current.delete(message.id);
+                    }}
+                    id={`dm-message-${message.id}`}
+                  >
                     {isNewDay && (
                       <div className="my-6 flex items-center gap-4">
                         <div className="h-px flex-1 bg-white/[0.08]" />
@@ -982,10 +996,44 @@ const isGrouped =
                           </div>
                         )}
 
+                        {message.reply_to_id && (() => {
+                          const repliedMessage = messages.find((item) => item.id === message.reply_to_id);
+                          const repliedAuthor = repliedMessage ? profiles[repliedMessage.author_id] : undefined;
+                          const repliedName = repliedMessage
+                            ? repliedMessage.author_id === userId
+                              ? 'You'
+                              : repliedAuthor?.display_name || repliedAuthor?.username || displayName
+                            : 'Original message';
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const target = messageRefs.current.get(message.reply_to_id!);
+                                target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }}
+                              disabled={!repliedMessage}
+                              className="mb-2 block max-w-full rounded-lg border-l-2 border-primary-400/70 bg-white/[0.04] px-3 py-2 text-left transition hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-60"
+                              title={repliedMessage ? 'Jump to original message' : 'Original message is not loaded'}
+                            >
+                              <span className="block text-[11px] font-semibold text-primary-300">{repliedName}</span>
+                              <span className="mt-0.5 block truncate text-xs text-ink-400">{repliedMessage?.body ?? 'Message unavailable'}</span>
+                            </button>
+                          );
+                        })()}
                         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
                           {message.body}
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setReplyingTo(message)}
+                            className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
+                            aria-label={`Reply to ${name}'s message`}
+                            title="Reply"
+                          >
+                            <Reply size={13} />
+                            Reply
+                          </button>
                           {QUICK_REACTIONS.map((emoji) => {
                             const emojiReactions = reactions.filter(
                               (reaction) =>
@@ -1038,6 +1086,29 @@ const isGrouped =
               onSubmit={handleSend}
               className="shrink-0 border-t border-white/[0.08] bg-ink-950 p-3 sm:p-5"
             >
+              {replyingTo && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary-400/20 bg-primary-500/[0.07] px-3 py-2">
+                  <div className="min-w-0 flex-1 border-l-2 border-primary-400 pl-3">
+                    <p className="text-xs font-semibold text-primary-300">
+                      Replying to {replyingTo.author_id === userId ? 'yourself' : (
+                        profiles[replyingTo.author_id]?.display_name ||
+                        profiles[replyingTo.author_id]?.username ||
+                        displayName
+                      )}
+                    </p>
+                    <p className="truncate text-xs text-ink-400">{replyingTo.body}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-400 transition hover:bg-white/[0.08] hover:text-ink-100"
+                    aria-label="Cancel reply"
+                    title="Cancel reply"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
               <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/10 bg-ink-900 px-3 py-2 transition focus-within:border-primary-400/50 sm:px-4">
                 <button
                   type="button"
