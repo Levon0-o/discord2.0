@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
   Hash,
@@ -266,7 +266,7 @@ export function ServerDetail({
     setEditError('');
   }
 
-  async function handleUpdateChannel(event: React.FormEvent<HTMLFormElement>) {
+  async function handleUpdateChannel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editingChannel) return;
     setEditBusy(true);
@@ -430,7 +430,7 @@ export function ServerDetail({
                         const active = channel.id === activeChannelId;
 
                         return (
-                          <li key={channel.id}>
+                          <li key={channel.id} className="flex items-center">
                             <button
                               type="button"
                               onClick={() => {
@@ -439,7 +439,7 @@ export function ServerDetail({
                                 setActiveChannelId(channel.id);
                               }}
                               className={cn(
-                                'flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition',
+                                'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition',
                                 active
                                   ? 'bg-primary-500/15 text-primary-100'
                                   : 'text-ink-400 hover:bg-white/[0.04] hover:text-ink-100',
