@@ -383,3 +383,87 @@ export async function setServerEventChatNotificationsMuted(eventId: string, dura
   }, { onConflict: 'event_id,user_id' });
   if (error) throw error;
 }
+
+
+export interface ServerEventChatPollOption {
+  id: string;
+  label: string;
+}
+
+export interface ServerEventChatPoll {
+  id: string;
+  event_id: string;
+  message_id: string;
+  created_by: string;
+  question: string;
+  options: ServerEventChatPollOption[];
+  allow_multiple: boolean;
+  expires_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+}
+
+export interface ServerEventChatPollVote {
+  id: string;
+  poll_id: string;
+  option_id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export async function fetchServerEventChatPolls(eventId: string): Promise<{ polls: ServerEventChatPoll[]; votes: ServerEventChatPollVote[] }> {
+  const { data: polls, error: pollsError } = await supabase
+    .from('server_event_chat_polls')
+    .select('id, event_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false });
+  if (pollsError) throw pollsError;
+  const pollRows = (polls ?? []) as ServerEventChatPoll[];
+  if (pollRows.length === 0) return { polls: [], votes: [] };
+  const { data: votes, error: votesError } = await supabase
+    .from('server_event_chat_poll_votes')
+    .select('id, poll_id, option_id, user_id, created_at')
+    .in('poll_id', pollRows.map((poll) => poll.id));
+  if (votesError) throw votesError;
+  return { polls: pollRows, votes: (votes ?? []) as ServerEventChatPollVote[] };
+}
+
+export async function createServerEventChatPoll(
+  eventId: string,
+  question: string,
+  options: string[],
+  allowMultiple: boolean,
+  expiresAt: string | null,
+): Promise<ServerEventChatPoll> {
+  const { data, error } = await supabase.rpc('create_server_event_chat_poll', {
+    p_event_id: eventId,
+    p_question: question,
+    p_options: options,
+    p_allow_multiple: allowMultiple,
+    p_expires_at: expiresAt,
+  });
+  if (error) throw error;
+  const result = (data as { poll_id: string; message_id: string }[] | null)?.[0];
+  if (!result?.poll_id) throw new Error('Poll was created but could not be loaded.');
+  const { data: poll, error: pollError } = await supabase
+    .from('server_event_chat_polls')
+    .select('id, event_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at')
+    .eq('id', result.poll_id)
+    .single();
+  if (pollError) throw pollError;
+  return poll as ServerEventChatPoll;
+}
+
+export async function castServerEventChatPollVote(pollId: string, optionId: string, selected: boolean): Promise<void> {
+  const { error } = await supabase.rpc('cast_server_event_chat_poll_vote', {
+    p_poll_id: pollId,
+    p_option_id: optionId,
+    p_selected: selected,
+  });
+  if (error) throw error;
+}
+
+export async function closeServerEventChatPoll(pollId: string): Promise<void> {
+  const { error } = await supabase.rpc('close_server_event_chat_poll', { p_poll_id: pollId });
+  if (error) throw error;
+}
