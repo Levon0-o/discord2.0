@@ -25,7 +25,7 @@ create policy channel_saved_messages_insert_own
     and public.can_view_channel(channel_id)
     and exists (
       select 1 from public.messages m
-      where m.id = message_id and m.channel_id = channel_id
+      where m.id = channel_saved_messages.message_id and m.channel_id = channel_saved_messages.channel_id
     )
   );
 
