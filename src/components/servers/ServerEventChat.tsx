@@ -25,6 +25,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [body, setBody] = useState('');
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const draftStorageKey = 'afterdark:event-chat-draft:' + userId + ':' + eventId;
   const [draftLoadedKey, setDraftLoadedKey] = useState('');
@@ -183,8 +185,15 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setEmojiPickerOpen(false);
   }
 
-  function handleBodyChange(value: string) {
+  function handleBodyChange(value: string, cursorPosition?: number) {
     setBody(value);
+    const cursor = cursorPosition ?? composerRef.current?.selectionStart ?? value.length;
+    const beforeCursor = value.slice(0, cursor);
+    const atIndex = beforeCursor.lastIndexOf('@');
+    const token = atIndex >= 0 ? beforeCursor.slice(atIndex + 1) : '';
+    const validMentionContext = atIndex >= 0 && (atIndex === 0 || !/[a-zA-Z0-9_]/.test(beforeCursor[atIndex - 1])) && /^[a-zA-Z0-9_]{0,32}$/.test(token) && !/\s/.test(token);
+    setMentionQuery(validMentionContext ? token.toLowerCase() : null);
+    setMentionStart(validMentionContext ? atIndex : null);
     const now = Date.now();
     if (!userId || !typingChannelRef.current || now - lastTypingBroadcastRef.current < 1000) return;
     lastTypingBroadcastRef.current = now;
@@ -329,7 +338,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         setMessages((current) => current.some((message) => message.id === created.id) ? current : [...current, created]);
         setBody('');
         try { window.localStorage.removeItem(draftStorageKey); } catch { /* Ignore unavailable storage. */ }
-        setSelectedFile(null); setFileInputKey((value) => value + 1); setReplyingTo(null);
+        setSelectedFile(null); setFileInputKey((value) => value + 1); setReplyingTo(null); setMentionQuery(null); setMentionStart(null);
       } catch (sendError) {
         if (uploadedPath) await removeServerEventChatAttachment(uploadedPath).catch(() => undefined);
         throw sendError;
@@ -397,6 +406,27 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     members.find((entry) => entry.user_id === userId)?.role ?? '',
   );
   const reactionOptions: ServerEventChatReaction['emoji'][] = ['👍', '❤️', '😂', '😮', '🎉'];
+  const mentionSuggestions = mentionQuery === null ? [] : members
+    .filter((entry) => entry.user_id !== userId && entry.profile?.username && entry.profile.username.toLowerCase().startsWith(mentionQuery))
+    .slice(0, 6);
+
+  function insertMention(username: string) {
+    if (mentionStart === null) return;
+    const input = composerRef.current;
+    const cursor = input?.selectionStart ?? body.length;
+    let tokenEnd = cursor;
+    while (tokenEnd < body.length && /[a-zA-Z0-9_]/.test(body[tokenEnd])) tokenEnd += 1;
+    const mention = '@' + username + ' ';
+    const next = body.slice(0, mentionStart) + mention + body.slice(tokenEnd);
+    const nextCursor = mentionStart + mention.length;
+    setBody(next);
+    setMentionQuery(null);
+    setMentionStart(null);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
 
   return (
     <section
@@ -480,7 +510,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                   </div>
                 ) : (
                   <>
-                    {message.body ? <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p> : null}
+                    {message.body ? <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body.split(/(@[a-zA-Z0-9_]+)/g).map((part, index) => part.startsWith('@') ? <span key={index} className="font-semibold text-primary-200">{part}</span> : part)}</p> : null}
                     {message.attachment_path ? (() => { const fileName = message.attachment_path.split('/').pop()?.replace(/^[0-9a-f-]{36}-/i, '') || 'Attachment'; const url = attachmentUrls[message.id]; const isImage = /\.(jpe?g|png|gif|webp)$/i.test(fileName); return url ? (isImage ? <a href={url} target="_blank" rel="noreferrer" className="mt-2 block max-w-full"><img src={url} alt={fileName} className="max-h-48 max-w-full rounded-lg border border-white/10 object-contain" /></a> : <a href={url} target="_blank" rel="noreferrer" className="mt-2 flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[10px] text-primary-200 hover:bg-white/[0.06]"><FileText size={14} className="shrink-0" /><span className="truncate">{fileName}</span><span className="ml-auto shrink-0 text-ink-500">Open</span></a>) : attachmentUrls[message.id] === null ? <p className="mt-2 text-[10px] text-red-300">Attachment unavailable</p> : <p className="mt-2 text-[10px] text-ink-500">Loading attachment…</p>; })() : null}
                     {message.edited_at ? <span className="ml-1 text-[9px] text-ink-600">(edited)</span> : null}
                   </>
@@ -532,7 +562,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
         <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => selectAttachment(event.target.files?.[0])} />
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-ink-400 transition hover:border-primary-400/40 hover:text-primary-200 disabled:opacity-40" aria-label="Attach file"><Paperclip size={14} /></button>
-        <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-2 flex items-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] p-2">{selectedFilePreview ? <img src={selectedFilePreview} alt="Attachment preview" className="h-10 w-10 shrink-0 rounded object-cover" /> : <FileText size={16} className="shrink-0 text-primary-300" />}<div className="min-w-0 flex-1"><p className="truncate text-[10px] text-ink-200">{selectedFile.name}</p><p className="text-[9px] text-ink-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p></div><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="shrink-0 rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<div className="mb-1 flex items-center gap-1"><button type="button" onClick={() => setEmojiPickerOpen((value) => !value)} className={'rounded-md p-1.5 transition ' + (emojiPickerOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-500 hover:bg-white/[0.06] hover:text-ink-200')} aria-label="Insert emoji" aria-expanded={emojiPickerOpen}><Smile size={14} /></button>{emojiPickerOpen ? <div className="flex flex-wrap gap-1 rounded-lg border border-white/10 bg-ink-950 p-2">{['😀','😃','😄','😁','😆','😂','🤣','😊','😍','🥳','😎','🤔','😭','😮','😴','👍','👎','❤️','🔥','🎉','👏','🙏','💀','🚀'].map((emoji) => <button key={emoji} type="button" onClick={() => insertComposerEmoji(emoji)} className="rounded p-1 text-base hover:bg-white/[0.08]" aria-label={'Insert ' + emoji}>{emoji}</button>)}</div> : null}</div><textarea ref={composerRef} value={body} onChange={(event) => handleBodyChange(event.target.value)} onPaste={handleComposerPaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
+        <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-2 flex items-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] p-2">{selectedFilePreview ? <img src={selectedFilePreview} alt="Attachment preview" className="h-10 w-10 shrink-0 rounded object-cover" /> : <FileText size={16} className="shrink-0 text-primary-300" />}<div className="min-w-0 flex-1"><p className="truncate text-[10px] text-ink-200">{selectedFile.name}</p><p className="text-[9px] text-ink-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p></div><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="shrink-0 rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<div className="mb-1 flex items-center gap-1"><button type="button" onClick={() => setEmojiPickerOpen((value) => !value)} className={'rounded-md p-1.5 transition ' + (emojiPickerOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-500 hover:bg-white/[0.06] hover:text-ink-200')} aria-label="Insert emoji" aria-expanded={emojiPickerOpen}><Smile size={14} /></button>{emojiPickerOpen ? <div className="flex flex-wrap gap-1 rounded-lg border border-white/10 bg-ink-950 p-2">{['😀','😃','😄','😁','😆','😂','🤣','😊','😍','🥳','😎','🤔','😭','😮','😴','👍','👎','❤️','🔥','🎉','👏','🙏','💀','🚀'].map((emoji) => <button key={emoji} type="button" onClick={() => insertComposerEmoji(emoji)} className="rounded p-1 text-base hover:bg-white/[0.08]" aria-label={'Insert ' + emoji}>{emoji}</button>)}</div> : null}</div>{mentionQuery !== null && mentionSuggestions.length > 0 ? <div className="mb-2 max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-ink-950 p-1">{mentionSuggestions.map((entry) => { const username = entry.profile?.username || ''; const name = entry.profile?.display_name || username; return <button key={entry.user_id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => insertMention(username)} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-primary-500/10"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.07] text-[10px] text-ink-300">{name.slice(0, 1).toUpperCase()}</span><span className="min-w-0"><span className="block truncate text-[10px] text-ink-200">{name}</span><span className="block text-[9px] text-ink-500">@{username}</span></span></button>; })}</div> : null}<textarea ref={composerRef} value={body} onChange={(event) => handleBodyChange(event.target.value, event.target.selectionStart)} onPaste={handleComposerPaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
         <button type="submit" disabled={sending || (!body.trim() && !selectedFile)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
       </form>
     </section>
