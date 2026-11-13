@@ -225,3 +225,64 @@ export async function searchChannelMessages(channelId: string, searchTerm: strin
   if (error) throw error;
   return ((data ?? []) as Message[]).reverse();
 }
+
+
+export interface ChannelNotificationPreference {
+  channel_id: string;
+  user_id: string;
+  is_muted: boolean;
+  muted_until: string | null;
+  updated_at: string;
+}
+
+export async function fetchChannelNotificationPreference(
+  channelId: string,
+): Promise<ChannelNotificationPreference | null> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { data, error } = await supabase
+    .from('channel_notification_preferences')
+    .select('channel_id, user_id, is_muted, muted_until, updated_at')
+    .eq('channel_id', channelId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data as ChannelNotificationPreference | null;
+}
+
+export async function setChannelNotificationsMuted(
+  channelId: string,
+  mutedUntil: string | null,
+): Promise<ChannelNotificationPreference> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { data, error } = await supabase
+    .from('channel_notification_preferences')
+    .upsert({
+      channel_id: channelId,
+      user_id: user.id,
+      is_muted: true,
+      muted_until: mutedUntil,
+    }, { onConflict: 'channel_id,user_id' })
+    .select('channel_id, user_id, is_muted, muted_until, updated_at')
+    .single();
+  if (error) throw error;
+  return data as ChannelNotificationPreference;
+}
+
+export async function unmuteChannelNotifications(channelId: string): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { error } = await supabase
+    .from('channel_notification_preferences')
+    .delete()
+    .eq('channel_id', channelId)
+    .eq('user_id', user.id);
+  if (error) throw error;
+}
