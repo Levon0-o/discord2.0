@@ -19,6 +19,8 @@ import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 
 import { cn } from '@/lib/cn';
 
+import { fetchCustomRoles, fetchMemberRoles } from '@/lib/customRolesApi';
+
 import {
   createChannel,
   fetchChannels,
@@ -123,6 +125,31 @@ export function ServerDetail({
       cancelled = true;
     };
   }, [server.id]);
+
+  async function refreshMemberRoles() {
+    const [roleRows, memberRoleRows] = await Promise.all([
+      fetchCustomRoles(server.id),
+      fetchMemberRoles(server.id),
+    ]);
+
+    const rolesById = new Map(roleRows.map((role) => [role.id, role]));
+    const customRolesByMember = new Map<string, typeof roleRows>();
+
+    for (const assignment of memberRoleRows) {
+      const role = rolesById.get(assignment.role_id);
+      if (!role) continue;
+      const assigned = customRolesByMember.get(assignment.user_id) ?? [];
+      assigned.push(role);
+      customRolesByMember.set(assignment.user_id, assigned);
+    }
+
+    setMembers((current) => current.map((member) => ({
+      ...member,
+      custom_roles: (customRolesByMember.get(member.user_id) ?? []).sort(
+        (a, b) => b.position - a.position,
+      ),
+    })));
+  }
 
   const activeChannel = useMemo(
     () => channels.find((c) => c.id === activeChannelId) ?? null,
@@ -386,12 +413,18 @@ export function ServerDetail({
               <MemberRoleManager
                 serverId={server.id}
                 member={selectedMember}
-                onClose={() => setSelectedMember(null)}
+                onClose={() => {
+                  setSelectedMember(null);
+                  void refreshMemberRoles();
+                }}
               />
             ) : rolesOpen ? (
               <RoleManager
                 serverId={server.id}
-                onBack={() => setRolesOpen(false)}
+                onBack={() => {
+                  setRolesOpen(false);
+                  void refreshMemberRoles();
+                }}
               />
             ) : activeChannel ? (
               <ChannelChat
@@ -474,10 +507,20 @@ export function ServerDetail({
                         </p>
 
                         <p
-                          className="truncate text-[9px] text-ink-500"
-                          title={handle || roleLabel(member.role)}
+                          className="flex min-w-0 items-center gap-1 truncate text-[9px] text-ink-500"
+                          title={member.custom_roles?.[0]?.name || roleLabel(member.role)}
                         >
-                          {roleLabel(member.role)}
+                          {member.custom_roles?.[0] ? (
+                            <span
+                              className="truncate font-semibold"
+                              style={{ color: member.custom_roles[0].color }}
+                            >
+                              {member.custom_roles[0].icon ? `${member.custom_roles[0].icon} ` : ''}
+                              {member.custom_roles[0].name}
+                            </span>
+                          ) : (
+                            roleLabel(member.role)
+                          )}
                           {handle ? ` · ${handle}` : ''}
                         </p>
                       </div>
