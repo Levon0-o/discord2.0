@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type
 import { Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, getServerEventChatAttachmentUrl, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, uploadServerEventChatAttachment, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, uploadServerEventChatAttachment, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -16,6 +16,7 @@ interface ServerEventChatProps {
 export function ServerEventChat({ eventId, eventTitle, userId, members, onClose }: ServerEventChatProps) {
   const [messages, setMessages] = useState<ServerEventChatMessage[]>([]);
   const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);
+  const [readReceipts, setReadReceipts] = useState<ServerEventChatReadReceipt[]>([]);
   const [pins, setPins] = useState<ServerEventChatPin[]>([]);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -53,6 +54,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const lastTypingBroadcastRef = useRef(0);
+  const lastReadAtRef = useRef('');
 
   useEffect(() => {
     try {
@@ -77,8 +79,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     let active = true;
     const load = async () => {
       try {
-        const [page, reactionRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId)]);
-        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); }
+        const [page, reactionRows, receiptRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId), fetchServerEventChatReadReceipts(eventId)]);
+        const ownReceipt = await markServerEventChatRead(eventId);
+        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); setReadReceipts([...receiptRows.filter((row) => row.user_id !== userId), ownReceipt]); lastReadAtRef.current = ownReceipt.last_read_at; }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Could not load event chat.');
       } finally {
@@ -109,6 +112,20 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
+        table: 'server_event_chat_reads',
+        filter: 'event_id=eq.' + eventId,
+      }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const incoming = payload.new as ServerEventChatReadReceipt;
+          setReadReceipts((current) => [...current.filter((row) => row.user_id !== incoming.user_id), incoming]);
+        } else if (payload.eventType === 'DELETE') {
+          const removed = payload.old as { user_id?: string };
+          if (removed.user_id) setReadReceipts((current) => current.filter((row) => row.user_id !== removed.user_id));
+        }
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
         table: 'server_event_chat_reactions',
         filter: 'event_id=eq.' + eventId,
       }, (payload) => {
@@ -126,7 +143,23 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       active = false;
       void supabase.removeChannel(channel);
     };
-  }, [eventId]);
+  }, [eventId, userId]);
+
+  async function updateReadReceiptIfNeeded() {
+    const list = messageListRef.current;
+    if (!list || list.scrollHeight - list.scrollTop - list.clientHeight > 48) return;
+    const latest = messages[messages.length - 1];
+    if (!latest || latest.created_at <= lastReadAtRef.current) return;
+    const timestamp = new Date().toISOString();
+    lastReadAtRef.current = timestamp;
+    try {
+      const receipt = await markServerEventChatRead(eventId);
+      lastReadAtRef.current = receipt.last_read_at;
+      setReadReceipts((current) => [...current.filter((row) => row.user_id !== userId), receipt]);
+    } catch {
+      lastReadAtRef.current = '';
+    }
+  }
 
   useEffect(() => {
     if (!selectedFile?.type.startsWith('image/')) {
@@ -475,7 +508,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           </div>}
         </div>
       ) : null}
-      <div ref={messageListRef} className="max-h-64 min-h-32 space-y-3 overflow-y-auto p-3">
+      <div ref={messageListRef} onScroll={() => void updateReadReceiptIfNeeded()} className="max-h-64 min-h-32 space-y-3 overflow-y-auto p-3">
         {hasMore ? <div className="pb-1 text-center"><button type="button" onClick={() => void handleLoadOlder()} disabled={loadingOlder} className="rounded-md border border-white/[0.08] px-3 py-1.5 text-[10px] text-ink-400 transition hover:border-primary-400/30 hover:text-primary-200 disabled:opacity-50">{loadingOlder ? 'Loading…' : 'Load older messages'}</button></div> : null}
         {loading ? <p className="py-8 text-center text-xs text-ink-500">Loading chat…</p> : messages.length === 0 ? <div className="py-8 text-center"><MessageCircle size={20} className="mx-auto mb-2 text-ink-600" /><p className="text-xs text-ink-400">No messages yet</p><p className="mt-1 text-[10px] text-ink-600">Start coordinating with event attendees.</p></div> : messages.map((message) => {
           const member = members.find((entry) => entry.user_id === message.author_id);
@@ -523,6 +556,10 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                 >
                   <Reply size={11} /> Reply
                 </button>
+                {own && messages.filter((item) => item.author_id === userId).at(-1)?.id === message.id ? (() => {
+                  const seenCount = readReceipts.filter((receipt) => receipt.user_id !== userId && receipt.last_read_at >= message.created_at).length;
+                  return seenCount > 0 ? <p className="mt-1 text-[9px] text-ink-600">Seen by {seenCount} {seenCount === 1 ? 'attendee' : 'attendees'}</p> : null;
+                })() : null}
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {reactionOptions.map((emoji) => {
                     const matching = reactions.filter((reaction) => reaction.message_id === message.id && reaction.emoji === emoji);
