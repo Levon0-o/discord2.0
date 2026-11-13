@@ -432,6 +432,34 @@ export function DirectMessagesSection({
 
   useEffect(() => {
     let active = true;
+    const attachmentMessages = messages.filter((message) => Boolean(message.image_url));
+
+    if (attachmentMessages.length === 0) {
+      setAttachmentUrls({});
+      return () => {
+        active = false;
+      };
+    }
+
+    void Promise.all(
+      attachmentMessages.map(async (message) => {
+        try {
+          return [message.id, await getDirectMessageAttachmentUrl(message.image_url!)] as const;
+        } catch {
+          return [message.id, ''] as const;
+        }
+      })
+    ).then((entries) => {
+      if (active) setAttachmentUrls(Object.fromEntries(entries));
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [messages]);
+
+  useEffect(() => {
+    let active = true;
 
     if (!activeId || messages.length === 0) {
       setReactions([]);
@@ -1227,14 +1255,14 @@ const isGrouped =
                             </div>
                           </div>
                         ) : (
-                          {message.body && (
+                          message.body ? (
                             <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
                               {renderLinkifiedBody(message.body)}
                               {message.updated_at && new Date(message.updated_at).getTime() > new Date(message.created_at).getTime() + 1000 && (
                                 <span className="ml-2 text-[10px] text-ink-600">(edited)</span>
                               )}
                             </p>
-                          )}
+                          ) : null
                         )}
                         {message.image_url && (
                           <div className="mt-2">
