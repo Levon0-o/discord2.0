@@ -39,7 +39,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [userId, setUserId] = useState('');
   const [reactions, setReactions] = useState<ChannelMessageReaction[]>([]);
   const [pinned, setPinned] = useState<PinnedChannelMessage[]>([]);
-  const [showPins, setShowPins] = useState(false);
+  const [showPins, setShowPins] = useState(false);\n  const [showSearch, setShowSearch] = useState(false);\n  const [searchTerm, setSearchTerm] = useState('');\n  const [searchResults, setSearchResults] = useState<Message[]>([]);\n  const [searching, setSearching] = useState(false);\n  const [showMembers, setShowMembers] = useState(false);\n  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -83,6 +83,31 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   }, []);
 
   useEffect(() => { void loadMessages(); }, [loadMessages]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const presenceChannel = supabase.channel(`channel-presence:${channelId}`, {
+      config: { presence: { key: userId } },
+    });
+    const updatePresence = () => {
+      const state = presenceChannel.presenceState<{ user_id?: string }>();
+      const ids = Object.values(state).flat().map((entry) => entry.user_id).filter((id): id is string => Boolean(id));
+      setOnlineUserIds([...new Set(ids)]);
+    };
+    presenceChannel
+      .on('presence', { event: 'sync' }, updatePresence)
+      .on('presence', { event: 'join' }, updatePresence)
+      .on('presence', { event: 'leave' }, updatePresence)
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({ user_id: userId, online_at: new Date().toISOString() });
+          updatePresence();
+        }
+      });
+    return () => {
+      void supabase.removeChannel(presenceChannel);
+    };
+  }, [channelId, userId]);
 
   useEffect(() => {
     let active = true;
@@ -191,6 +216,33 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
     }
   }
 
+  async function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!searchTerm.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    setError('');
+    try {
+      setSearchResults(await searchChannelMessages(channelId, searchTerm));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not search channel messages.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function openSearchResult(message: Message) {
+    setMessages((current) => current.some((item) => item.id === message.id)
+      ? current
+      : [...current, message].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+    setShowSearch(false);
+    requestAnimationFrame(() => {
+      messageRefs.current[message.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
   async function handleReaction(messageId: string, emoji: string) {
     const active = reactions.some((item) => item.message_id === messageId && item.user_id === userId && item.emoji === emoji);
     try {
@@ -266,10 +318,59 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
             {channelTopic ? <p className="truncate text-xs text-ink-500">{channelTopic}</p> : null}
           </div>
         </div>
-        <button type="button" onClick={() => setShowPins((value) => !value)} className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition ${showPins ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.05]'}`}>
-          <Pin size={13} /> Pins <span>{pinned.length}</span>
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button type="button" title="Search channel messages" onClick={() => { setShowSearch((value) => !value); setShowMembers(false); }} className={`rounded-lg border p-2 transition ${showSearch ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.05]'}`}>
+            <Search size={15} />
+          </button>
+          <button type="button" title="Online members" onClick={() => { setShowMembers((value) => !value); setShowSearch(false); }} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition ${showMembers ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.05]'}`}>
+            <Users size={14} /> <span>{onlineUserIds.length}</span>
+          </button>
+          <button type="button" onClick={() => { setShowPins((value) => !value); setShowSearch(false); setShowMembers(false); }} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition ${showPins ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.05]'}`}>
+            <Pin size={13} /> Pins <span>{pinned.length}</span>
+          </button>
+        </div>
       </header>
+
+      {showSearch ? (
+        <div className="shrink-0 border-b border-white/[0.06] bg-ink-950/40 p-3">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search messages in this channel…" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
+            <button type="submit" disabled={searching || !searchTerm.trim()} className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{searching ? 'Searching…' : 'Search'}</button>
+          </form>
+          {searchResults.length ? (
+            <div className="mt-2 max-h-52 overflow-y-auto">
+              {searchResults.map((result) => {
+                const author = membersById.get(result.author_id);
+                return <button key={result.id} type="button" onClick={() => openSearchResult(result)} className="block w-full rounded-lg px-2 py-2 text-left transition hover:bg-white/[0.05]">
+                  <span className="block text-[11px] text-primary-300">{author?.profile?.display_name || author?.profile?.username || 'Member'} · {formatTime(result.created_at)}</span>
+                  <span className="block truncate text-xs text-ink-300">{result.body || 'Attachment'}</span>
+                </button>;
+              })}
+            </div>
+          ) : searchTerm.trim() && !searching ? <p className="mt-2 text-xs text-ink-500">No matching messages found.</p> : null}
+        </div>
+      ) : null}
+
+      {showMembers ? (
+        <div className="max-h-56 shrink-0 overflow-y-auto border-b border-white/[0.06] bg-ink-950/40 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Online members</p>
+            <span className="text-[11px] text-ink-500">{onlineUserIds.length} online</span>
+          </div>
+          {members.filter((member) => onlineUserIds.includes(member.user_id)).map((member) => {
+            const label = member.profile?.display_name || member.profile?.username || 'Member';
+            return <div key={member.user_id} className="flex items-center gap-2 rounded-lg px-2 py-1.5">
+              <span className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-xs font-semibold text-primary-200">
+                {member.profile?.avatar_url ? <img src={member.profile.avatar_url} alt="" className="h-full w-full object-cover" /> : label.slice(0, 1).toUpperCase()}
+                <Circle size={8} className="absolute bottom-0 right-0 fill-emerald-400 text-emerald-400" />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm text-ink-200">{label}</span>
+              <span className="text-[10px] text-emerald-400">Online</span>
+            </div>;
+          })}
+          {onlineUserIds.length === 0 ? <p className="px-2 py-3 text-xs text-ink-500">No members are currently online in this channel.</p> : null}
+        </div>
+      ) : null}
 
       {showPins ? (
         <div className="max-h-40 shrink-0 overflow-y-auto border-b border-white/[0.06] bg-ink-950/50 p-3">
