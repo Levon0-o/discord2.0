@@ -5,9 +5,10 @@ import { cn } from '@/lib/cn';
 interface SidebarNavProps {
   activeSection: SectionId;
   onNavigate: (id: SectionId) => void;
+  unreadNotificationCount: number;
 }
 
-export function SidebarNav({ activeSection, onNavigate }: SidebarNavProps) {
+export function SidebarNav({ activeSection, onNavigate, unreadNotificationCount }: SidebarNavProps) {
   return (
     <aside className="sticky top-0 hidden h-screen w-20 shrink-0 flex-col border-r border-white/[0.06] bg-ink-950/60 px-3 py-6 backdrop-blur-xl md:flex lg:w-64 lg:px-4">
       <div className="px-2 md:flex md:justify-center lg:justify-start">
@@ -32,11 +33,18 @@ export function SidebarNav({ activeSection, onNavigate }: SidebarNavProps) {
                   : 'text-ink-300 hover:bg-white/[0.04] hover:text-ink-50'
               )}
             >
-              <Icon
+              <span className="relative flex shrink-0">
+                <Icon
                 size={20}
                 strokeWidth={isActive ? 2.25 : 2}
                 className={cn('shrink-0 transition-colors', isActive ? 'text-primary-300' : 'text-ink-400 group-hover:text-ink-100')}
-              />
+                />
+                {section.id === 'notifications' && unreadNotificationCount > 0 && (
+                  <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-4 text-white">
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </span>
+                )}
+              </span>
               <span className="md:hidden lg:inline">{section.label}</span>
             </button>
           );
