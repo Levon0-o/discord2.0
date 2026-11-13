@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { MessageCircle, Send, Trash2, X } from 'lucide-react';
+import { MessageCircle, Reply, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
 import { deleteServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatReactions, sendServerEventChatMessage, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
@@ -17,6 +17,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [messages, setMessages] = useState<ServerEventChatMessage[]>([]);
   const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);
   const [body, setBody] = useState('');
+  const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -84,9 +85,10 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setSending(true);
     setError('');
     try {
-      const created = await sendServerEventChatMessage(eventId, body);
+      const created = await sendServerEventChatMessage(eventId, body, replyingTo?.id);
       setMessages((current) => current.some((message) => message.id === created.id) ? current : [...current, created]);
       setBody('');
+      setReplyingTo(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send message.');
     } finally {
@@ -135,11 +137,32 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           const label = member?.profile?.display_name || member?.profile?.username || 'Server member';
           const own = message.author_id === userId;
           return (
-            <article key={message.id} className="group flex items-start gap-2">
+            <article id={"event-chat-message-" + message.id} key={message.id} className="group flex items-start gap-2">
               {member?.profile?.avatar_url ? <img src={member.profile.avatar_url} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover" /> : <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.07] text-[10px] text-ink-300">{label.slice(0, 1).toUpperCase()}</span>}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-[11px] font-semibold text-ink-200">{label}</span><time className="text-[9px] text-ink-600">{new Date(message.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</time></div>
+                {message.reply_to_id ? (() => {
+                  const parent = messages.find((item) => item.id === message.reply_to_id);
+                  const parentMember = parent ? members.find((entry) => entry.user_id === parent.author_id) : undefined;
+                  const parentName = parentMember?.profile?.display_name || parentMember?.profile?.username || 'Server member';
+                  return parent ? (
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('event-chat-message-' + parent.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                      className="mt-1 block max-w-full truncate rounded border-l-2 border-primary-400/50 bg-white/[0.03] px-2 py-1 text-left text-[10px] text-ink-400 hover:bg-white/[0.06]"
+                    >
+                      Replying to <span className="font-semibold text-ink-300">{parentName}</span>: {parent.body}
+                    </button>
+                  ) : <p className="mt-1 text-[10px] text-ink-600">Reply to a message that is no longer available</p>;
+                })() : null}
                 <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p>
+                <button
+                  type="button"
+                  onClick={() => setReplyingTo(message)}
+                  className="mt-1 inline-flex items-center gap-1 text-[10px] text-ink-500 transition hover:text-primary-300"
+                >
+                  <Reply size={11} /> Reply
+                </button>
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {reactionOptions.map((emoji) => {
                     const matching = reactions.filter((reaction) => reaction.message_id === message.id && reaction.emoji === emoji);
@@ -165,6 +188,15 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         <div ref={bottomRef} />
       </div>
       {error ? <p role="alert" className="border-t border-red-400/10 bg-red-400/[0.05] px-3 py-2 text-[10px] text-red-300">{error}</p> : null}
+      {replyingTo ? (
+        <div className="flex items-center justify-between gap-2 border-t border-white/[0.07] bg-primary-500/[0.05] px-3 py-2">
+          <div className="min-w-0 text-[10px] text-ink-400">
+            Replying to <span className="font-semibold text-primary-200">{members.find((entry) => entry.user_id === replyingTo.author_id)?.profile?.display_name || members.find((entry) => entry.user_id === replyingTo.author_id)?.profile?.username || 'Server member'}</span>
+            <p className="truncate text-ink-500">{replyingTo.body}</p>
+          </div>
+          <button type="button" onClick={() => setReplyingTo(null)} className="shrink-0 rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-ink-200" aria-label="Cancel reply"><X size={12} /></button>
+        </div>
+      ) : null}
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
         <textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 flex-1 resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
         <button type="submit" disabled={sending || !body.trim()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
