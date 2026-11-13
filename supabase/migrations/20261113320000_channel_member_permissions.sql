@@ -65,6 +65,12 @@ WITH CHECK (
     WHERE c.id = channel_member_permissions.channel_id
       AND public.server_rank(c.server_id) >= 3
   )
+  AND EXISTS (
+    SELECT 1 FROM public.server_members sm
+    JOIN public.channels c ON c.server_id = sm.server_id
+    WHERE c.id = channel_member_permissions.channel_id
+      AND sm.user_id = channel_member_permissions.user_id
+  )
 );
 
 DROP POLICY IF EXISTS channel_member_permissions_delete_admins ON public.channel_member_permissions;
@@ -147,15 +153,18 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT public.can_moderate_channel(p_channel_id)
-    OR COALESCE(
-      (
-        SELECT cmp.can_manage_messages
-        FROM public.channel_member_permissions cmp
-        WHERE cmp.channel_id = p_channel_id
-          AND cmp.user_id = auth.uid()
-      ),
-      false
+  SELECT public.can_view_channel(p_channel_id)
+    AND (
+      public.can_moderate_channel(p_channel_id)
+      OR COALESCE(
+        (
+          SELECT cmp.can_manage_messages
+          FROM public.channel_member_permissions cmp
+          WHERE cmp.channel_id = p_channel_id
+            AND cmp.user_id = auth.uid()
+        ),
+        false
+      )
     );
 $$;
 
