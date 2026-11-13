@@ -120,6 +120,9 @@ export function ServerDetail({
   const [eventEditingId, setEventEditingId] = useState<string | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const [expandedEventAttendees, setExpandedEventAttendees] = useState<string | null>(null);
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming');
+  const [eventSort, setEventSort] = useState<'soonest' | 'latest'>('soonest');
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
@@ -127,6 +130,22 @@ export function ServerDetail({
 
   const isAdminOrOwner = canManageChannels(server.my_role);
   const currentMember = members.find((member) => member.user_id === userId);
+  const filteredEvents = useMemo(() => {
+    const query = eventSearch.trim().toLocaleLowerCase();
+    return events
+      .filter((event) => {
+        const isPast = new Date(event.starts_at).getTime() < Date.now();
+        if (eventFilter === 'upcoming' && isPast) return false;
+        if (eventFilter === 'past' && !isPast) return false;
+        if (!query) return true;
+        return [event.title, event.description, event.location]
+          .some((value) => value.toLocaleLowerCase().includes(query));
+      })
+      .sort((a, b) => eventSort === 'soonest'
+        ? new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+        : new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
+  }, [events, eventSearch, eventFilter, eventSort]);
+
   const canManageRoles =
     isAdminOrOwner ||
     Boolean(
@@ -868,9 +887,25 @@ export function ServerDetail({
                   <div className="flex justify-end"><button type="submit" disabled={eventBusy || !eventTitle.trim() || !eventStartsAt} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{eventBusy ? 'Saving…' : eventEditingId ? 'Save changes' : 'Create event'}</button></div>
                 </form>
               ) : null}
-              {eventsLoading ? <div className="py-10 text-center text-xs text-ink-500">Loading events…</div> : events.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays size={25} className="mx-auto mb-2 text-ink-600" /><p className="text-sm font-medium text-ink-300">No events scheduled</p><p className="mt-1 text-xs text-ink-500">Events created for this server will appear here.</p></div> : (
+              {events.length > 0 ?               <div className="space-y-2 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                <input value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} placeholder="Search events, descriptions or locations…" aria-label="Search events" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex gap-1 rounded-lg bg-ink-900 p-1">
+                    {(['upcoming', 'all', 'past'] as const).map((filter) => (
+                      <button key={filter} type="button" onClick={() => setEventFilter(filter)} className={'rounded-md px-2.5 py-1.5 text-[10px] font-semibold capitalize transition ' + (eventFilter === filter ? 'bg-primary-500/20 text-primary-200' : 'text-ink-500 hover:text-ink-200')}>{filter}</button>
+                    ))}
+                  </div>
+                  <select value={eventSort} onChange={(e) => setEventSort(e.target.value as 'soonest' | 'latest')} aria-label="Sort events" className="rounded-lg border border-white/10 bg-ink-900 px-2.5 py-2 text-[10px] text-ink-300 outline-none focus:border-primary-400/50">
+                    <option value="soonest">Soonest first</option>
+                    <option value="latest">Latest first</option>
+                  </select>
+                </div>
+                <p className="text-[10px] text-ink-600">Showing {filteredEvents.length} of {events.length} events</p>
+              </div>
+ : null}
+              {eventsLoading ? <div className="py-10 text-center text-xs text-ink-500">Loading events…</div> : events.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays size={25} className="mx-auto mb-2 text-ink-600" /><p className="text-sm font-medium text-ink-300">No events scheduled</p><p className="mt-1 text-xs text-ink-500">Events created for this server will appear here.</p></div> : filteredEvents.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><p className="text-sm font-medium text-ink-300">No matching events</p><p className="mt-1 text-xs text-ink-500">Try another search or change the date filter.</p></div> : (
                 <div className="space-y-3">
-                  {events.map((item) => {
+                  {filteredEvents.map((item) => {
                     const ownStatus = item.rsvps.find((rsvp) => rsvp.user_id === userId)?.status;
                     const going = item.rsvps.filter((rsvp) => rsvp.status === 'going').length;
                     const interested = item.rsvps.filter((rsvp) => rsvp.status === 'interested').length;
