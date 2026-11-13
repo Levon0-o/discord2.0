@@ -237,3 +237,36 @@ export async function markServerEventChatRead(eventId: string): Promise<ServerEv
   if (error) throw error;
   return data as ServerEventChatReadReceipt;
 }
+
+
+export interface ServerEventChatSavedMessage {
+  event_id: string;
+  message_id: string;
+  user_id: string;
+  author_id: string;
+  body: string;
+  saved_at: string;
+}
+
+export async function fetchServerEventChatSavedMessages(eventId: string): Promise<ServerEventChatSavedMessage[]> {
+  const { data, error } = await supabase
+    .from('server_event_chat_saved_messages')
+    .select('event_id, message_id, user_id, author_id, body, saved_at')
+    .eq('event_id', eventId)
+    .order('saved_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ServerEventChatSavedMessage[];
+}
+
+export async function toggleServerEventChatSavedMessage(eventId: string, messageId: string, saved: boolean): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  if (saved) {
+    const { error } = await supabase.from('server_event_chat_saved_messages').insert({ event_id: eventId, message_id: messageId, user_id: user.id });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('server_event_chat_saved_messages').delete().eq('event_id', eventId).eq('message_id', messageId).eq('user_id', user.id);
+    if (error) throw error;
+  }
+}
