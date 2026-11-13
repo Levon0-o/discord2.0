@@ -301,3 +301,42 @@ export async function unmuteChannelNotifications(channelId: string): Promise<voi
     .eq('user_id', user.id);
   if (error) throw error;
 }
+
+
+export interface SavedChannelMessage {
+  channel_id: string;
+  message_id: string;
+  user_id: string;
+  saved_at: string;
+}
+
+export async function fetchSavedChannelMessages(channelId: string): Promise<SavedChannelMessage[]> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  const { data, error } = await supabase
+    .from('channel_saved_messages')
+    .select('channel_id, message_id, user_id, saved_at')
+    .eq('channel_id', channelId)
+    .eq('user_id', user.id)
+    .order('saved_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as SavedChannelMessage[];
+}
+
+export async function toggleSavedChannelMessage(
+  channelId: string,
+  messageId: string,
+  saved: boolean,
+): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  const result = saved
+    ? await supabase.from('channel_saved_messages').delete()
+        .eq('channel_id', channelId).eq('message_id', messageId).eq('user_id', user.id)
+    : await supabase.from('channel_saved_messages').insert({
+        channel_id: channelId, message_id: messageId, user_id: user.id,
+      });
+  if (result.error) throw result.error;
+}
