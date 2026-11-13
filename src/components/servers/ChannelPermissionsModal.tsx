@@ -22,7 +22,7 @@ const PERMISSIONS: {
 }[] = [
   { key: 'can_view', label: 'View', description: 'See this channel' },
   { key: 'can_send_messages', label: 'Send', description: 'Write messages' },
-  { key: 'can_attach_files', label: 'Files', description: 'Upload attachments', defaultValue: () => true },
+  { key: 'can_attach_files', label: 'Files', description: 'Upload attachments' },
   { key: 'can_manage_messages', label: 'Manage', description: 'Moderate others’ messages' },
 ];
 
