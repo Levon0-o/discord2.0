@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText, Pencil, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText, Pencil, Trash2, Bookmark, Pin } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -26,6 +26,7 @@ interface FeedPost {
   image_url: string | null;
   media_type: 'text' | 'image' | 'video';
   created_at: string;
+  is_pinned: boolean;
   author: FeedAuthor | null;
   likes: { user_id: string }[];
   comments: { id: string }[];
@@ -53,6 +54,7 @@ export function SocialFeed() {
   const { session } = useAuth();
   const userId = session?.user.id;
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
@@ -76,7 +78,7 @@ export function SocialFeed() {
 
     const { data, error: queryError } = await supabase
       .from('posts')
-      .select('id, author_id, body, image_url, media_type, created_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
+      .select('id, author_id, body, image_url, media_type, created_at, is_pinned, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
       .is('server_id', null)
       .order('created_at', { ascending: false })
       .limit(40);
@@ -86,9 +88,16 @@ export function SocialFeed() {
     } else {
       setPosts((data ?? []) as unknown as FeedPost[]);
     }
+    if (userId) {
+      const { data: savedRows, error: savedError } = await supabase.from('saved_posts').select('post_id').eq('user_id', userId);
+      if (savedError) setError(savedError.message);
+      else setSavedPostIds((savedRows ?? []).map((row) => row.post_id));
+    } else {
+      setSavedPostIds([]);
+    }
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     void loadPosts();
@@ -130,6 +139,27 @@ export function SocialFeed() {
     if (result.error) setError(result.error.message);
     else await loadPosts(true);
     setLikeBusy(null);
+  };
+
+  const toggleSaved = async (postId: string) => {
+    if (!userId || contentBusy) return;
+    const isSaved = savedPostIds.includes(postId);
+    setContentBusy(postId);
+    const result = isSaved
+      ? await supabase.from('saved_posts').delete().eq('user_id', userId).eq('post_id', postId)
+      : await supabase.from('saved_posts').insert({ user_id: userId, post_id: postId });
+    if (result.error) setError(result.error.message);
+    else setSavedPostIds((current) => isSaved ? current.filter((id) => id !== postId) : [...current, postId]);
+    setContentBusy(null);
+  };
+
+  const togglePin = async (post: FeedPost) => {
+    if (!userId || post.author_id !== userId || contentBusy) return;
+    setContentBusy(post.id);
+    const { error: updateError } = await supabase.from('posts').update({ is_pinned: !post.is_pinned }).eq('id', post.id).eq('author_id', userId);
+    if (updateError) setError(updateError.message);
+    else setPosts((current) => current.map((item) => item.id === post.id ? { ...item, is_pinned: !item.is_pinned } : item));
+    setContentBusy(null);
   };
 
   const savePostEdit = async (postId: string) => {
@@ -286,6 +316,10 @@ export function SocialFeed() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-ink-100">{authorName}</p>
                     <p className="text-xs text-ink-500">@{post.author?.username || 'user'} · {timeAgo(post.created_at)}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => void toggleSaved(post.id)} aria-label={savedPostIds.includes(post.id) ? 'Remove bookmark' : 'Save post'} className={`rounded-lg p-2 transition hover:bg-white/[0.06] ${savedPostIds.includes(post.id) ? 'text-primary-300' : 'text-ink-400 hover:text-primary-300'}`}><Bookmark size={14} className={savedPostIds.includes(post.id) ? 'fill-current' : ''} /></button>
+                    {post.author_id === userId && <button type="button" onClick={() => void togglePin(post)} disabled={contentBusy === post.id} aria-label={post.is_pinned ? 'Unpin post from profile' : 'Pin post to profile'} className={`rounded-lg p-2 transition hover:bg-white/[0.06] ${post.is_pinned ? 'text-primary-300' : 'text-ink-400 hover:text-primary-300'}`}><Pin size={14} className={post.is_pinned ? 'fill-current' : ''} /></button>}
                   </div>
                   {post.author_id === userId && <div className="flex shrink-0 items-center gap-1">
                     <button type="button" onClick={() => { setEditingPostId(post.id); setPostEditDraft(post.body); }} aria-label="Edit post" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-primary-300"><Pencil size={14} /></button>
