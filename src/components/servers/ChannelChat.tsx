@@ -241,7 +241,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   }
 
   const pinnedMessages = pinned.map((item) => messagesById.get(item.message_id)).filter((item): item is Message => Boolean(item));
-  const mentionMatch = messageText.match(/(?:^|\\s)@([a-zA-Z0-9_]*)$/);
+  const mentionMatch = messageText.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/);
   const mentionQuery = mentionMatch?.[1]?.toLowerCase() ?? '';
   const mentionSuggestions = mentionMatch
     ? members.filter((member) => {
@@ -253,7 +253,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const canMentionEveryone = members.some((member) => member.user_id === userId && ['owner', 'admin', 'moderator'].includes(member.role));
 
   function insertMention(username: string) {
-    setMessageText((current) => current.replace(/(^|\\s)@[a-zA-Z0-9_]*$/, `$1@${username} `));
+    setMessageText((current) => current.replace(/(^|\s)@[a-zA-Z0-9_]*$/, `$1@${username} `));
   }
 
   return (
