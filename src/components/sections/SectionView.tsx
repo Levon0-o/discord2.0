@@ -5,6 +5,7 @@ import { ServersSection } from '@/components/servers/ServersSection';
 import { DirectMessagesSection } from '@/components/messages/DirectMessagesSection';
 import { NotificationsSection } from '@/components/sections/NotificationsSection';
 import { ExploreSection } from '@/components/sections/ExploreSection';
+import { SavedSection } from '@/components/sections/SavedSection';
 import type { NavSection, SectionId } from '@/config/navigation';
 
 interface SectionViewProps {
@@ -37,6 +38,10 @@ export function SectionView({
 
   if (section.id === 'servers') {
     return <ServersSection />;
+  }
+
+  if (section.id === 'saved') {
+    return <SavedSection />;
   }
 
   if (section.id === 'notifications') {
