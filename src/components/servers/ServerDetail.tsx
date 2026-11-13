@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
   Hash,
   Lock,
   LogOut,
@@ -9,6 +11,7 @@ import {
   Settings2,
   Shield,
   Pencil,
+  Trash2,
   Users,
 } from 'lucide-react';
 
@@ -25,6 +28,8 @@ import { fetchCustomRoles, fetchMemberRoles } from '@/lib/customRolesApi';
 import {
   createChannel,
   updateChannel,
+  reorderChannel,
+  deleteChannel,
   fetchChannels,
   fetchServerMembers,
   leaveServer,
@@ -85,6 +90,10 @@ export function ServerDetail({
   const [editRestricted, setEditRestricted] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
+  const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [reorderingChannelId, setReorderingChannelId] = useState<string | null>(null);
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
@@ -264,6 +273,38 @@ export function ServerDetail({
     setEditCategory(channel.category);
     setEditRestricted(channel.is_restricted);
     setEditError('');
+  }
+
+  async function handleReorderChannel(channel: Channel, direction: 'up' | 'down') {
+    setReorderingChannelId(channel.id);
+    setError('');
+    try {
+      await reorderChannel(server.id, channel.id, direction);
+      setChannels(await fetchChannels(server.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reorder channel.');
+    } finally {
+      setReorderingChannelId(null);
+    }
+  }
+
+  async function handleDeleteChannel() {
+    if (!deletingChannel) return;
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      await deleteChannel(deletingChannel.id);
+      const refreshed = await fetchChannels(server.id);
+      setChannels(refreshed);
+      if (activeChannelId === deletingChannel.id) {
+        setActiveChannelId(refreshed[0]?.id ?? null);
+      }
+      setDeletingChannel(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete channel.');
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function handleUpdateChannel(event: FormEvent<HTMLFormElement>) {
@@ -467,14 +508,45 @@ export function ServerDetail({
                               )}
                             </button>
                             {isAdminOrOwner && (
-                              <button
-                                type="button"
-                                title={`Edit #${channel.name}`}
-                                onClick={() => openChannelEditor(channel)}
-                                className="ml-1 rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300"
-                              >
-                                <Pencil size={11} />
-                              </button>
+                              <div className="ml-1 flex shrink-0 items-center">
+                                <button
+                                  type="button"
+                                  title="Move channel up in category"
+                                  disabled={reorderingChannelId !== null || list[0]?.id === channel.id}
+                                  onClick={() => void handleReorderChannel(channel, 'up')}
+                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300 disabled:opacity-25"
+                                >
+                                  <ArrowUp size={11} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Move channel down in category"
+                                  disabled={reorderingChannelId !== null || list[list.length - 1]?.id === channel.id}
+                                  onClick={() => void handleReorderChannel(channel, 'down')}
+                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300 disabled:opacity-25"
+                                >
+                                  <ArrowDown size={11} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={`Edit #${channel.name}`}
+                                  onClick={() => openChannelEditor(channel)}
+                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300"
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={`Delete #${channel.name}`}
+                                  onClick={() => {
+                                    setDeleteError('');
+                                    setDeletingChannel(channel);
+                                  }}
+                                  className="rounded p-1 text-ink-600 transition hover:bg-red-400/10 hover:text-red-300"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
                             )}
                           </li>
                         );
@@ -625,6 +697,24 @@ export function ServerDetail({
         </div>
       )}
 
+
+
+      {deletingChannel && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+          <div role="alertdialog" aria-modal="true" className="w-full max-w-sm space-y-4 rounded-2xl border border-red-400/20 bg-ink-900 p-5 shadow-2xl">
+            <div>
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-red-400/10 text-red-300"><Trash2 size={18} /></div>
+              <h2 className="text-base font-semibold text-ink-50">Delete #{deletingChannel.name}?</h2>
+              <p className="mt-2 text-sm leading-relaxed text-ink-400">This permanently deletes the channel and its message history, attachments, pins and channel settings. This action cannot be undone.</p>
+            </div>
+            {deleteError && <p role="alert" className="rounded-lg bg-red-400/10 p-2 text-xs text-red-300">{deleteError}</p>}
+            <div className="flex gap-2">
+              <button type="button" disabled={deleteBusy} onClick={() => setDeletingChannel(null)} className="flex-1 rounded-lg border border-white/[0.08] px-3 py-2 text-sm text-ink-300 hover:bg-white/[0.04] disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={deleteBusy} onClick={() => void handleDeleteChannel()} className="flex-1 rounded-lg bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-400 disabled:opacity-50">{deleteBusy ? 'Deleting…' : 'Delete channel'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingChannel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
