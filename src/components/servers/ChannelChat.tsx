@@ -39,7 +39,13 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [userId, setUserId] = useState('');
   const [reactions, setReactions] = useState<ChannelMessageReaction[]>([]);
   const [pinned, setPinned] = useState<PinnedChannelMessage[]>([]);
-  const [showPins, setShowPins] = useState(false);\n  const [showSearch, setShowSearch] = useState(false);\n  const [searchTerm, setSearchTerm] = useState('');\n  const [searchResults, setSearchResults] = useState<Message[]>([]);\n  const [searching, setSearching] = useState(false);\n  const [showMembers, setShowMembers] = useState(false);\n  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [showPins, setShowPins] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
