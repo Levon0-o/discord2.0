@@ -1345,7 +1345,7 @@ const isGrouped =
                     )}
 
                     <article
-                      className={`group flex min-w-0 gap-3 rounded-lg px-2 py-1 transition hover:bg-white/[0.025] ${
+                      className={`group relative flex min-w-0 gap-3 rounded-lg px-2 py-1 transition hover:bg-white/[0.035] ${
                         isGrouped ? 'mt-0' : 'mt-3'
                       }`}
                     >
@@ -1488,7 +1488,7 @@ const isGrouped =
                             )}
                           </div>
                         )}
-                        <div className="mt-2 flex flex-wrap items-center gap-1 rounded-lg opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                        <div className="mt-2 flex flex-wrap items-center gap-1 rounded-lg opacity-100 transition-opacity sm:absolute sm:right-2 sm:top-1 sm:z-20 sm:mt-0 sm:bg-ink-950/95 sm:p-1 sm:shadow-lg sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                           <button
                             type="button"
                             onClick={() => void handleCopyMessage(message)}
