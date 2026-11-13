@@ -527,6 +527,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <button type="button" onClick={() => { setSearchOpen((value) => !value); setPinnedOpen(false); }} className={'rounded-md p-1.5 transition ' + (searchOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-label="Search event chat" aria-expanded={searchOpen}><Search size={13} /></button>
           <button type="button" onClick={() => { setSavedOpen((value) => !value); setPinnedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (savedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={savedOpen}><Bookmark size={12} /> Saved {savedMessages.length}</button>
           <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
+          {canModerate ? <button type="button" onClick={() => { setReportsOpen((value) => !value); setPinnedOpen(false); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (reportsOpen ? 'bg-amber-500/15 text-amber-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={reportsOpen}><Flag size={12} /> Reports {reports.filter((report) => report.status === 'open').length}</button> : null}
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
         </div>
       </div>
@@ -554,6 +555,20 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
               const name = author?.profile?.display_name || author?.profile?.username || 'Server member';
               return <button key={pin.message_id} type="button" onClick={() => document.getElementById('event-chat-message-' + message.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className="block w-full rounded-md bg-white/[0.03] px-2.5 py-2 text-left hover:bg-white/[0.07]"><span className="block text-[10px] font-semibold text-ink-300">{name}</span><span className="block truncate text-[10px] text-ink-500">{message.body}</span></button>;
             })}
+          </div>}
+        </div>
+      ) : null}
+      {reportsOpen && canModerate ? (
+        <div className="border-b border-white/[0.07] bg-amber-500/[0.04] p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200"><Flag size={11} /> Message reports</p>
+          {reports.length === 0 ? <p className="text-[10px] text-ink-500">No reports submitted for this event.</p> : <div className="max-h-52 space-y-2 overflow-y-auto">
+            {reports.map((report) => <div key={report.id} className="rounded-md border border-white/[0.07] bg-white/[0.03] p-2.5">
+              <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold text-ink-200">{report.reason.replaceAll('_', ' ')}</span><span className={'text-[9px] uppercase ' + (report.status === 'open' ? 'text-amber-300' : 'text-ink-500')}>{report.status}</span></div>
+              <p className="mt-1 whitespace-pre-wrap break-words text-[10px] text-ink-400">{report.message_body || 'Attachment-only message'}</p>
+              {report.details ? <p className="mt-1 text-[10px] text-ink-500">Details: {report.details}</p> : null}
+              <p className="mt-1 text-[9px] text-ink-600">Reported {new Date(report.created_at).toLocaleString()}</p>
+              {report.status === 'open' ? <div className="mt-2 flex gap-1.5"><button type="button" onClick={() => void handleReviewReport(report.id, 'resolved')} className="rounded bg-emerald-500/10 px-2 py-1 text-[9px] text-emerald-200 hover:bg-emerald-500/20">Resolve</button><button type="button" onClick={() => void handleReviewReport(report.id, 'dismissed')} className="rounded bg-white/[0.06] px-2 py-1 text-[9px] text-ink-400 hover:bg-white/[0.1]">Dismiss</button></div> : null}
+            </div>)}
           </div>}
         </div>
       ) : null}
@@ -614,6 +629,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                   </>
                 )}
                 {own && editingId !== message.id ? <button type="button" onClick={() => startEditing(message)} className="mt-1 mr-2 inline-flex items-center gap-1 text-[10px] text-ink-500 transition hover:text-primary-300"><Pencil size={10} /> Edit</button> : null}
+                {!own ? <button type="button" onClick={() => { setReportingMessage(message); setReportReason('spam'); setReportDetails(''); }} className="mt-1 mr-2 inline-flex items-center gap-1 text-[10px] text-ink-500 transition hover:text-amber-300" aria-label="Report message"><Flag size={10} /> Report</button> : null}
                 <button type="button" onClick={() => void handleSaveMessage(message)} className={'mt-1 mr-2 inline-flex items-center gap-1 text-[10px] transition ' + (savedMessages.some((saved) => saved.message_id === message.id) ? 'text-primary-300' : 'text-ink-500 hover:text-primary-300')} aria-label={savedMessages.some((saved) => saved.message_id === message.id) ? 'Remove saved message' : 'Save message'}><Bookmark size={10} /> {savedMessages.some((saved) => saved.message_id === message.id) ? 'Saved' : 'Save'}</button>
                 <button
                   type="button"
@@ -662,6 +678,15 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <button type="button" onClick={() => setReplyingTo(null)} className="shrink-0 rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-ink-200" aria-label="Cancel reply"><X size={12} /></button>
         </div>
       ) : null}
+      {reportingMessage ? <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink-950/85 p-4">
+        <form onSubmit={(event) => void handleSubmitReport(event)} className="w-full max-w-sm space-y-3 rounded-xl border border-white/10 bg-ink-900 p-4 shadow-2xl">
+          <div className="flex items-center justify-between"><h3 className="flex items-center gap-2 text-xs font-semibold text-ink-100"><AlertTriangle size={14} className="text-amber-300" /> Report message</h3><button type="button" onClick={() => setReportingMessage(null)} className="rounded p-1 text-ink-500 hover:bg-white/[0.06]" aria-label="Close report dialog"><X size={13} /></button></div>
+          <p className="line-clamp-3 rounded-md bg-white/[0.04] p-2 text-[10px] text-ink-400">{reportingMessage.body || 'Attachment-only message'}</p>
+          <label className="block text-[10px] text-ink-400">Reason<select value={reportReason} onChange={(event) => setReportReason(event.target.value as ServerEventChatReportReason)} className="mt-1 w-full rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100"><option value="spam">Spam</option><option value="harassment">Harassment or bullying</option><option value="hate_or_discrimination">Hate or discrimination</option><option value="inappropriate_content">Inappropriate content</option><option value="threats">Threats</option><option value="other">Other</option></select></label>
+          <label className="block text-[10px] text-ink-400">Additional details (optional)<textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} maxLength={500} rows={3} placeholder="Add context for moderators…" className="mt-1 w-full rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></label>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setReportingMessage(null)} className="rounded-md px-3 py-2 text-[10px] text-ink-400 hover:bg-white/[0.06]">Cancel</button><button type="submit" disabled={reportSubmitting} className="rounded-md bg-amber-500/15 px-3 py-2 text-[10px] font-semibold text-amber-200 hover:bg-amber-500/25 disabled:opacity-50">{reportSubmitting ? 'Submitting…' : 'Submit report'}</button></div>
+        </form>
+      </div> : null}
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
         <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => selectAttachment(event.target.files?.[0])} />
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-ink-400 transition hover:border-primary-400/40 hover:text-primary-200 disabled:opacity-40" aria-label="Attach file"><Paperclip size={14} /></button>
