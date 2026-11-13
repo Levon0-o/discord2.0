@@ -459,3 +459,37 @@ export async function forwardChannelMessage(input: {
   ].join('\n');
   return sendChannelMessage(input.targetChannelId, forwardedBody);
 }
+
+
+export interface ChannelAnnouncement {
+  message_id: string;
+  channel_id: string;
+  created_by: string;
+  title: string;
+  created_at: string;
+}
+
+export async function fetchChannelAnnouncements(channelId: string): Promise<ChannelAnnouncement[]> {
+  const { data, error } = await supabase
+    .from('channel_announcements')
+    .select('message_id, channel_id, created_by, title, created_at')
+    .eq('channel_id', channelId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as ChannelAnnouncement[];
+}
+
+export async function createChannelAnnouncement(input: {
+  channelId: string;
+  title: string;
+  body: string;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc('create_channel_announcement', {
+    p_channel_id: input.channelId,
+    p_title: input.title,
+    p_body: input.body,
+  });
+  if (error) throw error;
+  if (typeof data !== 'string' || !data) throw new Error('Announcement was created but its message ID could not be read.');
+  return data;
+}
