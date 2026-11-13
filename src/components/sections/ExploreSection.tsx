@@ -36,6 +36,7 @@ interface ExploreProfile {
   instagram_url: string | null;
   twitch_url: string | null;
   youtube_url: string | null;
+  profile_theme: 'blue' | 'violet' | 'crimson' | 'emerald' | 'amber';
   created_at: string;
 }
 
@@ -62,6 +63,14 @@ interface ExplorePost {
   likes: { user_id: string }[];
   comments: { id: string }[];
 }
+
+const profileThemePanels = {
+  blue: 'from-sky-500/35 via-ink-800 to-ink-900',
+  violet: 'from-violet-500/35 via-ink-800 to-ink-900',
+  crimson: 'from-rose-500/35 via-ink-800 to-ink-900',
+  emerald: 'from-emerald-500/35 via-ink-800 to-ink-900',
+  amber: 'from-amber-500/35 via-ink-800 to-ink-900',
+} as const;
 
 function authorName(author: ExploreAuthor | null) {
   return author?.display_name || author?.username || 'AFTERDARK user';
@@ -109,6 +118,7 @@ export function ExploreSection() {
   const [contentBusy, setContentBusy] = useState<string | null>(null);
   const [profile, setProfile] = useState<ExploreProfile | null>(null);
   const [profilePosts, setProfilePosts] = useState<ExploreProfilePost[]>([]);
+  const [profileContentTab, setProfileContentTab] = useState<'all' | 'videos'>('all');
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileStats, setProfileStats] = useState({ followers: 0, following: 0 });
@@ -174,6 +184,8 @@ export function ExploreSection() {
     void run();
     return () => { active = false; };
   }, [search, tab]);
+
+  const visibleProfilePosts = profileContentTab === 'videos' ? profilePosts.filter((item) => item.media_type === 'video') : profilePosts;
 
   const visiblePosts = useMemo(() => {
     let result = [...posts];
@@ -346,7 +358,7 @@ export function ExploreSection() {
     setProfileError('');
     setProfileLoading(true);
     const [profileResult, postsResult, followersResult, followingResult, followResult] = await Promise.all([
-      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, created_at').eq('id', profileId).maybeSingle(),
+      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at').eq('id', profileId).maybeSingle(),
       supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
       supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', profileId),
@@ -627,7 +639,7 @@ export function ExploreSection() {
             </div>
             {profileLoading ? <div className="flex items-center justify-center gap-3 py-20 text-sm text-ink-400"><Loader2 size={18} className="animate-spin" />Loading profile…</div> : profile ? (
               <>
-                <div className="relative h-36 bg-gradient-to-br from-primary-500/35 via-ink-800 to-ink-900 sm:h-48">
+                <div className={`relative h-36 bg-gradient-to-br ${profileThemePanels[profile.profile_theme ?? 'blue']} sm:h-48`}>
                   {profile.banner_url && <img src={profile.banner_url} alt="" className="h-full w-full object-cover" />}
                 </div>
                 <div className="px-5 pb-5">
@@ -653,8 +665,8 @@ export function ExploreSection() {
                   </div>
                 </div>
                 <div className="border-t border-white/[0.06] px-5 py-4">
-                  <h3 className="mb-3 text-sm font-semibold text-ink-100">Public posts</h3>
-                  {profilePosts.length === 0 ? <p className="py-8 text-center text-sm text-ink-500">No public posts yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{[...profilePosts].sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/70">
+                  <div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-ink-100">Public content</h3><div className="flex rounded-lg border border-white/[0.08] p-1"><button type="button" onClick={() => setProfileContentTab('all')} className={`rounded-md px-3 py-1.5 text-xs ${profileContentTab === 'all' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-400'}`}>All posts</button><button type="button" onClick={() => setProfileContentTab('videos')} className={`rounded-md px-3 py-1.5 text-xs ${profileContentTab === 'videos' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-400'}`}>Videos</button></div></div>
+                  {visibleProfilePosts.length === 0 ? <p className="py-8 text-center text-sm text-ink-500">{profileContentTab === 'videos' ? 'No public videos yet.' : 'No public posts yet.'}</p> : <div className="grid gap-3 sm:grid-cols-2">{[...visibleProfilePosts].sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/70">
                     {item.media_type === 'video' && item.image_url && <video src={item.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}
                     {item.media_type === 'image' && item.image_url && <img src={item.image_url} alt="Post media" loading="lazy" className="max-h-64 w-full object-cover" />}
                     {item.body && <p className="whitespace-pre-wrap break-words p-3 text-sm leading-5 text-ink-200">{item.body}</p>}
