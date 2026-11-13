@@ -6,6 +6,7 @@ import { DirectMessagesSection } from '@/components/messages/DirectMessagesSecti
 import { NotificationsSection } from '@/components/sections/NotificationsSection';
 import { ExploreSection } from '@/components/sections/ExploreSection';
 import { SavedSection } from '@/components/sections/SavedSection';
+import { ProfileSection } from '@/components/sections/ProfileSection';
 import type { NavSection, SectionId } from '@/config/navigation';
 
 interface SectionViewProps {
@@ -46,6 +47,10 @@ export function SectionView({
 
   if (section.id === 'notifications') {
     return <NotificationsSection />;
+  }
+
+  if (section.id === 'profile') {
+    return <ProfileSection />;
   }
 
   if (section.id === 'messages') {
