@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { SocialFeed } from '@/components/sections/SocialFeed';
 import { supabase } from '@/lib/supabase';
 import { fetchMyServers } from '@/lib/serversApi';
 import {
@@ -387,6 +388,8 @@ export function Dashboard({
           />
         </div>
       </section>
+
+      <SocialFeed />
 
       {/* Main content */}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.85fr)]">
