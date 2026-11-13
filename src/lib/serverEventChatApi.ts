@@ -10,15 +10,24 @@ export interface ServerEventChatMessage {
   edited_at: string | null;
 }
 
-export async function fetchServerEventChatMessages(eventId: string): Promise<ServerEventChatMessage[]> {
-  const { data, error } = await supabase
+const EVENT_CHAT_PAGE_SIZE = 50;
+
+export async function fetchServerEventChatMessages(
+  eventId: string,
+  before?: string,
+): Promise<{ messages: ServerEventChatMessage[]; hasMore: boolean }> {
+  let query = supabase
     .from('server_event_chat_messages')
     .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at')
     .eq('event_id', eventId)
-    .order('created_at', { ascending: true })
-    .limit(200);
+    .order('created_at', { ascending: false })
+    .limit(EVENT_CHAT_PAGE_SIZE + 1);
+  if (before) query = query.lt('created_at', before);
+  const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as ServerEventChatMessage[];
+  const rows = (data ?? []) as ServerEventChatMessage[];
+  const hasMore = rows.length > EVENT_CHAT_PAGE_SIZE;
+  return { messages: rows.slice(0, EVENT_CHAT_PAGE_SIZE).reverse(), hasMore };
 }
 
 export async function sendServerEventChatMessage(eventId: string, body: string, replyToId?: string | null): Promise<ServerEventChatMessage> {
