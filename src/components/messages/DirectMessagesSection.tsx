@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
   MessageSquare,
@@ -101,6 +101,7 @@ export function DirectMessagesSection({
   const [error, setError] = useState('');
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = useCallback(async () => {
     if (!userId) {
@@ -290,6 +291,63 @@ export function DirectMessagesSection({
       active = false;
     };
   }, [activeId]);
+
+  useEffect(() => {
+    if (!activeId) return;
+
+    const channel = supabase
+      .channel(`direct-messages:${activeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${activeId}`,
+        },
+        (payload) => {
+          const incoming = payload.new as Message;
+
+          setMessages((current) =>
+            current.some((message) => message.id === incoming.id)
+              ? current
+              : [...current, incoming]
+          );
+
+          setLastMessages((current) => ({
+            ...current,
+            [activeId]: incoming,
+          }));
+
+          setConversations((current) =>
+            current
+              .map((conversation) =>
+                conversation.id === activeId
+                  ? { ...conversation, last_message_at: incoming.created_at }
+                  : conversation
+              )
+              .sort((a, b) => {
+                const aTime = a.last_message_at
+                  ? new Date(a.last_message_at).getTime()
+                  : 0;
+                const bTime = b.last_message_at
+                  ? new Date(b.last_message_at).getTime()
+                  : 0;
+                return bTime - aTime;
+              })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -661,6 +719,7 @@ const isGrouped =
                   </div>
                 );
               })}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* MESSAGE INPUT */}
