@@ -10,6 +10,7 @@ alter table public.profiles add constraint profiles_profile_layout_check check (
 alter table public.profiles drop constraint if exists profiles_profile_sections_check;
 alter table public.profiles add constraint profiles_profile_sections_check check (
   jsonb_typeof(profile_sections) = 'object'
+  and profile_sections ?& array['about', 'featured', 'links', 'stats', 'posts']
   and jsonb_typeof(profile_sections->'about') = 'boolean'
   and jsonb_typeof(profile_sections->'featured') = 'boolean'
   and jsonb_typeof(profile_sections->'links') = 'boolean'
