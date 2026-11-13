@@ -19,12 +19,11 @@ const PERMISSIONS: {
   key: ChannelMemberPermissionKey;
   label: string;
   description: string;
-  defaultValue: (member: MemberWithProfile) => boolean;
 }[] = [
-  { key: 'can_view', label: 'View', description: 'See this channel', defaultValue: (member) => !member.custom_roles?.some((role) => role.permissions.view_restricted_channels) ? ['owner', 'admin', 'moderator'].includes(member.role) : true },
-  { key: 'can_send_messages', label: 'Send', description: 'Write messages', defaultValue: () => true },
+  { key: 'can_view', label: 'View', description: 'See this channel' },
+  { key: 'can_send_messages', label: 'Send', description: 'Write messages' },
   { key: 'can_attach_files', label: 'Files', description: 'Upload attachments', defaultValue: () => true },
-  { key: 'can_manage_messages', label: 'Manage', description: 'Moderate others’ messages', defaultValue: (member) => ['owner', 'admin', 'moderator'].includes(member.role) },
+  { key: 'can_manage_messages', label: 'Manage', description: 'Moderate others’ messages' },
 ];
 
 function permissionValue(value: boolean | null | undefined): string {
