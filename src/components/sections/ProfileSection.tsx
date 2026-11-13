@@ -18,6 +18,8 @@ interface ProfileData {
   user_status: 'online' | 'away' | 'busy' | 'dnd';
   status_message: string;
   featured_post_id: string | null;
+  profile_layout: 'standard' | 'creator' | 'minimal';
+  profile_sections: { about: boolean; featured: boolean; links: boolean; stats: boolean; posts: boolean };
   created_at: string;
 }
 
@@ -43,6 +45,8 @@ interface ProfileDraft {
   user_status: 'online' | 'away' | 'busy' | 'dnd';
   status_message: string;
   featured_post_id: string;
+  profile_layout: 'standard' | 'creator' | 'minimal';
+  profile_sections: { about: boolean; featured: boolean; links: boolean; stats: boolean; posts: boolean };
 }
 
 const emptyProfile: ProfileDraft = {
@@ -56,6 +60,8 @@ const emptyProfile: ProfileDraft = {
   user_status: 'online',
   status_message: '',
   featured_post_id: '',
+  profile_layout: 'standard',
+  profile_sections: { about: true, featured: true, links: true, stats: true, posts: true },
 };
 
 const badgeLabels: Record<string, { label: string; description: string }> = {
@@ -119,7 +125,7 @@ export function ProfileSection() {
     setError('');
     const [profileResult, postsResult, postCountResult, followersResult, followingResult, badgesResult] = await Promise.all([
       supabase.from('profiles')
-        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, created_at')
+        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, created_at')
         .eq('id', userId)
         .maybeSingle(),
       supabase.from('posts')
@@ -143,6 +149,8 @@ export function ProfileSection() {
         user_status: data.user_status ?? 'online',
         status_message: data.status_message ?? '',
         featured_post_id: data.featured_post_id ?? '',
+        profile_layout: data.profile_layout ?? 'standard',
+        profile_sections: data.profile_sections ?? emptyProfile.profile_sections,
         bio: data.bio ?? '',
         website_url: data.website_url ?? '',
         instagram_url: data.instagram_url ?? '',
@@ -227,9 +235,11 @@ export function ProfileSection() {
       user_status: draft.user_status,
       status_message: draft.status_message.trim(),
       featured_post_id: draft.featured_post_id || null,
+      profile_layout: draft.profile_layout,
+      profile_sections: draft.profile_sections,
       ...links,
     }).eq('id', userId)
-      .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at')
+      .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, created_at')
       .single();
     if (updateError) setError(updateError.message);
     else {
@@ -315,6 +325,14 @@ export function ProfileSection() {
               <h3 className="text-sm font-semibold text-white">Profile appearance</h3>
               <p className="mt-1 text-xs text-ink-500">Choose the accent theme shown on your public profile.</p>
               <div className="mt-3 flex flex-wrap gap-2">{themeOptions.map((theme) => <button key={theme.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_theme: theme.value }))} aria-pressed={draft.profile_theme === theme.value} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${draft.profile_theme === theme.value ? 'border-white/30 bg-white/[0.09] text-white' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.04]'}`}><span className="h-3 w-3 rounded-full" style={{ backgroundColor: theme.swatch }} />{theme.label}</button>)}</div>
+            </div>
+            <div className="border-t border-white/[0.06] pt-5">
+              <h3 className="text-sm font-semibold text-white">Profile layout</h3>
+              <p className="mt-1 text-xs text-ink-500">Choose the structure of your public profile.</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">{([{ value: 'standard', label: 'Standard', detail: 'Balanced profile' }, { value: 'creator', label: 'Creator', detail: 'Wide featured content' }, { value: 'minimal', label: 'Minimal', detail: 'Compact and clean' }] as const).map((layout) => <button key={layout.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_layout: layout.value }))} aria-pressed={draft.profile_layout === layout.value} className={`rounded-xl border p-3 text-left transition ${draft.profile_layout === layout.value ? 'border-primary-400/50 bg-primary-400/10' : 'border-white/[0.08] bg-ink-950/50 hover:bg-white/[0.04]'}`}><span className="block text-sm font-semibold text-white">{layout.label}</span><span className="mt-1 block text-[11px] text-ink-500">{layout.detail}</span></button>)}</div>
+              <h3 className="mt-5 text-sm font-semibold text-white">Visible profile sections</h3>
+              <p className="mt-1 text-xs text-ink-500">Hide sections you do not want on your public profile.</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">{([{ key: 'about', label: 'About / bio' }, { key: 'featured', label: 'Featured post' }, { key: 'links', label: 'Social links' }, { key: 'stats', label: 'Follower statistics' }, { key: 'posts', label: 'Public posts and videos' }] as const).map((section) => <label key={section.key} className="flex cursor-pointer items-center justify-between rounded-xl border border-white/[0.07] bg-ink-950/50 px-3 py-2.5 text-xs text-ink-200"><span>{section.label}</span><input type="checkbox" checked={draft.profile_sections[section.key]} onChange={(event) => setDraft((current) => ({ ...current, profile_sections: { ...current.profile_sections, [section.key]: event.target.checked } }))} className="h-4 w-4 accent-sky-400" /></label>)}</div>
             </div>
             <div className="border-t border-white/[0.06] pt-5">
               <h3 className="text-sm font-semibold text-white">Featured post</h3>
