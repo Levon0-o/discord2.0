@@ -1,6 +1,6 @@
-import { Bell, Compass, Home, MessageSquare, Settings, User, Users, type LucideIcon } from 'lucide-react';
+import { Bell, Bookmark, Compass, Home, MessageSquare, Settings, User, Users, type LucideIcon } from 'lucide-react';
 
-export const SECTION_IDS = ['feed', 'explore', 'servers', 'messages', 'notifications', 'profile', 'settings'] as const;
+export const SECTION_IDS = ['feed', 'explore', 'servers', 'messages', 'notifications', 'saved', 'profile', 'settings'] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
 
@@ -18,6 +18,7 @@ export const NAV_SECTIONS: NavSection[] = [
   { id: 'servers', label: 'Servers', description: 'Your communities, channels and invitations.', icon: Users, mobilePrimary: false },
   { id: 'messages', label: 'Messages', description: 'Private and group conversations.', icon: MessageSquare, mobilePrimary: true },
   { id: 'notifications', label: 'Notifications', description: 'Likes, comments, followers and invitations.', icon: Bell, mobilePrimary: true },
+  { id: 'saved', label: 'Saved', description: 'Posts and videos you bookmarked.', icon: Bookmark, mobilePrimary: false },
   { id: 'profile', label: 'Profile', description: 'Your public profile and posts.', icon: User, mobilePrimary: true },
   { id: 'settings', label: 'Settings', description: 'Account, appearance, language and notifications.', icon: Settings, mobilePrimary: false },
 ];
