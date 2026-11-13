@@ -15,6 +15,7 @@ import {
   Check,
   FileText,
   Image as ImageIcon,
+  Pin,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -34,11 +35,15 @@ import {
   deleteDirectMessage,
   uploadDirectMessageAttachment,
   getDirectMessageAttachmentUrl,
+  fetchPinnedDirectMessages,
+  pinDirectMessage,
+  unpinDirectMessage,
 } from '@/lib/directMessagesApi';
 import type {
   DirectConversation,
   DirectConversationMember,
   DirectMessageReaction,
+  PinnedDirectMessage,
 } from '@/lib/directMessagesApi';
 import type { Message } from '@/types/messages';
 import type { ProfileLite } from '@/types/servers';
@@ -167,6 +172,9 @@ export function DirectMessagesSection({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [messageSearch, setMessageSearch] = useState('');
+  const [pinnedMessages, setPinnedMessages] = useState<PinnedDirectMessage[]>([]);
+  const [showPinnedMessages, setShowPinnedMessages] = useState(false);
+  const [pinningMessageId, setPinningMessageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -430,6 +438,61 @@ export function DirectMessagesSection({
       active = false;
     };
   }, [activeId, markActiveConversationRead]);
+
+  useEffect(() => {
+    let active = true;
+    if (!activeId) {
+      setPinnedMessages([]);
+      return () => { active = false; };
+    }
+    void fetchPinnedDirectMessages(activeId)
+      .then((rows) => { if (active) setPinnedMessages(rows); })
+      .catch((err: unknown) => {
+        if (active) setError(err instanceof Error ? err.message : 'Could not load pinned messages.');
+      });
+    return () => { active = false; };
+  }, [activeId]);
+
+  useEffect(() => {
+    if (!activeId || !userId) return;
+    const channel = supabase
+      .channel('dm-pinned-messages:' + activeId)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conversation_pinned_messages',
+        filter: 'conversation_id=eq.' + activeId,
+      }, (payload) => {
+        const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as PinnedDirectMessage;
+        if (!row?.message_id) return;
+        if (payload.eventType === 'INSERT') {
+          setPinnedMessages((current) => current.some((item) => item.message_id === row.message_id) ? current : [row, ...current]);
+        } else if (payload.eventType === 'DELETE') {
+          setPinnedMessages((current) => current.filter((item) => item.message_id !== row.message_id));
+        }
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [activeId, userId]);
+
+  async function handleTogglePinnedMessage(messageId: string) {
+    if (!activeId || pinningMessageId) return;
+    const isPinned = pinnedMessages.some((item) => item.message_id === messageId);
+    setPinningMessageId(messageId);
+    try {
+      if (isPinned) {
+        await unpinDirectMessage(activeId, messageId);
+        setPinnedMessages((current) => current.filter((item) => item.message_id !== messageId));
+      } else {
+        const row = await pinDirectMessage(activeId, messageId);
+        setPinnedMessages((current) => current.some((item) => item.message_id === messageId) ? current : [row, ...current]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update pinned messages.');
+    } finally {
+      setPinningMessageId(null);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -1082,6 +1145,29 @@ export function DirectMessagesSection({
                   {isOtherTyping ? 'Typing…' : 'Direct message'}
                 </p>
               </div>
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPinnedMessages((value) => !value)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs transition ${showPinnedMessages ? 'border-primary-400/40 bg-primary-500/15 text-primary-200' : 'border-white/10 text-ink-400 hover:bg-white/[0.05] hover:text-ink-100'}`}
+                  aria-expanded={showPinnedMessages}
+                >
+                  <Pin size={14} />
+                  Pinned
+                  {pinnedMessages.length > 0 && <span className="rounded-full bg-primary-500/20 px-1.5 py-0.5 tabular-nums">{pinnedMessages.length}</span>}
+                </button>
+                <div className="hidden w-44 items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 sm:flex lg:w-52">
+                  <Search size={15} className="shrink-0 text-ink-500" />
+                  <input
+                    value={messageSearch}
+                    onChange={(event) => setMessageSearch(event.target.value)}
+                    placeholder="Search messages"
+                    aria-label="Search messages in this conversation"
+                    className="min-w-0 w-full bg-transparent py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500"
+                  />
+                  {messageSearch && <button type="button" onClick={() => setMessageSearch('')} aria-label="Clear message search" className="text-ink-500 hover:text-ink-200"><X size={14} /></button>}
+                </div>
+              </div>
             </header>
 
             {error && (
@@ -1091,6 +1177,32 @@ export function DirectMessagesSection({
               >
                 {error}
               </p>
+            )}
+
+            {showPinnedMessages && (
+              <section className="shrink-0 border-b border-white/[0.08] bg-ink-900/70 px-4 py-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink-400">Pinned messages</h4>
+                  <button type="button" onClick={() => setShowPinnedMessages(false)} aria-label="Close pinned messages" className="text-ink-500 hover:text-ink-200"><X size={15} /></button>
+                </div>
+                {pinnedMessages.length === 0 ? (
+                  <p className="text-xs text-ink-500">No pinned messages in this conversation.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {pinnedMessages.map((pin) => {
+                      const pinnedMessage = messages.find((message) => message.id === pin.message_id);
+                      return (
+                        <button key={pin.message_id} type="button"
+                          onClick={() => messageRefs.current.get(pin.message_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                          className="max-w-full rounded-lg border border-primary-400/20 bg-primary-500/[0.07] px-3 py-2 text-left text-xs text-ink-300 transition hover:border-primary-400/50">
+                          <span className="mr-2 text-primary-300">{pinnedMessage?.author_id === userId ? 'You' : (pinnedMessage ? profiles[pinnedMessage.author_id]?.display_name || profiles[pinnedMessage.author_id]?.username || displayName : 'Pinned')}</span>
+                          <span>{pinnedMessage?.body ? pinnedMessage.body.slice(0, 100) : 'Attachment or older message'}{(pinnedMessage?.body.length ?? 0) > 100 ? '…' : ''}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             )}
 
             {/* MESSAGES */}
@@ -1341,6 +1453,17 @@ const isGrouped =
                               </button>
                             </>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => void handleTogglePinnedMessage(message.id)}
+                            disabled={pinningMessageId === message.id}
+                            aria-pressed={pinnedMessages.some((item) => item.message_id === message.id)}
+                            className={`inline-flex min-h-7 items-center gap-1 rounded-lg border px-2 py-1 text-xs transition disabled:opacity-50 ${pinnedMessages.some((item) => item.message_id === message.id) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-400 hover:border-white/20 hover:text-ink-100'}`}
+                            title={pinnedMessages.some((item) => item.message_id === message.id) ? 'Unpin message' : 'Pin message'}
+                          >
+                            <Pin size={13} />
+                            {pinnedMessages.some((item) => item.message_id === message.id) ? 'Pinned' : 'Pin'}
+                          </button>
                           <button
                             type="button"
                             onClick={() => setReplyingTo(message)}
