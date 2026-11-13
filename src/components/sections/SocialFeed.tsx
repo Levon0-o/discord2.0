@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText } from 'lucide-react';
+import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText, Pencil, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -11,6 +11,7 @@ interface FeedAuthor {
 
 interface FeedComment {
   id: string;
+  author_id: string;
   body: string;
   image_url: string | null;
   media_type: 'text' | 'image' | 'video';
@@ -62,6 +63,11 @@ export function SocialFeed() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
   const [likeBusy, setLikeBusy] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [postEditDraft, setPostEditDraft] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [commentEditDraft, setCommentEditDraft] = useState('');
+  const [contentBusy, setContentBusy] = useState<string | null>(null);
 
   const loadPosts = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -126,10 +132,69 @@ export function SocialFeed() {
     setLikeBusy(null);
   };
 
+  const savePostEdit = async (postId: string) => {
+    const body = postEditDraft.trim();
+    if (!body || body.length > 2000 || !userId || contentBusy) return;
+    setContentBusy(postId);
+    const { error: updateError } = await supabase.from('posts').update({ body }).eq('id', postId).eq('author_id', userId);
+    if (updateError) setError(updateError.message);
+    else {
+      setEditingPostId(null);
+      setPostEditDraft('');
+      await loadPosts(true);
+    }
+    setContentBusy(null);
+  };
+
+  const deletePost = async (post: FeedPost) => {
+    if (!userId || post.author_id !== userId || contentBusy) return;
+    if (!window.confirm('Delete this post? Its comments and replies will also be deleted.')) return;
+    setContentBusy(post.id);
+    const { error: deleteError } = await supabase.from('posts').delete().eq('id', post.id).eq('author_id', userId);
+    if (deleteError) setError(deleteError.message);
+    else {
+      setPosts((current) => current.filter((item) => item.id !== post.id));
+      setComments((current) => {
+        const next = { ...current };
+        delete next[post.id];
+        return next;
+      });
+    }
+    setContentBusy(null);
+  };
+
+  const saveCommentEdit = async (postId: string, commentId: string) => {
+    const body = commentEditDraft.trim();
+    if (!body || body.length > 1000 || !userId || contentBusy) return;
+    setContentBusy(commentId);
+    const { error: updateError } = await supabase.from('comments').update({ body }).eq('id', commentId).eq('author_id', userId);
+    if (updateError) setError(updateError.message);
+    else {
+      setEditingCommentId(null);
+      setCommentEditDraft('');
+      await loadComments(postId);
+      await loadPosts(true);
+    }
+    setContentBusy(null);
+  };
+
+  const deleteComment = async (postId: string, commentId: string) => {
+    if (!userId || contentBusy) return;
+    if (!window.confirm('Delete this comment? Any replies to it will also be deleted.')) return;
+    setContentBusy(commentId);
+    const { error: deleteError } = await supabase.from('comments').delete().eq('id', commentId).eq('author_id', userId);
+    if (deleteError) setError(deleteError.message);
+    else {
+      await loadComments(postId);
+      await loadPosts(true);
+    }
+    setContentBusy(null);
+  };
+
   const loadComments = async (postId: string) => {
     const { data, error: queryError } = await supabase
       .from('comments')
-      .select('id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
+      .select('id, author_id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
 
@@ -222,10 +287,20 @@ export function SocialFeed() {
                     <p className="truncate text-sm font-semibold text-ink-100">{authorName}</p>
                     <p className="text-xs text-ink-500">@{post.author?.username || 'user'} · {timeAgo(post.created_at)}</p>
                   </div>
+                  {post.author_id === userId && <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => { setEditingPostId(post.id); setPostEditDraft(post.body); }} aria-label="Edit post" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-primary-300"><Pencil size={14} /></button>
+                    <button type="button" onClick={() => void deletePost(post)} disabled={contentBusy === post.id} aria-label="Delete post" className="rounded-lg p-2 text-ink-400 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-40"><Trash2 size={14} /></button>
+                  </div>}
                 </div>
                 {post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-[560px] w-full bg-black object-contain" />}
                 {post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="Post media" loading="lazy" className="max-h-[560px] w-full object-cover" />}
-                {post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5">{post.body}</p>}
+                {editingPostId === post.id ? <div className="space-y-2 px-4 py-3 sm:px-5">
+                  <textarea value={postEditDraft} onChange={(event) => setPostEditDraft(event.target.value.slice(0, 2000))} rows={3} maxLength={2000} className="w-full rounded-xl border border-primary-400/30 bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit post text" />
+                  <div className="flex items-center justify-between gap-2"><span className="text-[11px] text-ink-500">{postEditDraft.length}/2000</span><div className="flex gap-2">
+                    <button type="button" onClick={() => setEditingPostId(null)} className="rounded-lg px-3 py-2 text-xs text-ink-300 hover:bg-white/[0.06]">Cancel</button>
+                    <button type="button" onClick={() => void savePostEdit(post.id)} disabled={!postEditDraft.trim() || contentBusy === post.id} className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Save</button>
+                  </div></div>
+                </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5">{post.body}</p>}
                 <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2 sm:px-4">
                   <button type="button" onClick={() => void toggleLike(post)} disabled={likeBusy === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}>
                     <Heart size={16} className={liked ? 'fill-current' : ''} /> {post.likes.length} {post.likes.length === 1 ? 'like' : 'likes'}
@@ -244,7 +319,14 @@ export function SocialFeed() {
                           </div>
                           <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
                             <p className="text-xs font-semibold text-ink-200">{displayName(comment.author)} <span className="ml-1 font-normal text-ink-500">{timeAgo(comment.created_at)}</span></p>
-                            <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>
+                            {editingCommentId === comment.id ? <div className="mt-2 space-y-2">
+                              <textarea value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value.slice(0, 1000))} rows={2} maxLength={1000} className="w-full rounded-lg border border-primary-400/30 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit comment" />
+                              <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingCommentId(null)} className="rounded-lg px-2 py-1 text-[11px] text-ink-400">Cancel</button><button type="button" onClick={() => void saveCommentEdit(post.id, comment.id)} disabled={!commentEditDraft.trim() || contentBusy === comment.id} className="rounded-lg bg-primary-500 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40">Save</button></div>
+                            </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>}
+                            {comment.author_id === userId && <div className="mt-2 flex gap-3">
+                              <button type="button" onClick={() => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button>
+                              <button type="button" onClick={() => void deleteComment(post.id, comment.id)} disabled={contentBusy === comment.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button>
+                            </div>}
                           </div>
                         </div>
                       ))}
