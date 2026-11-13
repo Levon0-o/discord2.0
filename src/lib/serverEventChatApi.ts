@@ -283,3 +283,68 @@ export async function toggleServerEventChatSavedMessage(eventId: string, message
     if (error) throw error;
   }
 }
+
+
+export type ServerEventChatReportReason = 'spam' | 'harassment' | 'hate_or_discrimination' | 'inappropriate_content' | 'threats' | 'other';
+export type ServerEventChatReportStatus = 'open' | 'resolved' | 'dismissed';
+
+export interface ServerEventChatReport {
+  id: string;
+  event_id: string;
+  message_id: string;
+  reporter_id: string;
+  reported_user_id: string;
+  reason: ServerEventChatReportReason;
+  details: string;
+  message_body: string;
+  status: ServerEventChatReportStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export async function fetchServerEventChatReports(eventId: string): Promise<ServerEventChatReport[]> {
+  const { data, error } = await supabase
+    .from('server_event_chat_reports')
+    .select('id, event_id, message_id, reporter_id, reported_user_id, reason, details, message_body, status, reviewed_by, reviewed_at, created_at')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ServerEventChatReport[];
+}
+
+export async function submitServerEventChatReport(
+  message: ServerEventChatMessage,
+  reason: ServerEventChatReportReason,
+  details: string,
+): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  if (message.author_id === user.id) throw new Error('You cannot report your own message.');
+  const { error } = await supabase.from('server_event_chat_reports').insert({
+    event_id: message.event_id,
+    message_id: message.id,
+    reporter_id: user.id,
+    reported_user_id: message.author_id,
+    reason,
+    details: details.trim().slice(0, 500),
+    message_body: message.body,
+  });
+  if (error) {
+    if (error.code === '23505') throw new Error('You have already reported this message.');
+    throw error;
+  }
+}
+
+export async function reviewServerEventChatReport(reportId: string, status: Exclude<ServerEventChatReportStatus, 'open'>): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  const { error } = await supabase.from('server_event_chat_reports').update({
+    status,
+    reviewed_by: user.id,
+    reviewed_at: new Date().toISOString(),
+  }).eq('id', reportId);
+  if (error) throw error;
+}
