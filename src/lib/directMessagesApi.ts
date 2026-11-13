@@ -304,6 +304,62 @@ export async function fetchUnreadMessageCount(
 }
 
 
+
+export interface PinnedDirectMessage {
+  conversation_id: string;
+  message_id: string;
+  pinned_by: string;
+  pinned_at: string;
+}
+
+export async function fetchPinnedDirectMessages(
+  conversationId: string,
+): Promise<PinnedDirectMessage[]> {
+  const { data, error } = await supabase
+    .from('conversation_pinned_messages')
+    .select('conversation_id, message_id, pinned_by, pinned_at')
+    .eq('conversation_id', conversationId)
+    .order('pinned_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as PinnedDirectMessage[];
+}
+
+export async function pinDirectMessage(
+  conversationId: string,
+  messageId: string,
+): Promise<PinnedDirectMessage> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { data, error } = await supabase
+    .from('conversation_pinned_messages')
+    .insert({
+      conversation_id: conversationId,
+      message_id: messageId,
+      pinned_by: user.id,
+    })
+    .select('conversation_id, message_id, pinned_by, pinned_at')
+    .single();
+
+  if (error) throw error;
+  return data as PinnedDirectMessage;
+}
+
+export async function unpinDirectMessage(
+  conversationId: string,
+  messageId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('conversation_pinned_messages')
+    .delete()
+    .eq('conversation_id', conversationId)
+    .eq('message_id', messageId);
+
+  if (error) throw error;
+}
+
 export interface DirectMessageReaction {
   message_id: string;
   user_id: string;
