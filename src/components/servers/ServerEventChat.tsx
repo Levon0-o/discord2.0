@@ -24,6 +24,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [searching, setSearching] = useState(false);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [body, setBody] = useState('');
+  const draftStorageKey = 'afterdark:event-chat-draft:' + userId + ':' + eventId;
+  const [draftLoadedKey, setDraftLoadedKey] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFilePreview, setSelectedFilePreview] = useState<string | null>(null);
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string | null>>({});
@@ -47,6 +49,25 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const lastTypingBroadcastRef = useRef(0);
+
+  useEffect(() => {
+    try {
+      setBody(window.localStorage.getItem(draftStorageKey) ?? '');
+    } catch {
+      setBody('');
+    }
+    setDraftLoadedKey(draftStorageKey);
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (draftLoadedKey !== draftStorageKey) return;
+    try {
+      if (body) window.localStorage.setItem(draftStorageKey, body);
+      else window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // Draft persistence is best-effort when storage is unavailable.
+    }
+  }, [body, draftLoadedKey, draftStorageKey]);
 
   useEffect(() => {
     let active = true;
@@ -289,7 +310,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       try {
         const created = await sendServerEventChatMessage(eventId, body, replyingTo?.id, uploadedPath);
         setMessages((current) => current.some((message) => message.id === created.id) ? current : [...current, created]);
-        setBody(''); setSelectedFile(null); setFileInputKey((value) => value + 1); setReplyingTo(null);
+        setBody('');
+        try { window.localStorage.removeItem(draftStorageKey); } catch { /* Ignore unavailable storage. */ }
+        setSelectedFile(null); setFileInputKey((value) => value + 1); setReplyingTo(null);
       } catch (sendError) {
         if (uploadedPath) await removeServerEventChatAttachment(uploadedPath).catch(() => undefined);
         throw sendError;
