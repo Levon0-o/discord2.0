@@ -63,17 +63,22 @@ export function ExploreSection() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadPosts = useCallback(async (refresh = false, searchTerm = '') => {
+  const loadPosts = useCallback(async (refresh = false, searchTerm = '', trending = false) => {
     if (refresh) setRefreshing(true);
     else setLoading(true);
     setError('');
-    const { data, error: queryError } = await supabase
+    let query = supabase
       .from('posts')
       .select('id, author_id, body, image_url, media_type, created_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
       .is('server_id', null)
-      .ilike('body', `%${searchTerm}%`)
+      .ilike('body', `%${searchTerm}%`);
+    if (trending) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte('created_at', sevenDaysAgo);
+    }
+    const { data, error: queryError } = await query
       .order('created_at', { ascending: false })
-      .limit(80);
+      .limit(trending ? 200 : 80);
     if (queryError) setError(queryError.message);
     else setPosts((data ?? []) as unknown as ExplorePost[]);
     setLoading(false);
@@ -81,14 +86,14 @@ export function ExploreSection() {
   }, []);
 
   useEffect(() => {
-    void loadPosts(false, appliedPostSearch);
+    void loadPosts(false, appliedPostSearch, tab === 'trending');
     const channel = supabase
       .channel('explore-global-feed')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { void loadPosts(true, appliedPostSearch); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => { void loadPosts(true, appliedPostSearch); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [loadPosts, appliedPostSearch]);
+  }, [loadPosts, appliedPostSearch, tab]);
 
   useEffect(() => {
     let active = true;
@@ -111,7 +116,14 @@ export function ExploreSection() {
   const visiblePosts = useMemo(() => {
     let result = [...posts];
     if (tab === 'videos') result = result.filter((post) => post.media_type === 'video');
-    if (tab === 'trending') result.sort((a, b) => b.likes.length - a.likes.length || new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (tab === 'trending') {
+      const score = (post: ExplorePost) => {
+        const ageHours = Math.max(0, (Date.now() - new Date(post.created_at).getTime()) / 3_600_000);
+        const engagement = post.likes.length * 2 + post.comments.length * 3;
+        return engagement / Math.pow(ageHours + 2, 0.8);
+      };
+      result.sort((a, b) => score(b) - score(a));
+    }
     return result;
   }, [posts, tab]);
 
@@ -149,7 +161,7 @@ export function ExploreSection() {
       setVideoFile(null);
       const picker = document.getElementById('explore-video-picker') as HTMLInputElement | null;
       if (picker) picker.value = '';
-      await loadPosts(true, appliedPostSearch);
+      await loadPosts(true, appliedPostSearch, tab === 'trending');
     }
     setPublishing(false);
   };
@@ -179,7 +191,7 @@ export function ExploreSection() {
       ? await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', userId)
       : await supabase.from('likes').insert({ post_id: post.id, user_id: userId });
     if (result.error) setError(result.error.message);
-    else await loadPosts(true, appliedPostSearch);
+    else await loadPosts(true, appliedPostSearch, tab === 'trending');
     setBusyLike(null);
   };
 
@@ -221,7 +233,7 @@ export function ExploreSection() {
           const Icon = item.icon;
           return <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === item.id ? 'bg-primary-500 text-white shadow-lg shadow-primary-950/30' : 'text-ink-400 hover:bg-white/[0.05] hover:text-ink-100'}`}><Icon size={16} />{item.label}</button>;
         })}
-        <button type="button" onClick={() => void loadPosts(true, appliedPostSearch)} disabled={refreshing} className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />Refresh</button>
+        <button type="button" onClick={() => void loadPosts(true, appliedPostSearch, tab === 'trending')} disabled={refreshing} className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />Refresh</button>
       </nav>
 
       {tab !== 'people' && (
