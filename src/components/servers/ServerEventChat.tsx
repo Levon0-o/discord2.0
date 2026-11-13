@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type
 import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, deleteServerEventChatPoll, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, deleteServerEventChatPoll, updateServerEventChatPoll, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -26,6 +26,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [polls, setPolls] = useState<ServerEventChatPoll[]>([]);
   const [pollVotes, setPollVotes] = useState<ServerEventChatPollVote[]>([]);
   const [pollCreatorOpen, setPollCreatorOpen] = useState(false);
+  const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
@@ -206,9 +207,11 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     try {
       const duration = pollExpiresIn === '1h' ? 3600000 : pollExpiresIn === '24h' ? 86400000 : 604800000;
       const expiresAt = pollExpiresIn === 'never' ? null : new Date(Date.now() + duration).toISOString();
-      const poll = await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt);
+      const poll = editingPollId
+        ? await updateServerEventChatPoll(editingPollId, pollQuestion.trim(), options, pollAllowMultiple)
+        : await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt);
       setPolls((current) => [poll, ...current.filter((item) => item.id !== poll.id)]);
-      setPollQuestion(''); setPollOptions(['', '']); setPollAllowMultiple(false); setPollExpiresIn('never'); setPollCreatorOpen(false);
+      setPollQuestion(''); setPollOptions(['', '']); setPollAllowMultiple(false); setPollExpiresIn('never'); setEditingPollId(null); setPollCreatorOpen(false);
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not create poll.'); }
     finally { setPollBusy(false); }
   }
@@ -222,6 +225,15 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not submit vote.'); }
   }
 
+
+  function startEditingPoll(poll: ServerEventChatPoll) {
+    setEditingPollId(poll.id);
+    setPollQuestion(poll.question);
+    setPollOptions(poll.options.map((option) => option.label));
+    setPollAllowMultiple(poll.allow_multiple);
+    setPollExpiresIn('never');
+    setPollCreatorOpen(true);
+  }
 
   async function handleDeletePoll(poll: ServerEventChatPoll) {
     if (!window.confirm('Delete this poll and all of its votes?')) return;
@@ -694,7 +706,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           const canClose = poll.created_by === userId || canModerate;
           return <div key={poll.id} className="rounded-lg border border-white/[0.08] bg-ink-950/70 p-3">
             <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-ink-100">{poll.question}</p><p className="mt-1 text-[9px] text-ink-500">{total} {total === 1 ? 'vote' : 'votes'} · {closed ? 'Closed' : poll.allow_multiple ? 'Multiple choices' : 'Choose one'}</p></div>
-              <div className="flex shrink-0 items-center gap-1">{canClose && !closed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-ink-200">Close</button> : null}{canClose ? <button type="button" onClick={() => void handleDeletePoll(poll)} className="rounded p-1 text-ink-500 hover:bg-red-500/10 hover:text-red-300" title="Delete poll" aria-label="Delete poll"><Trash2 size={12} /></button> : null}</div>
+              <div className="flex shrink-0 items-center gap-1">{canClose && !closed && votes.length === 0 ? <button type="button" onClick={() => startEditingPoll(poll)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-primary-200">Edit</button> : null}{canClose && !closed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-ink-200">Close</button> : null}{canClose ? <button type="button" onClick={() => void handleDeletePoll(poll)} className="rounded p-1 text-ink-500 hover:bg-red-500/10 hover:text-red-300" title="Delete poll" aria-label="Delete poll"><Trash2 size={12} /></button> : null}</div>
             </div>
             <div className="mt-2 space-y-1.5">{poll.options.map((option) => {
               const count = votes.filter((vote) => vote.option_id === option.id).length;
@@ -860,15 +872,15 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
 
       {pollCreatorOpen ? <div className="absolute inset-0 z-40 flex items-center justify-center bg-ink-950/90 p-4">
         <form onSubmit={(event) => void handleCreatePoll(event)} className="w-full max-w-md space-y-3 rounded-xl border border-white/10 bg-ink-900 p-4 shadow-2xl">
-          <div className="flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold text-ink-100"><BarChart3 size={15} className="text-primary-300" /> Create event poll</h3><button type="button" onClick={() => setPollCreatorOpen(false)} className="rounded p-1 text-ink-500 hover:bg-white/[0.06]" aria-label="Close poll creator"><X size={14} /></button></div>
+          <div className="flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold text-ink-100"><BarChart3 size={15} className="text-primary-300" /> {editingPollId ? 'Edit event poll' : 'Create event poll'}</h3><button type="button" onClick={() => { setPollCreatorOpen(false); setEditingPollId(null); }} className="rounded p-1 text-ink-500 hover:bg-white/[0.06]" aria-label="Close poll creator"><X size={14} /></button></div>
           <label className="block text-[10px] text-ink-400">Question<input autoFocus value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} maxLength={200} placeholder="What should we decide?" className="mt-1 w-full rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100 outline-none focus:border-primary-400/50" /></label>
           <div className="space-y-1.5"><div className="flex items-center justify-between"><span className="text-[10px] text-ink-400">Options</span><span className="text-[9px] text-ink-600">{pollOptions.length}/6</span></div>
             {pollOptions.map((option, index) => <div key={index} className="flex gap-1.5"><input value={option} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={80} placeholder={'Option ' + (index + 1)} className="min-w-0 flex-1 rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100 outline-none focus:border-primary-400/50" />{pollOptions.length > 2 ? <button type="button" onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="rounded px-2 text-ink-500 hover:bg-white/[0.06]"><X size={13} /></button> : null}</div>)}
             {pollOptions.length < 6 ? <button type="button" onClick={() => setPollOptions((current) => [...current, ''])} className="inline-flex items-center gap-1 px-1 py-1 text-[10px] text-primary-300 hover:text-primary-200"><Plus size={11} /> Add option</button> : null}
           </div>
           <label className="flex items-center gap-2 text-[10px] text-ink-300"><input type="checkbox" checked={pollAllowMultiple} onChange={(event) => setPollAllowMultiple(event.target.checked)} className="accent-primary-400" /> Allow multiple choices</label>
-          <label className="block text-[10px] text-ink-400">Close after<select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100"><option value="never">Never</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label>
-          <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3"><button type="button" onClick={() => setPollCreatorOpen(false)} className="rounded-md px-3 py-2 text-[10px] text-ink-400 hover:bg-white/[0.06]">Cancel</button><button type="submit" disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="rounded-md bg-primary-500 px-3 py-2 text-[10px] font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{pollBusy ? 'Creating…' : 'Create poll'}</button></div>
+          {!editingPollId ? <label className="block text-[10px] text-ink-400">Close after<select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100"><option value="never">Never</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label> : <p className="text-[9px] text-ink-500">Expiration time stays unchanged when editing.</p>}
+          <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3"><button type="button" onClick={() => { setPollCreatorOpen(false); setEditingPollId(null); }} className="rounded-md px-3 py-2 text-[10px] text-ink-400 hover:bg-white/[0.06]">Cancel</button><button type="submit" disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="rounded-md bg-primary-500 px-3 py-2 text-[10px] font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{pollBusy ? (editingPollId ? 'Saving…' : 'Creating…') : (editingPollId ? 'Save changes' : 'Create poll')}</button></div>
         </form>
       </div> : null}
       {reportingMessage ? <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink-950/85 p-4">
