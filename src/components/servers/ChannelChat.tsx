@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Hash, MessageSquare, Paperclip, RefreshCw, Send } from 'lucide-react';
 import {
   fetchChannelMessages,
@@ -28,12 +28,15 @@ export function ChannelChat({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState('');
   const [userId, setUserId] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToBottomRef = useRef(true);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
+      shouldScrollToBottomRef.current = true;
       const result = await fetchChannelMessages(channelId);
       setMessages(result);
     } catch (err) {
@@ -66,6 +69,12 @@ export function ChannelChat({
     void loadMessages();
   }, [loadMessages]);
 
+  useEffect(() => {
+    if (!shouldScrollToBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    shouldScrollToBottomRef.current = false;
+  }, [messages]);
+
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -76,6 +85,7 @@ export function ChannelChat({
 
     try {
       const message = await sendChannelMessage(channelId, messageText);
+      shouldScrollToBottomRef.current = true;
       setMessages((current) => [...current, message]);
       setMessageText('');
     } catch (err) {
@@ -246,6 +256,7 @@ export function ChannelChat({
                 </article>
               );
             })}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
