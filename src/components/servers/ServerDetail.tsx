@@ -8,6 +8,7 @@ import {
   Plus,
   Settings2,
   Shield,
+  Pencil,
   Users,
 } from 'lucide-react';
 
@@ -23,6 +24,7 @@ import { fetchCustomRoles, fetchMemberRoles } from '@/lib/customRolesApi';
 
 import {
   createChannel,
+  updateChannel,
   fetchChannels,
   fetchServerMembers,
   leaveServer,
@@ -76,6 +78,13 @@ export function ServerDetail({
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editTopic, setEditTopic] = useState('');
+  const [editCategory, setEditCategory] = useState('General');
+  const [editRestricted, setEditRestricted] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState('');
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
@@ -245,6 +254,36 @@ export function ServerDetail({
       );
     } finally {
       setCreateBusy(false);
+    }
+  }
+
+  function openChannelEditor(channel: Channel) {
+    setEditingChannel(channel);
+    setEditName(channel.name);
+    setEditTopic(channel.topic);
+    setEditCategory(channel.category);
+    setEditRestricted(channel.is_restricted);
+    setEditError('');
+  }
+
+  async function handleUpdateChannel(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingChannel) return;
+    setEditBusy(true);
+    setEditError('');
+    try {
+      await updateChannel(editingChannel.id, {
+        name: editName,
+        topic: editTopic,
+        category: editCategory,
+        is_restricted: editRestricted,
+      });
+      setChannels(await fetchChannels(server.id));
+      setEditingChannel(null);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Could not update channel.');
+    } finally {
+      setEditBusy(false);
     }
   }
 
@@ -427,6 +466,16 @@ export function ServerDetail({
                                 />
                               )}
                             </button>
+                            {isAdminOrOwner && (
+                              <button
+                                type="button"
+                                title={`Edit #${channel.name}`}
+                                onClick={() => openChannelEditor(channel)}
+                                className="ml-1 rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            )}
                           </li>
                         );
                       })}
@@ -573,6 +622,36 @@ export function ServerDetail({
               )}
             </ul>
           </aside>
+        </div>
+      )}
+
+
+      {editingChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
+          <form onSubmit={(event) => void handleUpdateChannel(event)} className="w-full max-w-md space-y-4 rounded-2xl border border-white/[0.08] bg-ink-900 p-5 shadow-2xl">
+            <div>
+              <h2 className="text-lg font-semibold text-ink-50">Edit channel</h2>
+              <p className="mt-1 text-xs text-ink-400">Update the channel name, topic, category and visibility.</p>
+            </div>
+            <label className="block text-xs font-medium text-ink-300">Channel name
+              <input value={editName} onChange={(event) => setEditName(event.target.value.toLowerCase())} maxLength={50} required className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
+            </label>
+            <label className="block text-xs font-medium text-ink-300">Topic
+              <input value={editTopic} onChange={(event) => setEditTopic(event.target.value)} maxLength={200} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
+            </label>
+            <label className="block text-xs font-medium text-ink-300">Category
+              <input value={editCategory} onChange={(event) => setEditCategory(event.target.value)} maxLength={40} required className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
+            </label>
+            <label className="flex items-start gap-2 rounded-lg border border-white/[0.07] p-3 text-xs text-ink-300">
+              <input type="checkbox" checked={editRestricted} onChange={(event) => setEditRestricted(event.target.checked)} className="mt-0.5" />
+              <span><strong className="block text-ink-100">Restricted channel</strong>Only moderators and above can view this channel.</span>
+            </label>
+            {editError && <p role="alert" className="rounded-lg bg-red-400/10 p-2 text-xs text-red-300">{editError}</p>}
+            <div className="flex gap-2">
+              <button type="button" disabled={editBusy} onClick={() => setEditingChannel(null)} className="flex-1 rounded-lg border border-white/[0.08] px-3 py-2 text-sm text-ink-300 hover:bg-white/[0.04] disabled:opacity-50">Cancel</button>
+              <button type="submit" disabled={editBusy} className="flex-1 rounded-lg bg-primary-500 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-400 disabled:opacity-50">{editBusy ? 'Saving…' : 'Save changes'}</button>
+            </div>
+          </form>
         </div>
       )}
 
