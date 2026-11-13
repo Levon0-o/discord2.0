@@ -19,13 +19,19 @@ import {
   sendDirectMessage,
   markConversationAsRead,
   fetchUnreadMessageCount,
+  fetchMessageReactions,
+  addMessageReaction,
+  removeMessageReaction,
 } from '@/lib/directMessagesApi';
 import type {
   DirectConversation,
   DirectConversationMember,
+  DirectMessageReaction,
 } from '@/lib/directMessagesApi';
 import type { Message } from '@/types/messages';
 import type { ProfileLite } from '@/types/servers';
+
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉'] as const;
 
 interface DirectMessagesSectionProps {
   initialConversationId?: string | null;
@@ -92,6 +98,8 @@ export function DirectMessagesSection({
   const [profiles, setProfiles] = useState<Record<string, ProfileLite>>({});
   const [members, setMembers] = useState<DirectConversationMember[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [reactions, setReactions] = useState<DirectMessageReaction[]>([]);
+  const [reactingMessageIds, setReactingMessageIds] = useState<string[]>([]);
   const [lastMessages, setLastMessages] = useState<
     Record<string, Message | null>
   >({});
@@ -110,9 +118,11 @@ export function DirectMessagesSection({
   const lastTypingSentAtRef = useRef(0);
   const activeIdRef = useRef(activeId);
   const conversationIdsRef = useRef(new Set<string>());
+  const messageIdsRef = useRef(new Set<string>());
 
   activeIdRef.current = activeId;
   conversationIdsRef.current = new Set(conversations.map((conversation) => conversation.id));
+  messageIdsRef.current = new Set(messages.map((message) => message.id));
 
   const loadConversations = useCallback(async () => {
     if (!userId) {
@@ -359,6 +369,110 @@ export function DirectMessagesSection({
       active = false;
     };
   }, [activeId, markActiveConversationRead]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!activeId || messages.length === 0) {
+      setReactions([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    void fetchMessageReactions(messages.map((message) => message.id))
+      .then((rows) => {
+        if (active) setReactions(rows);
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Could not load message reactions.');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeId, messages]);
+
+  useEffect(() => {
+    if (!activeId || !userId) return;
+
+    const channel = supabase
+      .channel('dm-message-reactions:' + activeId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'message_reactions',
+        },
+        (payload) => {
+          const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as DirectMessageReaction;
+          if (!row?.message_id || !messageIdsRef.current.has(row.message_id)) return;
+
+          if (payload.eventType === 'INSERT') {
+            setReactions((current) =>
+              current.some((item) =>
+                item.message_id === row.message_id &&
+                item.user_id === row.user_id &&
+                item.emoji === row.emoji
+              ) ? current : [...current, row]
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setReactions((current) =>
+              current.filter((item) =>
+                !(item.message_id === row.message_id &&
+                  item.user_id === row.user_id &&
+                  item.emoji === row.emoji)
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeId, userId]);
+
+  async function handleToggleReaction(messageId: string, emoji: string) {
+    if (reactingMessageIds.includes(messageId)) return;
+
+    const existing = reactions.some((reaction) =>
+      reaction.message_id === messageId &&
+      reaction.user_id === userId &&
+      reaction.emoji === emoji
+    );
+
+    setReactingMessageIds((current) => [...current, messageId]);
+    try {
+      if (existing) {
+        await removeMessageReaction(messageId, emoji);
+        setReactions((current) =>
+          current.filter((reaction) =>
+            !(reaction.message_id === messageId &&
+              reaction.user_id === userId &&
+              reaction.emoji === emoji)
+          )
+        );
+      } else {
+        const created = await addMessageReaction(messageId, emoji);
+        setReactions((current) =>
+          current.some((reaction) =>
+            reaction.message_id === created.message_id &&
+            reaction.user_id === created.user_id &&
+            reaction.emoji === created.emoji
+          ) ? current : [...current, created]
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update reaction.');
+    } finally {
+      setReactingMessageIds((current) => current.filter((id) => id !== messageId));
+    }
+  }
 
   useEffect(() => {
     if (!activeId || !userId) return;
@@ -871,6 +985,39 @@ const isGrouped =
                         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
                           {message.body}
                         </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {QUICK_REACTIONS.map((emoji) => {
+                            const emojiReactions = reactions.filter(
+                              (reaction) =>
+                                reaction.message_id === message.id &&
+                                reaction.emoji === emoji
+                            );
+                            const reactedByMe = emojiReactions.some(
+                              (reaction) => reaction.user_id === userId
+                            );
+
+                            return (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => void handleToggleReaction(message.id, emoji)}
+                                disabled={reactingMessageIds.includes(message.id)}
+                                aria-label={`React with ${emoji}`}
+                                aria-pressed={reactedByMe}
+                                className={`inline-flex min-h-7 items-center gap-1 rounded-lg border px-2 py-1 text-xs transition disabled:opacity-50 ${
+                                  reactedByMe
+                                    ? 'border-primary-400/50 bg-primary-500/20 text-primary-100'
+                                    : 'border-white/[0.08] bg-ink-900/70 text-ink-400 hover:border-white/20 hover:bg-white/[0.06] hover:text-ink-100'
+                                }`}
+                              >
+                                <span>{emoji}</span>
+                                {emojiReactions.length > 0 && (
+                                  <span className="tabular-nums">{emojiReactions.length}</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                         {mine &&
                           message.id === lastOwnMessage?.id &&
                           latestOwnMessageIsSeen && (
