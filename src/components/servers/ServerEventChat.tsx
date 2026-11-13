@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { AlertTriangle, Bell, BellOff, Bookmark, Check, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -23,6 +23,14 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [reports, setReports] = useState<ServerEventChatReport[]>([]);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [notificationPreference, setNotificationPreference] = useState<ServerEventChatNotificationPreference | null>(null);
+  const [polls, setPolls] = useState<ServerEventChatPoll[]>([]);
+  const [pollVotes, setPollVotes] = useState<ServerEventChatPollVote[]>([]);
+  const [pollCreatorOpen, setPollCreatorOpen] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
+  const [pollExpiresIn, setPollExpiresIn] = useState('never');
+  const [pollBusy, setPollBusy] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
   const [reportingMessage, setReportingMessage] = useState<ServerEventChatMessage | null>(null);
@@ -155,6 +163,71 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       void supabase.removeChannel(channel);
     };
   }, [eventId, userId]);
+
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const result = await fetchServerEventChatPolls(eventId);
+        if (active) { setPolls(result.polls); setPollVotes(result.votes); }
+      } catch (err) { if (active) setError(err instanceof Error ? err.message : 'Could not load event polls.'); }
+    };
+    void load();
+    const channel = supabase.channel('server-event-chat-polls:' + eventId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'server_event_chat_polls', filter: 'event_id=eq.' + eventId }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const row = payload.new as ServerEventChatPoll;
+          setPolls((current) => [...current.filter((poll) => poll.id !== row.id), row].sort((a, b) => b.created_at.localeCompare(a.created_at)));
+        } else if (payload.eventType === 'DELETE') {
+          const row = payload.old as { id?: string };
+          if (row.id) setPolls((current) => current.filter((poll) => poll.id !== row.id));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'server_event_chat_poll_votes' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new as ServerEventChatPollVote;
+          setPollVotes((current) => current.some((vote) => vote.id === row.id) ? current : [...current, row]);
+        } else if (payload.eventType === 'DELETE') {
+          const row = payload.old as { id?: string };
+          if (row.id) setPollVotes((current) => current.filter((vote) => vote.id !== row.id));
+        }
+      }).subscribe();
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [eventId]);
+
+  async function handleCreatePoll(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pollBusy) return;
+    const options = pollOptions.map((option) => option.trim()).filter(Boolean);
+    if (!pollQuestion.trim() || options.length < 2) return;
+    setPollBusy(true);
+    setError('');
+    try {
+      const duration = pollExpiresIn === '1h' ? 3600000 : pollExpiresIn === '24h' ? 86400000 : 604800000;
+      const expiresAt = pollExpiresIn === 'never' ? null : new Date(Date.now() + duration).toISOString();
+      const poll = await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt);
+      setPolls((current) => [poll, ...current.filter((item) => item.id !== poll.id)]);
+      setPollQuestion(''); setPollOptions(['', '']); setPollAllowMultiple(false); setPollExpiresIn('never'); setPollCreatorOpen(false);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not create poll.'); }
+    finally { setPollBusy(false); }
+  }
+
+  async function handlePollVote(poll: ServerEventChatPoll, optionId: string) {
+    const selected = pollVotes.some((vote) => vote.poll_id === poll.id && vote.option_id === optionId && vote.user_id === userId);
+    try {
+      await castServerEventChatPollVote(poll.id, optionId, !selected);
+      const result = await fetchServerEventChatPolls(eventId);
+      setPollVotes(result.votes);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not submit vote.'); }
+  }
+
+  async function handleClosePoll(pollId: string) {
+    try {
+      await closeServerEventChatPoll(pollId);
+      setPolls((current) => current.map((poll) => poll.id === pollId ? { ...poll, closed_at: new Date().toISOString() } : poll));
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not close poll.'); }
+  }
 
   async function updateReadReceiptIfNeeded() {
     const list = messageListRef.current;
