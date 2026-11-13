@@ -231,3 +231,36 @@ export async function fetchServerMembers(serverId: string): Promise<MemberWithPr
     profile: profileMap.get(m.user_id) ?? null,
   }));
 }
+
+
+export interface UpdateChannelInput {
+  name: string;
+  topic: string;
+  category: string;
+  is_restricted: boolean;
+}
+
+export async function updateChannel(
+  channelId: string,
+  input: UpdateChannelInput,
+): Promise<Channel> {
+  const name = input.name.trim().toLowerCase();
+  const topic = input.topic.trim();
+  const category = input.category.trim();
+
+  if (!/^[a-z0-9][a-z0-9-]{0,49}$/.test(name)) {
+    throw new Error('Channel name must use lowercase letters, numbers, and hyphens (1–50 characters).');
+  }
+  if (topic.length > 200) throw new Error('Topic must be 200 characters or fewer.');
+  if (!category || category.length > 40) throw new Error('Category must be 1–40 characters.');
+
+  const { data, error } = await supabase
+    .from('channels')
+    .update({ name, topic, category, is_restricted: input.is_restricted })
+    .eq('id', channelId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data as Channel;
+}
