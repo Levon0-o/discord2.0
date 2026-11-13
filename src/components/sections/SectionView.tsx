@@ -4,6 +4,7 @@ import { Dashboard } from '@/components/sections/Dashboard';
 import { ServersSection } from '@/components/servers/ServersSection';
 import { DirectMessagesSection } from '@/components/messages/DirectMessagesSection';
 import { NotificationsSection } from '@/components/sections/NotificationsSection';
+import { ExploreSection } from '@/components/sections/ExploreSection';
 import type { NavSection, SectionId } from '@/config/navigation';
 
 interface SectionViewProps {
@@ -28,6 +29,10 @@ export function SectionView({
         onOpenConversation={onOpenConversation}
       />
     );
+  }
+
+  if (section.id === 'explore') {
+    return <ExploreSection />;
   }
 
   if (section.id === 'servers') {
