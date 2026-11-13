@@ -210,3 +210,18 @@ export async function toggleChannelPin(channelId: string, messageId: string, pin
     : await supabase.from('channel_pinned_messages').insert({ channel_id: channelId, message_id: messageId, pinned_by: user.id });
   if (result.error) throw result.error;
 }
+
+
+export async function searchChannelMessages(channelId: string, searchTerm: string): Promise<Message[]> {
+  const term = searchTerm.trim();
+  if (!term) return [];
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at')
+    .eq('channel_id', channelId)
+    .ilike('body', `%${term}%`)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return ((data ?? []) as Message[]).reverse();
+}
