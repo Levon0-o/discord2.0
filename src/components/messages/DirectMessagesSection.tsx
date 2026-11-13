@@ -102,6 +102,11 @@ export function DirectMessagesSection({
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeIdRef = useRef(activeId);
+  const conversationIdsRef = useRef(new Set<string>());
+
+  activeIdRef.current = activeId;
+  conversationIdsRef.current = new Set(conversations.map((conversation) => conversation.id));
 
   const loadConversations = useCallback(async () => {
     if (!userId) {
@@ -293,36 +298,45 @@ export function DirectMessagesSection({
   }, [activeId]);
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!userId) return;
 
     const channel = supabase
-      .channel(`direct-messages:${activeId}`)
+      .channel(`direct-messages:${userId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${activeId}`,
         },
         (payload) => {
           const incoming = payload.new as Message;
+          const conversationId = incoming.conversation_id;
 
-          setMessages((current) =>
-            current.some((message) => message.id === incoming.id)
-              ? current
-              : [...current, incoming]
-          );
+          if (
+            !conversationId ||
+            !conversationIdsRef.current.has(conversationId)
+          ) {
+            return;
+          }
+
+          if (activeIdRef.current === conversationId) {
+            setMessages((current) =>
+              current.some((message) => message.id === incoming.id)
+                ? current
+                : [...current, incoming]
+            );
+          }
 
           setLastMessages((current) => ({
             ...current,
-            [activeId]: incoming,
+            [conversationId]: incoming,
           }));
 
           setConversations((current) =>
             current
               .map((conversation) =>
-                conversation.id === activeId
+                conversation.id === conversationId
                   ? { ...conversation, last_message_at: incoming.created_at }
                   : conversation
               )
@@ -343,7 +357,7 @@ export function DirectMessagesSection({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [activeId]);
+  }, [userId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
