@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles, MessageCircle,
-  Users, Video, X, UserPlus, Check, RefreshCw,
+  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, UserRound,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -18,9 +18,30 @@ interface ExploreAuthor {
 
 interface ExploreComment {
   id: string;
+  author_id: string;
   body: string;
   created_at: string;
   author: ExploreAuthor | null;
+}
+
+interface ExploreProfile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  bio: string;
+  avatar_url: string | null;
+  banner_url: string | null;
+  created_at: string;
+}
+
+interface ExploreProfilePost {
+  id: string;
+  body: string;
+  image_url: string | null;
+  media_type: 'text' | 'image' | 'video';
+  created_at: string;
+  likes: { user_id: string }[];
+  comments: { id: string }[];
 }
 
 interface ExplorePost {
@@ -71,6 +92,13 @@ export function ExploreSection() {
   const [comments, setComments] = useState<Record<string, ExploreComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ExploreProfile | null>(null);
+  const [profilePosts, setProfilePosts] = useState<ExploreProfilePost[]>([]);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileStats, setProfileStats] = useState({ followers: 0, following: 0 });
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -207,10 +235,48 @@ export function ExploreSection() {
     setBusyLike(null);
   };
 
+  const openProfile = async (profileId: string) => {
+    setProfile(null);
+    setProfilePosts([]);
+    setProfileError('');
+    setProfileLoading(true);
+    const [profileResult, postsResult, followersResult, followingResult, followResult] = await Promise.all([
+      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, created_at').eq('id', profileId).maybeSingle(),
+      supabase.from('posts').select('id, body, image_url, media_type, created_at, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
+      supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
+      supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', profileId),
+      userId && userId !== profileId
+        ? supabase.from('follows').select('follower_id').eq('follower_id', userId).eq('following_id', profileId).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+    if (profileResult.error) setProfileError(profileResult.error.message);
+    else if (!profileResult.data) setProfileError('This profile could not be found.');
+    else setProfile(profileResult.data as ExploreProfile);
+    if (postsResult.error) setProfileError(postsResult.error.message);
+    else setProfilePosts((postsResult.data ?? []) as unknown as ExploreProfilePost[]);
+    setProfileStats({ followers: followersResult.count ?? 0, following: followingResult.count ?? 0 });
+    setIsFollowing(Boolean(followResult.data));
+    setProfileLoading(false);
+  };
+
+  const toggleFollow = async () => {
+    if (!profile || !userId || userId === profile.id || followBusy) return;
+    setFollowBusy(true);
+    const result = isFollowing
+      ? await supabase.from('follows').delete().eq('follower_id', userId).eq('following_id', profile.id)
+      : await supabase.from('follows').insert({ follower_id: userId, following_id: profile.id });
+    if (result.error) setProfileError(result.error.message);
+    else {
+      setIsFollowing(!isFollowing);
+      setProfileStats((current) => ({ ...current, followers: Math.max(0, current.followers + (isFollowing ? -1 : 1)) }));
+    }
+    setFollowBusy(false);
+  };
+
   const loadComments = async (postId: string) => {
     const { data, error: queryError } = await supabase
       .from('comments')
-      .select('id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
+      .select('id, author_id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     if (queryError) setError(queryError.message);
@@ -335,7 +401,7 @@ export function ExploreSection() {
       {tab === 'people' ? (
         <section className="space-y-4">
           <div className="relative"><Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-500" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search usernames (at least 3 characters)" className="w-full rounded-2xl border border-white/[0.08] bg-ink-900/70 py-3.5 pl-11 pr-4 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" /></div>
-          {search.trim().length < 3 ? <p className="rounded-2xl border border-white/[0.06] bg-ink-900/50 p-8 text-center text-sm text-ink-500">Search for people by username to find your next community.</p> : people.length === 0 ? <p className="rounded-2xl border border-white/[0.06] bg-ink-900/50 p-8 text-center text-sm text-ink-500">No users found. Try another username.</p> : <div className="grid gap-3 sm:grid-cols-2">{people.map((person) => { const name = person.display_name || person.username; const sent = sentRequests.includes(person.id); return <article key={person.id} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-ink-900/65 p-4"><div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-xs font-bold text-ink-200">{person.avatar_url ? <img src={person.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(name)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-ink-100">{name}</p><p className="truncate text-xs text-ink-500">@{person.username}</p></div><button type="button" onClick={() => void addPerson(person)} disabled={sent || busyPeople === person.id} className="inline-flex items-center gap-2 rounded-xl bg-primary-500/15 px-3 py-2 text-xs font-semibold text-primary-200 hover:bg-primary-500/25 disabled:opacity-50">{sent ? <Check size={14} /> : <UserPlus size={14} />}{sent ? 'Sent' : 'Add'}</button></article>; })}</div>}
+          {search.trim().length < 3 ? <p className="rounded-2xl border border-white/[0.06] bg-ink-900/50 p-8 text-center text-sm text-ink-500">Search for people by username to find your next community.</p> : people.length === 0 ? <p className="rounded-2xl border border-white/[0.06] bg-ink-900/50 p-8 text-center text-sm text-ink-500">No users found. Try another username.</p> : <div className="grid gap-3 sm:grid-cols-2">{people.map((person) => { const name = person.display_name || person.username; const sent = sentRequests.includes(person.id); return <article key={person.id} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-ink-900/65 p-4"><button type="button" onClick={() => void openProfile(person.id)} className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-xs font-bold text-ink-200">{person.avatar_url ? <img src={person.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(name)}</button><button type="button" onClick={() => void openProfile(person.id)} className="min-w-0 flex-1 text-left"><p className="truncate text-sm font-semibold text-ink-100 hover:text-primary-300">{name}</p><p className="truncate text-xs text-ink-500">@{person.username}</p></button><button type="button" onClick={() => void addPerson(person)} disabled={sent || busyPeople === person.id} className="inline-flex items-center gap-2 rounded-xl bg-primary-500/15 px-3 py-2 text-xs font-semibold text-primary-200 hover:bg-primary-500/25 disabled:opacity-50">{sent ? <Check size={14} /> : <UserPlus size={14} />}{sent ? 'Sent' : 'Add'}</button></article>; })}</div>}
         </section>
       ) : loading ? (
         <div className="flex items-center justify-center gap-3 rounded-2xl border border-white/[0.06] bg-ink-900/50 py-16 text-sm text-ink-400"><Loader2 size={18} className="animate-spin" />Loading the world…</div>
@@ -347,7 +413,14 @@ export function ExploreSection() {
             const name = authorName(post.author);
             const liked = Boolean(userId && post.likes.some((like) => like.user_id === userId));
             return <article key={post.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/65">
-              <div className="flex items-center gap-3 p-4"><div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-xs font-bold text-ink-200">{post.author?.avatar_url ? <img src={post.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(name)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-ink-100">{name}</p><p className="text-xs text-ink-500">@{post.author?.username || 'user'} · {age(post.created_at)}</p></div>{post.media_type === 'video' && <span className="rounded-full bg-primary-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary-200">Video</span>}</div>
+              <div className="flex items-center gap-3 p-4">
+                <button type="button" onClick={() => void openProfile(post.author_id)} aria-label={`Open ${name}'s profile`} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-xs font-bold text-ink-200 ring-1 ring-white/10 transition hover:ring-primary-400/60">{post.author?.avatar_url ? <img src={post.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(name)}</button>
+                <div className="min-w-0 flex-1">
+                  <button type="button" onClick={() => void openProfile(post.author_id)} className="block max-w-full truncate text-left text-sm font-semibold text-ink-100 transition hover:text-primary-300">{name}</button>
+                  <p className="text-xs text-ink-500">@{post.author?.username || 'user'} · {age(post.created_at)}</p>
+                </div>
+                {post.media_type === 'video' && <span className="rounded-full bg-primary-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary-200">Video</span>}
+              </div>
               {post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-[560px] w-full bg-black object-contain" />}
               {post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="Post media" loading="lazy" className="max-h-[560px] w-full object-cover" />}
               {post.body && <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-ink-200">{post.body}</p>}
@@ -363,7 +436,7 @@ export function ExploreSection() {
                       return <div key={comment.id} className="flex gap-2.5">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[10px] font-bold text-ink-300">{comment.author?.avatar_url ? <img src={comment.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(commentAuthor)}</div>
                         <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
-                          <p className="text-xs font-semibold text-ink-200">{commentAuthor}<span className="ml-1 font-normal text-ink-500">{age(comment.created_at)}</span></p>
+                          <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(comment.author_id)} className="transition hover:text-primary-300">{commentAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(comment.created_at)}</span></p>
                           <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>
                         </div>
                       </div>;
@@ -377,6 +450,47 @@ export function ExploreSection() {
               )}
             </article>;
           })}
+        </div>
+      )}
+      {(profileLoading || profile || profileError) && (
+        <div role="dialog" aria-modal="true" aria-label="User profile" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) { setProfile(null); setProfileError(''); } }}>
+          <section className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-ink-950 shadow-2xl shadow-black/50">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] bg-ink-950/95 px-4 py-3 backdrop-blur">
+              <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-ink-300 hover:bg-white/[0.06]"><ArrowLeft size={16} /> Back to Explore</button>
+              <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} aria-label="Close profile" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06]"><X size={17} /></button>
+            </div>
+            {profileLoading ? <div className="flex items-center justify-center gap-3 py-20 text-sm text-ink-400"><Loader2 size={18} className="animate-spin" />Loading profile…</div> : profile ? (
+              <>
+                <div className="relative h-36 bg-gradient-to-br from-primary-500/35 via-ink-800 to-ink-900 sm:h-48">
+                  {profile.banner_url && <img src={profile.banner_url} alt="" className="h-full w-full object-cover" />}
+                </div>
+                <div className="px-5 pb-5">
+                  <div className="-mt-12 flex flex-wrap items-end justify-between gap-3">
+                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border-4 border-ink-950 bg-ink-800 text-2xl font-bold text-ink-200">{profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(profile.display_name || profile.username)}</div>
+                    {userId !== profile.id && <button type="button" onClick={() => void toggleFollow()} disabled={followBusy} className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-400 disabled:opacity-50">{followBusy ? 'Please wait…' : isFollowing ? 'Following' : 'Follow'}</button>}
+                  </div>
+                  <h2 className="mt-3 text-xl font-bold text-white">{profile.display_name || profile.username}</h2>
+                  <p className="text-sm text-ink-400">@{profile.username}</p>
+                  {profile.bio && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink-200">{profile.bio}</p>}
+                  <div className="mt-4 flex flex-wrap items-center gap-5 text-xs text-ink-400">
+                    <span><strong className="text-ink-100">{profileStats.followers}</strong> followers</span>
+                    <span><strong className="text-ink-100">{profileStats.following}</strong> following</span>
+                    <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> Joined {new Date(profile.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <div className="border-t border-white/[0.06] px-5 py-4">
+                  <h3 className="mb-3 text-sm font-semibold text-ink-100">Public posts</h3>
+                  {profilePosts.length === 0 ? <p className="py-8 text-center text-sm text-ink-500">No public posts yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{profilePosts.map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/70">
+                    {item.media_type === 'video' && item.image_url && <video src={item.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}
+                    {item.media_type === 'image' && item.image_url && <img src={item.image_url} alt="Post media" loading="lazy" className="max-h-64 w-full object-cover" />}
+                    {item.body && <p className="whitespace-pre-wrap break-words p-3 text-sm leading-5 text-ink-200">{item.body}</p>}
+                    <div className="border-t border-white/[0.05] px-3 py-2 text-xs text-ink-500">{item.likes.length} likes · {item.comments.length} comments · {age(item.created_at)}</div>
+                  </article>)}</div>}
+                </div>
+              </>
+            ) : <div className="px-5 py-16 text-center text-sm text-red-300">{profileError || 'Could not load this profile.'}</div>}
+            {profileError && profile && <p role="alert" className="px-5 pb-4 text-xs text-red-300">{profileError}</p>}
+          </section>
         </div>
       )}
     </div>
