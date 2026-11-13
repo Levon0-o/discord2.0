@@ -104,7 +104,7 @@ export async function sendChannelMessage(
     reply_to_id: threadId ?? replyToId ?? null,
     thread_id: threadId ?? null,
   }).select(
-    'id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at',
+    'id, conversation_id, channel_id, author_id, reply_to_id, thread_id, body, image_url, created_at, updated_at',
   ).single();
 
   if (error) throw error;
