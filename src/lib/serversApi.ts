@@ -238,6 +238,7 @@ export interface UpdateChannelInput {
   topic: string;
   category: string;
   is_restricted: boolean;
+  slowmode_seconds: number;
 }
 
 export async function updateChannel(
@@ -253,10 +254,13 @@ export async function updateChannel(
   }
   if (topic.length > 200) throw new Error('Topic must be 200 characters or fewer.');
   if (!category || category.length > 40) throw new Error('Category must be 1–40 characters.');
+  if (!Number.isInteger(input.slowmode_seconds) || input.slowmode_seconds < 0 || input.slowmode_seconds > 3600) {
+    throw new Error('Slowmode must be between 0 and 3600 seconds.');
+  }
 
   const { data, error } = await supabase
     .from('channels')
-    .update({ name, topic, category, is_restricted: input.is_restricted })
+    .update({ name, topic, category, is_restricted: input.is_restricted, slowmode_seconds: input.slowmode_seconds })
     .eq('id', channelId)
     .select('*')
     .single();
