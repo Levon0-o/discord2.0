@@ -82,6 +82,14 @@ export function ServerDetail({
     useState<MemberWithProfile | null>(null);
 
   const isAdminOrOwner = canManageChannels(server.my_role);
+  const currentMember = members.find((member) => member.user_id === userId);
+  const canManageRoles =
+    isAdminOrOwner ||
+    Boolean(
+      currentMember?.custom_roles?.some(
+        (role) => role.permissions.manage_roles === true,
+      ),
+    );
 
   useEffect(() => {
     let cancelled = false;
@@ -316,7 +324,7 @@ export function ServerDetail({
                 </p>
               )}
 
-              {isAdminOrOwner && (
+              {canManageRoles && (
                 <button
                   type="button"
                   onClick={() => {
@@ -497,12 +505,12 @@ export function ServerDetail({
                   <li key={member.user_id}>
                     <button
                       type="button"
-                      disabled={!isAdminOrOwner || isSelf}
+                      disabled={!canManageRoles || isSelf}
                       onClick={() => setSelectedMember(member)}
                       title={
                         isSelf
                           ? 'You cannot edit your own roles here'
-                          : isAdminOrOwner
+                          : canManageRoles
                             ? 'Manage member roles'
                             : 'You do not have permission'
                       }
@@ -547,7 +555,7 @@ export function ServerDetail({
                         </p>
                       </div>
 
-                      {isAdminOrOwner && !isSelf && (
+                      {canManageRoles && !isSelf && (
                         <Shield
                           size={13}
                           className="shrink-0 text-ink-600"
