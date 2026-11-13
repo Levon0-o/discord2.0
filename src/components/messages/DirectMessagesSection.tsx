@@ -166,6 +166,7 @@ export function DirectMessagesSection({
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [messageSearch, setMessageSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -854,6 +855,12 @@ export function DirectMessagesSection({
       setSending(false);
     }
   }
+
+  const messageSearchResults = messageSearch.trim()
+    ? messages.filter((message) =>
+        message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())
+      ).slice(-8).reverse()
+    : [];
 
   const filteredConversations = conversations.filter((conversation) => {
     const conversationMembers = membersForConversation(conversation.id);
