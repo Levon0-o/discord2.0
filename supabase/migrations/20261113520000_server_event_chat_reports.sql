@@ -93,4 +93,6 @@ with check (
   )
 );
 
-grant select, insert, update on public.server_event_chat_reports to authenticated;
+grant select, insert on public.server_event_chat_reports to authenticated;
+revoke update on public.server_event_chat_reports from anon, authenticated;
+grant update (status, reviewed_by, reviewed_at) on public.server_event_chat_reports to authenticated;
