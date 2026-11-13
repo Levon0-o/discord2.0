@@ -96,3 +96,46 @@ export async function toggleServerEventChatReaction(
     if (error) throw error;
   }
 }
+
+
+export interface ServerEventChatPin {
+  event_id: string;
+  message_id: string;
+  pinned_by: string;
+  created_at: string;
+}
+
+export async function fetchServerEventChatPins(eventId: string): Promise<ServerEventChatPin[]> {
+  const { data, error } = await supabase
+    .from('server_event_chat_pins')
+    .select('event_id, message_id, pinned_by, created_at')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ServerEventChatPin[];
+}
+
+export async function setServerEventChatPin(
+  eventId: string,
+  messageId: string,
+  pinned: boolean,
+): Promise<void> {
+  if (pinned) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) throw authError;
+    if (!user) throw new Error('You must be logged in.');
+    const { error } = await supabase.from('server_event_chat_pins').insert({
+      event_id: eventId,
+      message_id: messageId,
+      pinned_by: user.id,
+    });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('server_event_chat_pins')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('message_id', messageId);
+    if (error) throw error;
+  }
+}
