@@ -87,14 +87,14 @@ begin
   end if;
   if exists (
     select 1
-    from jsonb_array_elements_text(p_options) as option_value
+    from jsonb_array_elements_text(p_options) as options(option_value)
     where char_length(btrim(option_value)) not between 1 and 80
   ) then
     raise exception 'Each option must contain 1–80 characters.';
   end if;
   if (
     select count(distinct lower(btrim(option_value)))
-    from jsonb_array_elements_text(p_options) as option_value
+    from jsonb_array_elements_text(p_options) as options(option_value)
   ) <> v_option_count then
     raise exception 'Poll options must be unique.';
   end if;
