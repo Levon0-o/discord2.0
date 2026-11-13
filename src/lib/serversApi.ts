@@ -343,11 +343,23 @@ export async function setChannelMemberPermission(
   permission: ChannelMemberPermissionKey,
   value: boolean | null,
 ): Promise<ChannelMemberPermission> {
+  const { data: existing, error: readError } = await supabase
+    .from('channel_member_permissions')
+    .select('channel_id, user_id, can_view, can_send_messages, can_attach_files, can_manage_messages')
+    .eq('channel_id', channelId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (readError) throw readError;
+
   const { data, error } = await supabase
     .from('channel_member_permissions')
     .upsert({
       channel_id: channelId,
       user_id: userId,
+      can_view: existing?.can_view ?? null,
+      can_send_messages: existing?.can_send_messages ?? null,
+      can_attach_files: existing?.can_attach_files ?? null,
+      can_manage_messages: existing?.can_manage_messages ?? null,
       [permission]: value,
     }, { onConflict: 'channel_id,user_id' })
     .select('channel_id, user_id, can_view, can_send_messages, can_attach_files, can_manage_messages, updated_at')
