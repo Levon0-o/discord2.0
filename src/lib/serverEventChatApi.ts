@@ -263,7 +263,20 @@ export async function toggleServerEventChatSavedMessage(eventId: string, message
   if (authError) throw authError;
   if (!user) throw new Error('You must be logged in.');
   if (saved) {
-    const { error } = await supabase.from('server_event_chat_saved_messages').insert({ event_id: eventId, message_id: messageId, user_id: user.id });
+    const { data: message, error: messageError } = await supabase
+      .from('server_event_chat_messages')
+      .select('author_id, body')
+      .eq('id', messageId)
+      .eq('event_id', eventId)
+      .single();
+    if (messageError) throw messageError;
+    const { error } = await supabase.from('server_event_chat_saved_messages').insert({
+      event_id: eventId,
+      message_id: messageId,
+      user_id: user.id,
+      author_id: message.author_id,
+      body: message.body,
+    });
     if (error) throw error;
   } else {
     const { error } = await supabase.from('server_event_chat_saved_messages').delete().eq('event_id', eventId).eq('message_id', messageId).eq('user_id', user.id);
