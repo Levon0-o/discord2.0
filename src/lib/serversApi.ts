@@ -264,3 +264,47 @@ export async function updateChannel(
   if (error) throw error;
   return data as Channel;
 }
+
+
+export async function reorderChannel(
+  serverId: string,
+  channelId: string,
+  direction: 'up' | 'down',
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('channels')
+    .select('id, category, position')
+    .eq('server_id', serverId)
+    .order('position', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) throw error;
+
+  const rows = (data ?? []) as Pick<Channel, 'id' | 'category' | 'position'>[];
+  const target = rows.find((row) => row.id === channelId);
+  if (!target) throw new Error('Channel could not be found.');
+
+  const categoryRows = rows.filter((row) => row.category === target.category);
+  const currentIndex = categoryRows.findIndex((row) => row.id === channelId);
+  const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+  if (nextIndex < 0 || nextIndex >= categoryRows.length) return;
+
+  const reordered = [...categoryRows];
+  [reordered[currentIndex], reordered[nextIndex]] = [reordered[nextIndex], reordered[currentIndex]];
+
+  for (let index = 0; index < reordered.length; index += 1) {
+    const { error: updateError } = await supabase
+      .from('channels')
+      .update({ position: index })
+      .eq('id', reordered[index].id)
+      .eq('server_id', serverId);
+    if (updateError) throw updateError;
+  }
+}
+
+export async function deleteChannel(channelId: string): Promise<void> {
+  const { error } = await supabase
+    .from('channels')
+    .delete()
+    .eq('id', channelId);
+  if (error) throw error;
+}
