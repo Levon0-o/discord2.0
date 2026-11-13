@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
+import { Bookmark, Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, uploadServerEventChatAttachment, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -18,6 +18,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);
   const [readReceipts, setReadReceipts] = useState<ServerEventChatReadReceipt[]>([]);
   const [pins, setPins] = useState<ServerEventChatPin[]>([]);
+  const [savedMessages, setSavedMessages] = useState<ServerEventChatSavedMessage[]>([]);
+  const [savedOpen, setSavedOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,9 +81,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     let active = true;
     const load = async () => {
       try {
-        const [page, reactionRows, receiptRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId), fetchServerEventChatReadReceipts(eventId)]);
+        const [page, reactionRows, receiptRows, savedRows, pinRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId), fetchServerEventChatReadReceipts(eventId), fetchServerEventChatSavedMessages(eventId), fetchServerEventChatPins(eventId)]);
         const ownReceipt = await markServerEventChatRead(eventId);
-        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); setReadReceipts([...receiptRows.filter((row) => row.user_id !== userId), ownReceipt]); lastReadAtRef.current = ownReceipt.last_read_at; }
+        if (active) { setMessages(page.messages); setHasMore(page.hasMore); setReactions(reactionRows); setPins(pinRows); setSavedMessages(savedRows); setReadReceipts([...receiptRows.filter((row) => row.user_id !== userId), ownReceipt]); lastReadAtRef.current = ownReceipt.last_read_at; }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Could not load event chat.');
       } finally {
@@ -424,6 +426,18 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     }
   }
 
+  async function handleSaveMessage(message: ServerEventChatMessage) {
+    const isSaved = savedMessages.some((saved) => saved.message_id === message.id);
+    setError('');
+    try {
+      await toggleServerEventChatSavedMessage(eventId, message.id, !isSaved);
+      const rows = await fetchServerEventChatSavedMessages(eventId);
+      setSavedMessages(rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update saved messages.');
+    }
+  }
+
   async function handleReaction(messageId: string, emoji: ServerEventChatReaction['emoji']) {
     setError('');
     try {
@@ -477,7 +491,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => { setSearchOpen((value) => !value); setPinnedOpen(false); }} className={'rounded-md p-1.5 transition ' + (searchOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-label="Search event chat" aria-expanded={searchOpen}><Search size={13} /></button>
-          <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
+          <button type="button" onClick={() => { setSavedOpen((value) => !value); setPinnedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (savedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={savedOpen}><Bookmark size={12} /> Saved {savedMessages.length}</button>
+          <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
         </div>
       </div>
@@ -504,6 +519,22 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
               const author = members.find((entry) => entry.user_id === message.author_id);
               const name = author?.profile?.display_name || author?.profile?.username || 'Server member';
               return <button key={pin.message_id} type="button" onClick={() => document.getElementById('event-chat-message-' + message.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className="block w-full rounded-md bg-white/[0.03] px-2.5 py-2 text-left hover:bg-white/[0.07]"><span className="block text-[10px] font-semibold text-ink-300">{name}</span><span className="block truncate text-[10px] text-ink-500">{message.body}</span></button>;
+            })}
+          </div>}
+        </div>
+      ) : null}
+      {savedOpen ? (
+        <div className="border-b border-white/[0.07] bg-primary-500/[0.04] p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary-200"><Bookmark size={11} /> Your saved messages</p>
+          {savedMessages.length === 0 ? <p className="text-[10px] text-ink-500">No saved messages yet. Bookmark a message to keep it here.</p> : <div className="space-y-1.5">
+            {savedMessages.map((saved) => {
+              const message = messages.find((item) => item.id === saved.message_id);
+              const author = members.find((entry) => entry.user_id === saved.author_id);
+              const name = author?.profile?.display_name || author?.profile?.username || 'Server member';
+              return <div key={saved.message_id} className="flex items-start gap-2 rounded-md bg-white/[0.03] px-2.5 py-2">
+                <button type="button" onClick={() => { if (message) document.getElementById('event-chat-message-' + message.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} className="min-w-0 flex-1 text-left hover:text-primary-200"><span className="block text-[10px] font-semibold text-ink-300">{name}</span><span className="block truncate text-[10px] text-ink-500">{message?.body || (saved.body || 'Attachment')}</span></button>
+                <button type="button" onClick={() => void handleSaveMessage({ id: saved.message_id } as ServerEventChatMessage)} className="rounded p-1 text-primary-300 hover:bg-white/[0.07]" aria-label="Remove saved message"><Bookmark size={12} /></button>
+              </div>;
             })}
           </div>}
         </div>
@@ -549,6 +580,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                   </>
                 )}
                 {own && editingId !== message.id ? <button type="button" onClick={() => startEditing(message)} className="mt-1 mr-2 inline-flex items-center gap-1 text-[10px] text-ink-500 transition hover:text-primary-300"><Pencil size={10} /> Edit</button> : null}
+                <button type="button" onClick={() => void handleSaveMessage(message)} className={'mt-1 mr-2 inline-flex items-center gap-1 text-[10px] transition ' + (savedMessages.some((saved) => saved.message_id === message.id) ? 'text-primary-300' : 'text-ink-500 hover:text-primary-300')} aria-label={savedMessages.some((saved) => saved.message_id === message.id) ? 'Remove saved message' : 'Save message'}><Bookmark size={10} /> {savedMessages.some((saved) => saved.message_id === message.id) ? 'Saved' : 'Save'}</button>
                 <button
                   type="button"
                   onClick={() => setReplyingTo(message)}
