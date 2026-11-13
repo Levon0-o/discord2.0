@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
-  Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles,
+  Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles, MessageCircle,
   Users, Video, X, UserPlus, Check, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,13 @@ interface ExploreAuthor {
   username: string;
   display_name: string | null;
   avatar_url: string | null;
+}
+
+interface ExploreComment {
+  id: string;
+  body: string;
+  created_at: string;
+  author: ExploreAuthor | null;
 }
 
 interface ExplorePost {
@@ -60,6 +67,10 @@ export function ExploreSection() {
   const [busyLike, setBusyLike] = useState<string | null>(null);
   const [busyPeople, setBusyPeople] = useState<string | null>(null);
   const [sentRequests, setSentRequests] = useState<string[]>([]);
+  const [expandedPost, setExpandedPost] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, ExploreComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentBusy, setCommentBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -91,6 +102,7 @@ export function ExploreSection() {
       .channel('explore-global-feed')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [loadPosts, appliedPostSearch, tab]);
@@ -193,6 +205,39 @@ export function ExploreSection() {
     if (result.error) setError(result.error.message);
     else await loadPosts(true, appliedPostSearch, tab === 'trending');
     setBusyLike(null);
+  };
+
+  const loadComments = async (postId: string) => {
+    const { data, error: queryError } = await supabase
+      .from('comments')
+      .select('id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+    if (queryError) setError(queryError.message);
+    else setComments((current) => ({ ...current, [postId]: (data ?? []) as unknown as ExploreComment[] }));
+  };
+
+  const toggleComments = async (postId: string) => {
+    if (expandedPost === postId) {
+      setExpandedPost(null);
+      return;
+    }
+    setExpandedPost(postId);
+    await loadComments(postId);
+  };
+
+  const publishComment = async (postId: string) => {
+    const body = (commentDrafts[postId] ?? '').trim();
+    if (!body || !userId || commentBusy) return;
+    setCommentBusy(postId);
+    const { error: insertError } = await supabase.from('comments').insert({ post_id: postId, body });
+    if (insertError) setError(insertError.message);
+    else {
+      setCommentDrafts((current) => ({ ...current, [postId]: '' }));
+      await loadComments(postId);
+      await loadPosts(true, appliedPostSearch, tab === 'trending');
+    }
+    setCommentBusy(null);
   };
 
   const addPerson = async (person: ProfileLite) => {
@@ -306,7 +351,30 @@ export function ExploreSection() {
               {post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-[560px] w-full bg-black object-contain" />}
               {post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="Post media" loading="lazy" className="max-h-[560px] w-full object-cover" />}
               {post.body && <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-ink-200">{post.body}</p>}
-              <div className="flex items-center border-t border-white/[0.05] px-3 py-2"><button type="button" onClick={() => void toggleLike(post)} disabled={busyLike === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}><Heart size={16} className={liked ? 'fill-current' : ''} />{post.likes.length} likes</button><span className="ml-2 text-xs text-ink-500">{post.comments.length} comments</span></div>
+              <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2">
+                <button type="button" onClick={() => void toggleLike(post)} disabled={busyLike === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}><Heart size={16} className={liked ? 'fill-current' : ''} />{post.likes.length} likes</button>
+                <button type="button" onClick={() => void toggleComments(post.id)} aria-expanded={expandedPost === post.id} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-ink-400 transition hover:bg-white/[0.05] hover:text-ink-100"><MessageCircle size={16} />{post.comments.length} comments</button>
+              </div>
+              {expandedPost === post.id && (
+                <div className="border-t border-white/[0.06] bg-ink-950/35 px-4 py-4">
+                  <div className="mb-4 space-y-3">
+                    {(comments[post.id] ?? []).length === 0 ? <p className="text-xs text-ink-500">No comments yet. Start the discussion.</p> : (comments[post.id] ?? []).map((comment) => {
+                      const commentAuthor = authorName(comment.author);
+                      return <div key={comment.id} className="flex gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[10px] font-bold text-ink-300">{comment.author?.avatar_url ? <img src={comment.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(commentAuthor)}</div>
+                        <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
+                          <p className="text-xs font-semibold text-ink-200">{commentAuthor}<span className="ml-1 font-normal text-ink-500">{age(comment.created_at)}</span></p>
+                          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>
+                        </div>
+                      </div>;
+                    })}
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={commentDrafts[post.id] ?? ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishComment(post.id); } }} placeholder="Write a comment…" maxLength={1000} className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+                    <button type="button" onClick={() => void publishComment(post.id)} disabled={!(commentDrafts[post.id] ?? '').trim() || commentBusy === post.id} aria-label="Send comment" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40"><Send size={16} /></button>
+                  </div>
+                </div>
+              )}
             </article>;
           })}
         </div>
