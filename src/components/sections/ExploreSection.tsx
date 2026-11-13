@@ -649,7 +649,7 @@ export function ExploreSection() {
       )}
       {(profileLoading || profile || profileError) && (
         <div role="dialog" aria-modal="true" aria-label="User profile" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) { setProfile(null); setProfileError(''); } }}>
-          <section className={`max-h-[90dvh] w-full ${profile?.profile_layout === 'creator' ? 'max-w-4xl' : profile?.profile_layout === 'minimal' ? 'max-w-xl' : 'max-w-2xl'} overflow-y-auto rounded-3xl border border-white/10 bg-ink-950 shadow-2xl shadow-black/50">
+          <section className={`max-h-[90dvh] w-full ${profile?.profile_layout === 'creator' ? 'max-w-4xl' : profile?.profile_layout === 'minimal' ? 'max-w-xl' : 'max-w-2xl'} overflow-y-auto rounded-3xl border border-white/10 bg-ink-950 shadow-2xl shadow-black/50`}>
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] bg-ink-950/95 px-4 py-3 backdrop-blur">
               <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-ink-300 hover:bg-white/[0.06]"><ArrowLeft size={16} /> Back to Explore</button>
               <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} aria-label="Close profile" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06]"><X size={17} /></button>
