@@ -278,6 +278,17 @@ export function DirectMessagesSection({
     (member) => member.user_id !== userId
   );
 
+  const otherLastReadAt = otherMember?.last_read_at
+    ? new Date(otherMember.last_read_at).getTime()
+    : 0;
+  const lastOwnMessage = [...messages].reverse().find(
+    (message) => message.author_id === userId
+  );
+  const latestOwnMessageIsSeen = Boolean(
+    lastOwnMessage &&
+    otherLastReadAt >= new Date(lastOwnMessage.created_at).getTime()
+  );
+
   const otherProfile = otherMember
     ? profiles[otherMember.user_id]
     : undefined;
@@ -348,6 +359,39 @@ export function DirectMessagesSection({
       active = false;
     };
   }, [activeId, markActiveConversationRead]);
+
+  useEffect(() => {
+    if (!activeId || !userId) return;
+
+    const channel = supabase
+      .channel('dm-read-receipts:' + activeId)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversation_members',
+          filter: 'conversation_id=eq.' + activeId,
+        },
+        (payload) => {
+          const updated = payload.new as DirectConversationMember;
+          if (updated.user_id === userId) return;
+          setMembers((current) =>
+            current.map((member) =>
+              member.conversation_id === activeId &&
+              member.user_id === updated.user_id
+                ? { ...member, last_read_at: updated.last_read_at }
+                : member
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeId, userId]);
 
   useEffect(() => {
     if (!activeId || !userId) {
@@ -827,6 +871,13 @@ const isGrouped =
                         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
                           {message.body}
                         </p>
+                        {mine &&
+                          message.id === lastOwnMessage?.id &&
+                          latestOwnMessageIsSeen && (
+                            <p className="mt-1 text-[10px] font-medium text-primary-300">
+                              Seen
+                            </p>
+                          )}
                       </div>
                     </article>
                   </div>
