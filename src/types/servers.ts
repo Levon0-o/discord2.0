@@ -49,6 +49,7 @@ export interface ServerWithMeta extends Server {
 
 export interface MemberWithProfile extends ServerMember {
   profile: ProfileLite | null;
+  custom_roles?: CustomRole[];
 }
 
 export type ServerPermission =
