@@ -1,11 +1,12 @@
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { BrandMark } from '@/components/layout/BrandMark';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
 import { RightPanel } from '@/components/layout/RightPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { NAV_SECTIONS, type SectionId } from '@/config/navigation';
+import { supabase } from '@/lib/supabase';
 
 interface AppShellProps {
   activeSection: SectionId;
@@ -19,6 +20,48 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+
+  useEffect(() => {
+    let isActive = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const loadUnreadCount = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!isActive || !user) return;
+
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_id', user.id)
+        .is('read_at', null);
+
+      if (isActive && !error) setUnreadNotificationCount(count ?? 0);
+
+      channel = supabase
+        .channel(`notification-badge:${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
+          async () => {
+            const { count: nextCount, error: countError } = await supabase
+              .from('notifications')
+              .select('id', { count: 'exact', head: true })
+              .eq('recipient_id', user.id)
+              .is('read_at', null);
+            if (isActive && !countError) setUnreadNotificationCount(nextCount ?? 0);
+          }
+        )
+        .subscribe();
+    };
+
+    void loadUnreadCount();
+
+    return () => {
+      isActive = false;
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, []);
 
   const activeLabel =
     NAV_SECTIONS.find((section) => section.id === activeSection)?.label ?? '';
@@ -34,6 +77,7 @@ export function AppShell({
         <SidebarNav
           activeSection={activeSection}
           onNavigate={handleNavigate}
+          unreadNotificationCount={unreadNotificationCount}
         />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -58,6 +102,7 @@ export function AppShell({
         activeSection={activeSection}
         onNavigate={handleNavigate}
         onOpenMenu={() => setMenuOpen(true)}
+        unreadNotificationCount={unreadNotificationCount}
       />
 
       <MobileDrawer
@@ -65,6 +110,7 @@ export function AppShell({
         activeSection={activeSection}
         onNavigate={handleNavigate}
         onClose={() => setMenuOpen(false)}
+        unreadNotificationCount={unreadNotificationCount}
       />
     </div>
   );
