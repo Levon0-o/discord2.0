@@ -31,38 +31,80 @@ export async function fetchChannelMessages(
   return ((data ?? []) as Message[]).reverse();
 }
 
+const CHANNEL_ATTACHMENT_BUCKET = 'channel-attachments';
+const CHANNEL_ATTACHMENT_PREFIX = 'channel-attachment:';
+const CHANNEL_ATTACHMENT_MAX_SIZE = 15 * 1024 * 1024;
+const CHANNEL_ATTACHMENT_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+]);
+
+export async function uploadChannelMessageAttachment(channelId: string, file: File): Promise<string> {
+  if (!CHANNEL_ATTACHMENT_TYPES.has(file.type)) {
+    throw new Error('Supported files: JPG, PNG, GIF, WEBP, PDF, TXT and CSV.');
+  }
+  if (file.size <= 0 || file.size > CHANNEL_ATTACHMENT_MAX_SIZE) {
+    throw new Error('Attachments must be smaller than 15 MB.');
+  }
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const safeName = file.name.normalize('NFKD')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(-100) || 'attachment';
+  const path = `${channelId}/${user.id}/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from(CHANNEL_ATTACHMENT_BUCKET).upload(path, file, {
+    contentType: file.type,
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
+export async function getChannelMessageAttachmentUrl(storedValue: string): Promise<string> {
+  if (!storedValue.startsWith(CHANNEL_ATTACHMENT_PREFIX)) return storedValue;
+  const path = storedValue.slice(CHANNEL_ATTACHMENT_PREFIX.length);
+  const { data, error } = await supabase.storage.from(CHANNEL_ATTACHMENT_BUCKET)
+    .createSignedUrl(path, 60 * 60);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 export async function sendChannelMessage(
   channelId: string,
   body: string,
   replyToId?: string,
+  attachmentPath?: string,
 ): Promise<Message> {
   const trimmed = body.trim();
-
-  if (!trimmed || trimmed.length > 4000) {
-    throw new Error('Message must contain 1–4000 characters.');
+  if ((!trimmed && !attachmentPath) || trimmed.length > 4000) {
+    throw new Error('Add a message or attachment (message limit: 4000 characters).');
   }
 
-  const { data: { user }, error: authError } =
-    await supabase.auth.getUser();
-
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (!user) throw new Error('You must be logged in.');
 
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      channel_id: channelId,
-      author_id: user.id,
-      body: trimmed,
-      reply_to_id: replyToId ?? null,
-    })
-    .select(
-      'id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at',
-    )
-    .single();
+  const { data, error } = await supabase.from('messages').insert({
+    channel_id: channelId,
+    author_id: user.id,
+    body: trimmed,
+    image_url: attachmentPath ? `${CHANNEL_ATTACHMENT_PREFIX}${attachmentPath}` : null,
+    reply_to_id: replyToId ?? null,
+  }).select(
+    'id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at',
+  ).single();
 
   if (error) throw error;
-
   return data as Message;
 }
 
@@ -91,12 +133,27 @@ export async function editMessage(
 }
 
 export async function deleteMessage(messageId: string): Promise<void> {
-  const { error } = await supabase
-    .from('messages')
-    .delete()
-    .eq('id', messageId);
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
 
+  const { data: message, error: fetchError } = await supabase
+    .from('messages')
+    .select('author_id, channel_id, image_url')
+    .eq('id', messageId)
+    .single();
+  if (fetchError) throw fetchError;
+
+  const { error } = await supabase.from('messages').delete().eq('id', messageId);
   if (error) throw error;
+
+  if (message.author_id === user.id && message.image_url?.startsWith(CHANNEL_ATTACHMENT_PREFIX)) {
+    const path = message.image_url.slice(CHANNEL_ATTACHMENT_PREFIX.length);
+    const expectedPrefix = `${message.channel_id ?? ''}/${user.id}/`;
+    if (path.startsWith(expectedPrefix)) {
+      await supabase.storage.from(CHANNEL_ATTACHMENT_BUCKET).remove([path]);
+    }
+  }
 }
 
 
