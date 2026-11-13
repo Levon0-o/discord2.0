@@ -1497,7 +1497,6 @@ const isGrouped =
                             title="Copy message"
                           >
                             {copiedMessageId === message.id ? <Check size={13} /> : <Copy size={13} />}
-                            
                           </button>
                           {mine && editingMessageId !== message.id && (
                             <>
@@ -1527,7 +1526,7 @@ const isGrouped =
                             onClick={() => void handleTogglePinnedMessage(message.id)}
                             disabled={pinningMessageId === message.id}
                             aria-pressed={pinnedMessages.some((item) => item.message_id === message.id)}
-                            className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border p-0 text-base transition disabled:opacity-50 ${pinnedMessages.some((item) => item.message_id === message.id) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-400 hover:border-white/20 hover:text-ink-100'}`}
+                            className={`inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-lg border px-1 text-xs transition disabled:opacity-50 ${pinnedMessages.some((item) => item.message_id === message.id) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-400 hover:border-white/20 hover:text-ink-100'}`}
                             title={pinnedMessages.some((item) => item.message_id === message.id) ? 'Unpin message' : 'Pin message'}
                           >
                             <Pin size={13} />
