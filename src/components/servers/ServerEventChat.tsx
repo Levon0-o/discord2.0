@@ -556,7 +556,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                 >
                   <Reply size={11} /> Reply
                 </button>
-                {own && messages.filter((item) => item.author_id === userId).at(-1)?.id === message.id ? (() => {
+                {own && messages.filter((item) => item.author_id === userId).slice(-1)[0]?.id === message.id ? (() => {
                   const seenCount = readReceipts.filter((receipt) => receipt.user_id !== userId && receipt.last_read_at >= message.created_at).length;
                   return seenCount > 0 ? <p className="mt-1 text-[9px] text-ink-600">Seen by {seenCount} {seenCount === 1 ? 'attendee' : 'attendees'}</p> : null;
                 })() : null}
