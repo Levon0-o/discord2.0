@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle,
+  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   fetchChannelMessages, sendChannelMessage, editMessage, deleteMessage,
   fetchChannelReactions, toggleChannelReaction, fetchPinnedChannelMessages,
-  toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
-  type ChannelMessageReaction, type PinnedChannelMessage,
+  toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,\n  fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
+  type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
 import type { MemberWithProfile } from '@/types/servers';
@@ -45,7 +45,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [searching, setSearching] = useState(false);
-  const [showMembers, setShowMembers] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);\n  const [showNotificationMenu, setShowNotificationMenu] = useState(false);\n  const [notificationPreference, setNotificationPreference] = useState<ChannelNotificationPreference | null>(null);\n  const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -93,7 +93,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
     return () => { active = false; };
   }, []);
 
-  useEffect(() => { void loadMessages(); }, [loadMessages]);
+  useEffect(() => { void loadMessages(); }, [loadMessages]);\n\n  useEffect(() => {\n    let active = true;\n    setNotificationPreference(null);\n    setShowNotificationMenu(false);\n    if (!userId) return () => { active = false; };\n    void fetchChannelNotificationPreference(channelId).then((preference) => {\n      if (active) setNotificationPreference(preference);\n    }).catch((err) => {\n      if (active) setError(err instanceof Error ? err.message : 'Could not load channel notification settings.');\n    });\n    return () => { active = false; };\n  }, [channelId, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -376,6 +376,43 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
     }
   }
 
+  async function muteChannelNotifications(durationMs: number | null) {
+    setSavingNotificationPreference(true);
+    setError('');
+    try {
+      const mutedUntil = durationMs === null ? null : new Date(Date.now() + durationMs).toISOString();
+      const preference = await setChannelNotificationsMuted(channelId, mutedUntil);
+      setNotificationPreference(preference);
+      setShowNotificationMenu(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not mute channel notifications.');
+    } finally {
+      setSavingNotificationPreference(false);
+    }
+  }
+
+  async function unmuteChannel() {
+    setSavingNotificationPreference(true);
+    setError('');
+    try {
+      await unmuteChannelNotifications(channelId);
+      setNotificationPreference(null);
+      setShowNotificationMenu(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not unmute channel notifications.');
+    } finally {
+      setSavingNotificationPreference(false);
+    }
+  }
+
+  const channelIsMuted = Boolean(
+    notificationPreference?.is_muted &&
+    (!notificationPreference.muted_until || new Date(notificationPreference.muted_until).getTime() > Date.now())
+  );
+  const muteExpiryLabel = notificationPreference?.muted_until
+    ? new Date(notificationPreference.muted_until).toLocaleString()
+    : 'until you turn them back on';
+
   const pinnedMessages = pinned.map((item) => messagesById.get(item.message_id)).filter((item): item is Message => Boolean(item));
   const mentionMatch = messageText.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/);
   const mentionQuery = mentionMatch?.[1]?.toLowerCase() ?? '';
@@ -403,6 +440,30 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          <div className="relative">
+            <button type="button" title={channelIsMuted ? 'Channel notifications are muted' : 'Mute channel notifications'} onClick={() => setShowNotificationMenu((value) => !value)} className={`rounded-lg border p-2 transition ${channelIsMuted ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.05]'}`}>
+              {channelIsMuted ? <BellOff size={15} /> : <Bell size={15} />}
+            </button>
+            {showNotificationMenu ? (
+              <div className="absolute right-0 top-full z-30 mt-2 w-64 rounded-xl border border-white/10 bg-ink-900 p-2 shadow-2xl">
+                <p className="px-2 py-1 text-xs font-semibold text-ink-200">Channel notifications</p>
+                {channelIsMuted ? (
+                  <>
+                    <p className="px-2 pb-2 text-[11px] text-ink-500">Muted {muteExpiryLabel === 'until you turn them back on' ? muteExpiryLabel : `until ${muteExpiryLabel}`}</p>
+                    <button type="button" disabled={savingNotificationPreference} onClick={() => void unmuteChannel()} className="w-full rounded-lg px-2 py-2 text-left text-sm text-primary-200 hover:bg-white/[0.06] disabled:opacity-50">Turn notifications back on</button>
+                  </>
+                ) : (
+                  <>
+                    <p className="px-2 pb-2 text-[11px] text-ink-500">Mute mention and reply notifications in this channel.</p>
+                    <button type="button" disabled={savingNotificationPreference} onClick={() => void muteChannelNotifications(60 * 60 * 1000)} className="w-full rounded-lg px-2 py-2 text-left text-sm text-ink-200 hover:bg-white/[0.06] disabled:opacity-50">For 1 hour</button>
+                    <button type="button" disabled={savingNotificationPreference} onClick={() => void muteChannelNotifications(8 * 60 * 60 * 1000)} className="w-full rounded-lg px-2 py-2 text-left text-sm text-ink-200 hover:bg-white/[0.06] disabled:opacity-50">For 8 hours</button>
+                    <button type="button" disabled={savingNotificationPreference} onClick={() => void muteChannelNotifications(24 * 60 * 60 * 1000)} className="w-full rounded-lg px-2 py-2 text-left text-sm text-ink-200 hover:bg-white/[0.06] disabled:opacity-50">For 24 hours</button>
+                    <button type="button" disabled={savingNotificationPreference} onClick={() => void muteChannelNotifications(null)} className="w-full rounded-lg px-2 py-2 text-left text-sm text-ink-200 hover:bg-white/[0.06] disabled:opacity-50">Until I turn them back on</button>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
           <button type="button" title="Search channel messages" onClick={() => { setShowSearch((value) => !value); setShowMembers(false); }} className={`rounded-lg border p-2 transition ${showSearch ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.05]'}`}>
             <Search size={15} />
           </button>
