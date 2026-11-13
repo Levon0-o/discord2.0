@@ -10,17 +10,22 @@ import {
   Shield,
   Users,
 } from 'lucide-react';
+
 import { ServerIcon } from '@/components/servers/ServerIcon';
 import { ChannelChat } from '@/components/servers/ChannelChat';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { RoleManager } from '@/components/servers/RoleManager';
+import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
+
 import { cn } from '@/lib/cn';
+
 import {
   createChannel,
   fetchChannels,
   fetchServerMembers,
   leaveServer,
 } from '@/lib/serversApi';
+
 import type {
   Channel,
   CreateChannelInput,
@@ -60,13 +65,19 @@ export function ServerDetail({
   const [channels, setChannels] = useState<Channel[]>([]);
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
   const [leaving, setLeaving] = useState(false);
+
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState('');
+
   const [rolesOpen, setRolesOpen] = useState(false);
+  const [selectedMember, setSelectedMember] =
+    useState<MemberWithProfile | null>(null);
 
   const isAdminOrOwner = canManageChannels(server.my_role);
 
@@ -87,6 +98,7 @@ export function ServerDetail({
 
         setChannels(channelRows);
         setMembers(memberRows);
+
         setActiveChannelId((current) => {
           if (current && channelRows.some((c) => c.id === current)) {
             return current;
@@ -220,6 +232,7 @@ export function ServerDetail({
                   <h1 className="truncate text-sm font-bold text-ink-100">
                     {server.name}
                   </h1>
+
                   <p className="truncate text-[10px] text-ink-500">
                     {server.visibility === 'private'
                       ? 'Private server'
@@ -257,7 +270,10 @@ export function ServerDetail({
               {isAdminOrOwner && (
                 <button
                   type="button"
-                  onClick={() => setRolesOpen(true)}
+                  onClick={() => {
+                    setSelectedMember(null);
+                    setRolesOpen(true);
+                  }}
                   className="mt-3 flex w-full items-center gap-2 rounded-lg border border-white/[0.07] px-2.5 py-2 text-left text-xs text-ink-300 transition hover:border-primary-400/30 hover:bg-primary-500/[0.07] hover:text-primary-200"
                 >
                   <Settings2 size={14} />
@@ -321,7 +337,11 @@ export function ServerDetail({
                           <li key={channel.id}>
                             <button
                               type="button"
-                              onClick={() => setActiveChannelId(channel.id)}
+                              onClick={() => {
+                                setRolesOpen(false);
+                                setSelectedMember(null);
+                                setActiveChannelId(channel.id);
+                              }}
                               className={cn(
                                 'flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition',
                                 active
@@ -338,6 +358,7 @@ export function ServerDetail({
                                     : 'text-ink-600',
                                 )}
                               />
+
                               <span className="min-w-0 flex-1 truncate">
                                 {channel.name}
                               </span>
@@ -359,9 +380,15 @@ export function ServerDetail({
             </div>
           </aside>
 
-          {/* CENTER: CHAT OR ROLE MANAGER */}
+          {/* CENTER: CHAT, ROLE MANAGER OR MEMBER ROLE MANAGER */}
           <div className="min-h-0 min-w-0 overflow-hidden">
-            {rolesOpen ? (
+            {selectedMember ? (
+              <MemberRoleManager
+                serverId={server.id}
+                member={selectedMember}
+                onClose={() => setSelectedMember(null)}
+              />
+            ) : rolesOpen ? (
               <RoleManager
                 serverId={server.id}
                 onBack={() => setRolesOpen(false)}
@@ -409,38 +436,59 @@ export function ServerDetail({
                   ? `@${member.profile.username}`
                   : null;
 
-                return (
-                  <li
-                    key={member.user_id}
-                    className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 transition hover:bg-white/[0.04]"
-                  >
-                    {member.profile?.avatar_url ? (
-                      <img
-                        src={member.profile.avatar_url}
-                        alt=""
-                        className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-white/[0.08]"
-                      />
-                    ) : (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-500/20 text-[10px] font-semibold text-primary-200">
-                        {label.slice(0, 1).toUpperCase()}
-                      </div>
-                    )}
+                const isSelf = member.user_id === userId;
 
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate text-[11px] font-semibold text-ink-100"
-                        title={label}
-                      >
-                        {label}
-                      </p>
-                      <p
-                        className="truncate text-[9px] text-ink-500"
-                        title={handle || roleLabel(member.role)}
-                      >
-                        {roleLabel(member.role)}
-                        {handle ? ` · ${handle}` : ''}
-                      </p>
-                    </div>
+                return (
+                  <li key={member.user_id}>
+                    <button
+                      type="button"
+                      disabled={!isAdminOrOwner || isSelf}
+                      onClick={() => setSelectedMember(member)}
+                      title={
+                        isSelf
+                          ? 'You cannot edit your own roles here'
+                          : isAdminOrOwner
+                            ? 'Manage member roles'
+                            : 'You do not have permission'
+                      }
+                      className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition hover:bg-white/[0.04] disabled:cursor-default disabled:hover:bg-transparent"
+                    >
+                      {member.profile?.avatar_url ? (
+                        <img
+                          src={member.profile.avatar_url}
+                          alt=""
+                          className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-white/[0.08]"
+                        />
+                      ) : (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-500/20 text-[10px] font-semibold text-primary-200">
+                          {label.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="truncate text-[11px] font-semibold text-ink-100"
+                          title={label}
+                        >
+                          {label}
+                        </p>
+
+                        <p
+                          className="truncate text-[9px] text-ink-500"
+                          title={handle || roleLabel(member.role)}
+                        >
+                          {roleLabel(member.role)}
+                          {handle ? ` · ${handle}` : ''}
+                        </p>
+                      </div>
+
+                      {isAdminOrOwner && !isSelf && (
+                        <Shield
+                          size={13}
+                          className="shrink-0 text-ink-600"
+                        />
+                      )}
+                    </button>
                   </li>
                 );
               })}
