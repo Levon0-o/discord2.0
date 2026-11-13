@@ -102,9 +102,12 @@ export function DirectMessagesSection({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const lastTypingSentAtRef = useRef(0);
   const activeIdRef = useRef(activeId);
   const conversationIdsRef = useRef(new Set<string>());
 
@@ -345,6 +348,39 @@ export function DirectMessagesSection({
       active = false;
     };
   }, [activeId, markActiveConversationRead]);
+
+  useEffect(() => {
+    if (!activeId || !userId) {
+      setIsOtherTyping(false);
+      return;
+    }
+
+    let mounted = true;
+    let typingTimeout: ReturnType<typeof setTimeout> | null = null;
+    const channel = supabase.channel(`dm-typing:${activeId}`, {
+      config: { private: true, broadcast: { self: false } },
+    });
+
+    typingChannelRef.current = channel;
+    channel
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (!mounted || payload?.user_id === userId) return;
+        setIsOtherTyping(Boolean(payload?.is_typing));
+        if (typingTimeout) clearTimeout(typingTimeout);
+        if (payload?.is_typing) {
+          typingTimeout = setTimeout(() => setIsOtherTyping(false), 2500);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      if (typingTimeout) clearTimeout(typingTimeout);
+      typingChannelRef.current = null;
+      setIsOtherTyping(false);
+      void supabase.removeChannel(channel);
+    };
+  }, [activeId, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -668,8 +704,8 @@ export function DirectMessagesSection({
                 <h3 className="truncate text-base font-bold text-ink-50">
                   {displayName}
                 </h3>
-                <p className="mt-0.5 text-xs text-ink-500">
-                  Direct message
+                <p className={`mt-0.5 text-xs ${isOtherTyping ? 'text-primary-300' : 'text-ink-500'}`}>
+                  {isOtherTyping ? 'Typing…' : 'Direct message'}
                 </p>
               </div>
             </header>
@@ -816,7 +852,31 @@ const isGrouped =
 
                 <input
                   value={messageText}
-                  onChange={(event) => setMessageText(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setMessageText(value);
+                    const channel = typingChannelRef.current;
+                    if (!channel) return;
+
+                    const now = Date.now();
+                    if (!value.trim()) {
+                      void channel.send({
+                        type: 'broadcast',
+                        event: 'typing',
+                        payload: { user_id: userId, is_typing: false },
+                      });
+                      return;
+                    }
+
+                    if (now - lastTypingSentAtRef.current >= 900) {
+                      lastTypingSentAtRef.current = now;
+                      void channel.send({
+                        type: 'broadcast',
+                        event: 'typing',
+                        payload: { user_id: userId, is_typing: true },
+                      });
+                    }
+                  }}
                   placeholder={`Message ${displayName}`}
                   maxLength={4000}
                   disabled={sending}
