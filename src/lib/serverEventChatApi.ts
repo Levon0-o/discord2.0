@@ -348,3 +348,38 @@ export async function reviewServerEventChatReport(reportId: string, status: Excl
   }).eq('id', reportId);
   if (error) throw error;
 }
+
+
+export interface ServerEventChatNotificationPreference {
+  event_id: string;
+  user_id: string;
+  muted_until: string | null;
+  updated_at: string;
+}
+
+export async function fetchServerEventChatNotificationPreference(eventId: string): Promise<ServerEventChatNotificationPreference | null> {
+  const { data, error } = await supabase
+    .from('server_event_chat_notification_preferences')
+    .select('event_id, user_id, muted_until, updated_at')
+    .eq('event_id', eventId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as ServerEventChatNotificationPreference | null;
+}
+
+export async function setServerEventChatNotificationsMuted(eventId: string, duration: '1h' | '8h' | '24h' | 'forever' | 'off'): Promise<void> {
+  if (duration === 'off') {
+    const { error } = await supabase.from('server_event_chat_notification_preferences').delete().eq('event_id', eventId);
+    if (error) throw error;
+    return;
+  }
+  const mutedUntil = duration === 'forever'
+    ? null
+    : new Date(Date.now() + ({ '1h': 60, '8h': 480, '24h': 1440 }[duration] * 60_000)).toISOString();
+  const { error } = await supabase.from('server_event_chat_notification_preferences').upsert({
+    event_id: eventId,
+    muted_until: mutedUntil,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'event_id,user_id' });
+  if (error) throw error;
+}
