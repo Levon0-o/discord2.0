@@ -137,7 +137,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT public.can_view_channel(p_channel_id)
+  SELECT public.can_send_channel_message(p_channel_id)
     AND COALESCE(
       (
         SELECT cmp.can_attach_files
