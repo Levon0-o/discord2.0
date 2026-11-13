@@ -14,6 +14,11 @@ import {
   Trash2,
   SlidersHorizontal,
   Users,
+  CalendarDays,
+  MapPin,
+  Clock,
+  CheckCircle2,
+  Star,
 } from 'lucide-react';
 
 import { ServerIcon } from '@/components/servers/ServerIcon';
@@ -26,6 +31,7 @@ import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissions
 import { cn } from '@/lib/cn';
 
 import { fetchCustomRoles, fetchMemberRoles } from '@/lib/customRolesApi';
+import { createServerEvent, fetchServerEvents, setServerEventRsvp, type ServerEvent, type ServerEventRsvpStatus } from '@/lib/serverEventsApi';
 
 import {
   createChannel,
@@ -98,6 +104,18 @@ export function ServerDetail({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [reorderingChannelId, setReorderingChannelId] = useState<string | null>(null);
+  const [eventsOpen, setEventsOpen] = useState(false);
+  const [events, setEvents] = useState<ServerEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState('');
+  const [eventCreatorOpen, setEventCreatorOpen] = useState(false);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [eventStartsAt, setEventStartsAt] = useState(() => { const date = new Date(Date.now() + 86400000); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 16); });
+  const [eventEndsAt, setEventEndsAt] = useState('');
+  const [eventBusy, setEventBusy] = useState(false);
+  const [eventRsvpBusy, setEventRsvpBusy] = useState<string | null>(null);
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
@@ -232,6 +250,60 @@ export function ServerDetail({
     if (channels.length === 0) return 0;
     return Math.max(...channels.map((c) => c.position)) + 1;
   }, [channels]);
+
+
+  async function openEvents() {
+    setEventsOpen(true);
+    setEventsLoading(true);
+    setEventsError('');
+    try {
+      setEvents(await fetchServerEvents(server.id));
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : 'Could not load server events.');
+    } finally {
+      setEventsLoading(false);
+    }
+  }
+
+  async function handleCreateEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!eventTitle.trim() || !eventStartsAt || eventBusy) return;
+    setEventBusy(true);
+    setEventsError('');
+    try {
+      await createServerEvent({
+        serverId: server.id,
+        title: eventTitle.trim(),
+        description: eventDescription.trim(),
+        location: eventLocation.trim(),
+        startsAt: new Date(eventStartsAt).toISOString(),
+        endsAt: eventEndsAt ? new Date(eventEndsAt).toISOString() : null,
+      });
+      setEventTitle('');
+      setEventDescription('');
+      setEventLocation('');
+      setEventEndsAt('');
+      setEventCreatorOpen(false);
+      setEvents(await fetchServerEvents(server.id));
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : 'Could not create event.');
+    } finally {
+      setEventBusy(false);
+    }
+  }
+
+  async function handleEventRsvp(eventId: string, status: ServerEventRsvpStatus) {
+    setEventRsvpBusy(eventId);
+    setEventsError('');
+    try {
+      await setServerEventRsvp(eventId, status);
+      setEvents(await fetchServerEvents(server.id));
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : 'Could not update your RSVP.');
+    } finally {
+      setEventRsvpBusy(null);
+    }
+  }
 
   async function handleLeave() {
     if (server.my_role === 'owner') return;
@@ -409,6 +481,15 @@ export function ServerDetail({
                   {roleLabel(server.my_role)}
                 </p>
               )}
+
+              <button
+                type="button"
+                onClick={() => void openEvents()}
+                className="mt-3 flex w-full items-center gap-2 rounded-lg border border-primary-400/20 bg-primary-500/[0.06] px-2.5 py-2 text-left text-xs text-primary-200 transition hover:border-primary-400/40 hover:bg-primary-500/[0.12]"
+              >
+                <CalendarDays size={14} />
+                Server events
+              </button>
 
               {canManageRoles && (
                 <button
@@ -714,6 +795,66 @@ export function ServerDetail({
       )}
 
 
+
+
+      {eventsOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/[0.07] p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500/15 text-primary-200"><CalendarDays size={19} /></div>
+                <div><h2 className="text-base font-bold text-ink-50">Server events</h2><p className="text-[11px] text-ink-500">{server.name} · {events.length} events</p></div>
+              </div>
+              <button type="button" onClick={() => { setEventsOpen(false); setEventCreatorOpen(false); }} className="rounded-lg p-2 text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close events"><X size={17} /></button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              {eventsError ? <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">{eventsError}</p> : null}
+              {eventCreatorOpen ? (
+                <form onSubmit={handleCreateEvent} className="space-y-3 rounded-xl border border-primary-400/20 bg-primary-500/[0.05] p-4">
+                  <div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-ink-100">Create an event</h3><button type="button" onClick={() => setEventCreatorOpen(false)} className="text-xs text-ink-500 hover:text-ink-200">Cancel</button></div>
+                  <input value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} maxLength={120} required placeholder="Event title" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50" />
+                  <textarea value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} maxLength={2000} rows={3} placeholder="Description (optional)" className="w-full resize-y rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50" />
+                  <input value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} maxLength={160} placeholder="Location or meeting link (optional)" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50" />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="space-y-1"><span className="text-[11px] text-ink-400">Starts</span><input type="datetime-local" value={eventStartsAt} onChange={(e) => setEventStartsAt(e.target.value)} required className="w-full rounded-lg border border-white/10 bg-ink-900 px-2 py-2 text-xs text-ink-100 outline-none focus:border-primary-400/50" /></label>
+                    <label className="space-y-1"><span className="text-[11px] text-ink-400">Ends (optional)</span><input type="datetime-local" min={eventStartsAt} value={eventEndsAt} onChange={(e) => setEventEndsAt(e.target.value)} className="w-full rounded-lg border border-white/10 bg-ink-900 px-2 py-2 text-xs text-ink-100 outline-none focus:border-primary-400/50" /></label>
+                  </div>
+                  <div className="flex justify-end"><button type="submit" disabled={eventBusy || !eventTitle.trim() || !eventStartsAt} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{eventBusy ? 'Creating…' : 'Create event'}</button></div>
+                </form>
+              ) : null}
+              {eventsLoading ? <div className="py-10 text-center text-xs text-ink-500">Loading events…</div> : events.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays size={25} className="mx-auto mb-2 text-ink-600" /><p className="text-sm font-medium text-ink-300">No events scheduled</p><p className="mt-1 text-xs text-ink-500">Events created for this server will appear here.</p></div> : (
+                <div className="space-y-3">
+                  {events.map((item) => {
+                    const ownStatus = item.rsvps.find((rsvp) => rsvp.user_id === userId)?.status;
+                    const going = item.rsvps.filter((rsvp) => rsvp.status === 'going').length;
+                    const interested = item.rsvps.filter((rsvp) => rsvp.status === 'interested').length;
+                    const eventDate = new Date(item.starts_at);
+                    const past = eventDate.getTime() < Date.now();
+                    return (
+                      <article key={item.id} className="rounded-xl border border-white/[0.08] bg-ink-900/70 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0"><h3 className="break-words text-sm font-bold text-ink-100">{item.title}</h3><p className="mt-1 flex items-center gap-1.5 text-[11px] text-ink-400"><Clock size={12} />{eventDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}{item.ends_at ? ' – ' + new Date(item.ends_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</p>{item.location ? <p className="mt-1 flex items-center gap-1.5 break-all text-[11px] text-ink-400"><MapPin size={12} />{item.location}</p> : null}</div>
+                          <span className={'rounded-full px-2 py-1 text-[10px] ' + (past ? 'bg-white/[0.05] text-ink-500' : 'bg-emerald-400/10 text-emerald-300')}>{past ? 'Past' : 'Upcoming'}</span>
+                        </div>
+                        {item.description ? <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{item.description}</p> : null}
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
+                          <div className="flex items-center gap-3 text-[10px] text-ink-500"><span className="flex items-center gap-1"><CheckCircle2 size={12} className="text-emerald-300" />{going} going</span><span className="flex items-center gap-1"><Star size={12} className="text-amber-300" />{interested} interested</span></div>
+                          {!past ? <div className="flex flex-wrap gap-1.5">
+                            <button type="button" disabled={eventRsvpBusy === item.id} onClick={() => void handleEventRsvp(item.id, 'going')} className={'rounded-md border px-2.5 py-1.5 text-[10px] font-semibold transition ' + (ownStatus === 'going' ? 'border-emerald-300/40 bg-emerald-400/10 text-emerald-200' : 'border-white/10 text-ink-400 hover:text-ink-100')}>Going</button>
+                            <button type="button" disabled={eventRsvpBusy === item.id} onClick={() => void handleEventRsvp(item.id, 'interested')} className={'rounded-md border px-2.5 py-1.5 text-[10px] font-semibold transition ' + (ownStatus === 'interested' ? 'border-amber-300/40 bg-amber-400/10 text-amber-200' : 'border-white/10 text-ink-400 hover:text-ink-100')}>Interested</button>
+                            <button type="button" disabled={eventRsvpBusy === item.id} onClick={() => void handleEventRsvp(item.id, 'not_going')} className={'rounded-md border px-2.5 py-1.5 text-[10px] font-semibold transition ' + (ownStatus === 'not_going' ? 'border-white/20 bg-white/[0.07] text-ink-200' : 'border-white/10 text-ink-500 hover:text-ink-200')}>Not going</button>
+                          </div> : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {['owner', 'admin', 'moderator'].includes(server.my_role ?? '') ? <div className="border-t border-white/[0.07] p-3"><button type="button" onClick={() => setEventCreatorOpen((open) => !open)} className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-primary-400"><Plus size={14} /> Create event</button></div> : null}
+          </div>
+        </div>
+      ) : null}
 
       {permissionsChannel && (
         <ChannelPermissionsModal
