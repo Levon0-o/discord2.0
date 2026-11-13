@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles, MessageCircle,
-  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, Pencil, Trash2, Bookmark, Pin,
+  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, Pencil, Trash2, Bookmark, Pin, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -32,6 +32,10 @@ interface ExploreProfile {
   bio: string;
   avatar_url: string | null;
   banner_url: string | null;
+  website_url: string | null;
+  instagram_url: string | null;
+  twitch_url: string | null;
+  youtube_url: string | null;
   created_at: string;
 }
 
@@ -342,7 +346,7 @@ export function ExploreSection() {
     setProfileError('');
     setProfileLoading(true);
     const [profileResult, postsResult, followersResult, followingResult, followResult] = await Promise.all([
-      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, created_at').eq('id', profileId).maybeSingle(),
+      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, created_at').eq('id', profileId).maybeSingle(),
       supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
       supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', profileId),
@@ -634,6 +638,14 @@ export function ExploreSection() {
                   <h2 className="mt-3 text-xl font-bold text-white">{profile.display_name || profile.username}</h2>
                   <p className="text-sm text-ink-400">@{profile.username}</p>
                   {profile.bio && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink-200">{profile.bio}</p>}
+                  {(profile.website_url || profile.instagram_url || profile.twitch_url || profile.youtube_url) && <div className="mt-3 flex flex-wrap gap-2">
+                    {([
+                      ['Website', profile.website_url],
+                      ['Instagram', profile.instagram_url],
+                      ['Twitch', profile.twitch_url],
+                      ['YouTube', profile.youtube_url],
+                    ] as const).filter((item): item is readonly [string, string] => Boolean(item[1])).map(([label, url]) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-primary-300 transition hover:bg-white/[0.07]">{label}<ExternalLink size={12} /></a>)}
+                  </div>}
                   <div className="mt-4 flex flex-wrap items-center gap-5 text-xs text-ink-400">
                     <span><strong className="text-ink-100">{profileStats.followers}</strong> followers</span>
                     <span><strong className="text-ink-100">{profileStats.following}</strong> following</span>
