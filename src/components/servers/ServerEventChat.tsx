@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { AlertTriangle, Bookmark, Check, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Bookmark, Check, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
 import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason } from '@/lib/serverEventChatApi';
@@ -462,6 +462,37 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     }
   }
 
+  function exportLoadedMessages() {
+    if (messages.length === 0) {
+      setError('There are no loaded messages to export.');
+      return;
+    }
+    const lines = [
+      eventTitle + ' — Event Chat',
+      'Exported: ' + new Date().toLocaleString(),
+      'Messages included: ' + messages.length,
+      'Note: this export contains the messages currently loaded in the chat.',
+      '',
+      ...messages.map((message) => {
+        const author = members.find((entry) => entry.user_id === message.author_id);
+        const name = author?.profile?.display_name || author?.profile?.username || 'Server member';
+        const timestamp = new Date(message.created_at).toLocaleString();
+        const attachment = message.attachment_path ? '\\n[Attachment: ' + message.attachment_path.split('/').pop() + ']' : '';
+        return '[' + timestamp + '] ' + name + ':\\n' + (message.body || '[Attachment-only message]') + attachment;
+      }),
+    ];
+    const blob = new Blob([lines.join('\\n\\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeTitle = eventTitle.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'event-chat';
+    link.href = url;
+    link.download = safeTitle + '-chat-export.txt';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleReviewReport(reportId: string, status: 'resolved' | 'dismissed') {
     setError('');
     try {
@@ -524,6 +555,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <div className="min-w-0"><p className="text-xs font-semibold text-ink-100">Event chat</p><p className="truncate text-[10px] text-ink-500">{eventTitle}</p></div>
         </div>
         <div className="flex items-center gap-1">
+          <button type="button" onClick={exportLoadedMessages} disabled={messages.length === 0} className="rounded-md p-1.5 text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Export loaded messages" title="Export loaded messages"><Download size={13} /></button>
           <button type="button" onClick={() => { setSearchOpen((value) => !value); setPinnedOpen(false); }} className={'rounded-md p-1.5 transition ' + (searchOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-label="Search event chat" aria-expanded={searchOpen}><Search size={13} /></button>
           <button type="button" onClick={() => { setSavedOpen((value) => !value); setPinnedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (savedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={savedOpen}><Bookmark size={12} /> Saved {savedMessages.length}</button>
           <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
