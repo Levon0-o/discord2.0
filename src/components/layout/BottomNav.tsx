@@ -6,9 +6,10 @@ interface BottomNavProps {
   activeSection: SectionId;
   onNavigate: (id: SectionId) => void;
   onOpenMenu: () => void;
+  unreadNotificationCount: number;
 }
 
-export function BottomNav({ activeSection, onNavigate, onOpenMenu }: BottomNavProps) {
+export function BottomNav({ activeSection, onNavigate, onOpenMenu, unreadNotificationCount }: BottomNavProps) {
   const primarySections = NAV_SECTIONS.filter((section) => section.mobilePrimary);
 
   return (
@@ -32,7 +33,12 @@ export function BottomNav({ activeSection, onNavigate, onOpenMenu }: BottomNavPr
                 )}
               >
                 <span className={cn('flex h-7 w-12 items-center justify-center rounded-full transition-colors', isActive && 'bg-primary-500/15')}>
-                  <Icon size={20} strokeWidth={isActive ? 2.25 : 2} />
+                  <span className="relative">
+                    <Icon size={20} strokeWidth={isActive ? 2.25 : 2} />
+                    {section.id === 'notifications' && unreadNotificationCount > 0 && (
+                      <span className="absolute -right-2 -top-1 h-2.5 w-2.5 rounded-full border-2 border-ink-950 bg-rose-500" />
+                    )}
+                  </span>
                 </span>
                 <span className="truncate">{section.label}</span>
               </button>
