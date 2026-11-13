@@ -12,6 +12,8 @@ interface FeedAuthor {
 interface FeedComment {
   id: string;
   body: string;
+  image_url: string | null;
+  media_type: 'text' | 'image' | 'video';
   created_at: string;
   author: FeedAuthor | null;
 }
@@ -66,7 +68,7 @@ export function SocialFeed() {
 
     const { data, error: queryError } = await supabase
       .from('posts')
-      .select('id, author_id, body, created_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
+      .select('id, author_id, body, image_url, media_type, created_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
       .is('server_id', null)
       .order('created_at', { ascending: false })
       .limit(40);
@@ -219,7 +221,9 @@ export function SocialFeed() {
                     <p className="text-xs text-ink-500">@{post.author?.username || 'user'} · {timeAgo(post.created_at)}</p>
                   </div>
                 </div>
-                <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5">{post.body}</p>
+                {post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-[560px] w-full bg-black object-contain" />}
+                {post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="Post media" loading="lazy" className="max-h-[560px] w-full object-cover" />}
+                {post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5">{post.body}</p>}
                 <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2 sm:px-4">
                   <button type="button" onClick={() => void toggleLike(post)} disabled={likeBusy === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}>
                     <Heart size={16} className={liked ? 'fill-current' : ''} /> {post.likes.length} {post.likes.length === 1 ? 'like' : 'likes'}
