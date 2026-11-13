@@ -667,9 +667,37 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <button type="button" onClick={() => { setSavedOpen((value) => !value); setPinnedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (savedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={savedOpen}><Bookmark size={12} /> Saved {savedMessages.length}</button>
           <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
           {canModerate ? <button type="button" onClick={() => { setReportsOpen((value) => !value); setPinnedOpen(false); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (reportsOpen ? 'bg-amber-500/15 text-amber-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={reportsOpen}><Flag size={12} /> Reports {reports.filter((report) => report.status === 'open').length}</button> : null}
+          <button type="button" onClick={() => setPollCreatorOpen(true)} className="inline-flex items-center gap-1 rounded-md bg-primary-500/15 px-2 py-1.5 text-[10px] font-semibold text-primary-200 transition hover:bg-primary-500/25" title="Create event poll"><Plus size={11} /> Poll</button>
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
         </div>
       </div>
+
+      {polls.length > 0 ? <div className="border-b border-white/[0.07] bg-primary-500/[0.035] p-3">
+        <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary-200"><BarChart3 size={12} /> Event polls</p>
+        <div className="space-y-3">{polls.map((poll) => {
+          const votes = pollVotes.filter((vote) => vote.poll_id === poll.id);
+          const total = new Set(votes.map((vote) => vote.user_id)).size;
+          const closed = Boolean(poll.closed_at) || Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
+          const ownVotes = votes.filter((vote) => vote.user_id === userId);
+          const canClose = poll.created_by === userId || canModerate;
+          return <div key={poll.id} className="rounded-lg border border-white/[0.08] bg-ink-950/70 p-3">
+            <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-ink-100">{poll.question}</p><p className="mt-1 text-[9px] text-ink-500">{total} {total === 1 ? 'vote' : 'votes'} · {closed ? 'Closed' : poll.allow_multiple ? 'Multiple choices' : 'Choose one'}</p></div>
+              {canClose && !closed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="shrink-0 rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-ink-200">Close</button> : null}
+            </div>
+            <div className="mt-2 space-y-1.5">{poll.options.map((option) => {
+              const count = votes.filter((vote) => vote.option_id === option.id).length;
+              const percent = total ? Math.round(count / total * 100) : 0;
+              const selected = ownVotes.some((vote) => vote.option_id === option.id);
+              return <button key={option.id} type="button" disabled={closed} onClick={() => void handlePollVote(poll, option.id)} className={'relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-md border px-2.5 py-2 text-left text-[10px] transition disabled:cursor-default ' + (selected ? 'border-primary-400/40 bg-primary-500/10 text-primary-100' : 'border-white/[0.07] bg-white/[0.025] text-ink-300 hover:border-primary-400/30')}>
+                <span className="absolute inset-y-0 left-0 bg-primary-500/10" style={{ width: percent + '%' }} />
+                <span className="relative flex min-w-0 items-center gap-1.5"><span className={'h-3 w-3 shrink-0 rounded-full border ' + (selected ? 'border-primary-300 bg-primary-400' : 'border-ink-500')} />{option.label}</span>
+                <span className="relative shrink-0 tabular-nums text-ink-500">{count} · {percent}%</span>
+              </button>;
+            })}</div>
+            <p className="mt-2 text-[9px] text-ink-600">{closed ? 'Voting is closed.' : 'Select an option to vote'}</p>
+          </div>;
+        })}</div>
+      </div> : null}
       {searchOpen ? (
         <div className="border-b border-white/[0.07] bg-white/[0.02] p-3">
           <form onSubmit={(event) => void handleSearch(event)} className="flex gap-2">
