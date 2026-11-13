@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Users,
   CalendarDays,
+  MessageCircle,
   ChevronLeft,
   ChevronRight,
   X,
@@ -30,6 +31,7 @@ import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { RoleManager } from '@/components/servers/RoleManager';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
+import { ServerEventChat } from '@/components/servers/ServerEventChat';
 
 import { cn } from '@/lib/cn';
 
@@ -108,6 +110,7 @@ export function ServerDetail({
   const [deleteError, setDeleteError] = useState('');
   const [reorderingChannelId, setReorderingChannelId] = useState<string | null>(null);
   const [eventsOpen, setEventsOpen] = useState(false);
+  const [eventChatId, setEventChatId] = useState<string | null>(null);
   const [events, setEvents] = useState<ServerEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState('');
@@ -973,6 +976,25 @@ export function ServerDetail({
                           <span className={'rounded-full px-2 py-1 text-[10px] ' + (past ? 'bg-white/[0.05] text-ink-500' : 'bg-emerald-400/10 text-emerald-300')}>{past ? 'Past' : 'Upcoming'}</span>
                         </div>
                         {item.description ? <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{item.description}</p> : null}
+
+                        <button
+                          type="button"
+                          onClick={() => setEventChatId((current) => current === item.id ? null : item.id)}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary-400/20 bg-primary-500/[0.06] px-2.5 py-1.5 text-[10px] font-semibold text-primary-200 transition hover:border-primary-400/40 hover:bg-primary-500/[0.12]"
+                        >
+                          <MessageCircle size={12} /> {eventChatId === item.id ? 'Close event chat' : 'Open event chat'}
+                        </button>
+                        {eventChatId === item.id ? (
+                          <div className="mt-3">
+                            <ServerEventChat
+                              eventId={item.id}
+                              eventTitle={item.title}
+                              userId={userId}
+                              members={members}
+                              onClose={() => setEventChatId(null)}
+                            />
+                          </div>
+                        ) : null}
 
 
                         <button type="button" onClick={() => setExpandedEventAttendees((current) => current === item.id ? null : item.id)} className="mt-2 text-[10px] font-semibold text-primary-300 hover:text-primary-200">
