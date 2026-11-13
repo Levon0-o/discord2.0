@@ -16,6 +16,7 @@ import {
   Users,
   CalendarDays,
   MessageCircle,
+  Headphones,
   ChevronLeft,
   ChevronRight,
   X,
@@ -32,6 +33,7 @@ import { RoleManager } from '@/components/servers/RoleManager';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
+import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
 
 import { cn } from '@/lib/cn';
 
@@ -111,6 +113,7 @@ export function ServerDetail({
   const [reorderingChannelId, setReorderingChannelId] = useState<string | null>(null);
   const [eventsOpen, setEventsOpen] = useState(false);
   const [eventChatId, setEventChatId] = useState<string | null>(null);
+  const [eventVoiceId, setEventVoiceId] = useState<string | null>(null);
   const [events, setEvents] = useState<ServerEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState('');
@@ -976,6 +979,25 @@ export function ServerDetail({
                           <span className={'rounded-full px-2 py-1 text-[10px] ' + (past ? 'bg-white/[0.05] text-ink-500' : 'bg-emerald-400/10 text-emerald-300')}>{past ? 'Past' : 'Upcoming'}</span>
                         </div>
                         {item.description ? <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{item.description}</p> : null}
+
+                        <button
+                          type="button"
+                          onClick={() => setEventVoiceId((current) => current === item.id ? null : item.id)}
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.05] px-2.5 py-1.5 text-[10px] font-semibold text-emerald-200 transition hover:border-emerald-400/40 hover:bg-emerald-400/[0.1]"
+                        >
+                          <Headphones size={12} /> {eventVoiceId === item.id ? 'Close voice room' : 'Open voice room'}
+                        </button>
+                        {eventVoiceId === item.id ? (
+                          <div className="mt-3">
+                            <ServerEventVoiceRoom
+                              eventId={item.id}
+                              eventTitle={item.title}
+                              userId={userId}
+                              members={members}
+                              onClose={() => setEventVoiceId(null)}
+                            />
+                          </div>
+                        ) : null}
 
                         <button
                           type="button"
