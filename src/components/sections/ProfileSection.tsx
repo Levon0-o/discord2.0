@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Camera, ExternalLink, Image as ImageIcon, Loader2, Save, UserRound } from 'lucide-react';
+import { Camera, ExternalLink, Image as ImageIcon, Loader2, Save, UserRound, BarChart3, Video } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -14,6 +14,7 @@ interface ProfileData {
   instagram_url: string | null;
   twitch_url: string | null;
   youtube_url: string | null;
+  profile_theme: 'blue' | 'violet' | 'crimson' | 'emerald' | 'amber';
   created_at: string;
 }
 
@@ -28,12 +29,21 @@ interface ProfilePost {
 
 const emptyProfile = {
   display_name: '',
+  profile_theme: 'blue' as const,
   bio: '',
   website_url: '',
   instagram_url: '',
   twitch_url: '',
   youtube_url: '',
 };
+
+const themeOptions = [
+  { value: 'blue', label: 'Electric blue', swatch: '#38bdf8', panel: 'from-sky-500/30 via-ink-900 to-ink-950' },
+  { value: 'violet', label: 'Violet', swatch: '#a78bfa', panel: 'from-violet-500/30 via-ink-900 to-ink-950' },
+  { value: 'crimson', label: 'Crimson', swatch: '#fb7185', panel: 'from-rose-500/30 via-ink-900 to-ink-950' },
+  { value: 'emerald', label: 'Emerald', swatch: '#34d399', panel: 'from-emerald-500/30 via-ink-900 to-ink-950' },
+  { value: 'amber', label: 'Amber', swatch: '#fbbf24', panel: 'from-amber-500/30 via-ink-900 to-ink-950' },
+] as const;
 
 function initials(value: string) {
   return value.trim().slice(0, 2).toUpperCase() || 'AD';
@@ -56,6 +66,8 @@ export function ProfileSection() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [draft, setDraft] = useState(emptyProfile);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
+  const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
+  const [postTab, setPostTab] = useState<'all' | 'videos'>('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<'avatar_url' | 'banner_url' | null>(null);
@@ -71,7 +83,7 @@ export function ProfileSection() {
     setError('');
     const [profileResult, postsResult] = await Promise.all([
       supabase.from('profiles')
-        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, created_at')
+        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at')
         .eq('id', userId)
         .maybeSingle(),
       supabase.from('posts')
@@ -80,6 +92,9 @@ export function ProfileSection() {
         .is('server_id', null)
         .order('created_at', { ascending: false })
         .limit(24),
+      supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).is('server_id', null),
+      supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', userId),
+      supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', userId),
     ]);
     if (profileResult.error) setError(profileResult.error.message);
     else if (profileResult.data) {
@@ -87,6 +102,7 @@ export function ProfileSection() {
       setProfile(data);
       setDraft({
         display_name: data.display_name ?? '',
+        profile_theme: data.profile_theme ?? 'blue',
         bio: data.bio ?? '',
         website_url: data.website_url ?? '',
         instagram_url: data.instagram_url ?? '',
@@ -96,6 +112,7 @@ export function ProfileSection() {
     } else setError('Your profile has not been created yet. Sign out and sign in again, then retry.');
     if (postsResult.error) setError(postsResult.error.message);
     else setPosts((postsResult.data ?? []) as ProfilePost[]);
+    setStats({ posts: postCountResult.count ?? 0, followers: followersResult.count ?? 0, following: followingResult.count ?? 0 });
     setLoading(false);
   }, [userId]);
 
@@ -165,6 +182,7 @@ export function ProfileSection() {
     const { data, error: updateError } = await supabase.from('profiles').update({
       display_name: draft.display_name.trim() || null,
       bio: draft.bio.trim(),
+      profile_theme: draft.profile_theme,
       ...links,
     }).eq('id', userId)
       .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, created_at')
@@ -177,6 +195,9 @@ export function ProfileSection() {
     setSaving(false);
   };
 
+  const selectedTheme = themeOptions.find((theme) => theme.value === draft.profile_theme) ?? themeOptions[0];
+  const visiblePosts = postTab === 'videos' ? posts.filter((post) => post.media_type === 'video') : posts;
+
   const socialLinks = profile ? [
     { label: 'Website', url: profile.website_url },
     { label: 'Instagram', url: profile.instagram_url },
@@ -186,7 +207,7 @@ export function ProfileSection() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
-      <header className="rounded-3xl border border-primary-400/15 bg-gradient-to-br from-primary-500/15 via-ink-900 to-ink-950 p-6 sm:p-8">
+      <header className={`rounded-3xl border border-white/[0.08] bg-gradient-to-br ${selectedTheme.panel} p-6 sm:p-8`}>
         <div className="flex items-center gap-3 text-primary-300"><UserRound size={19} /><span className="text-xs font-semibold uppercase tracking-[0.18em]">Your identity</span></div>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-white">Your profile<span className="text-primary-300">.</span></h1>
         <p className="mt-2 text-sm text-ink-300">Customize how people see you across AFTERDARK.</p>
@@ -200,7 +221,7 @@ export function ProfileSection() {
       ) : profile ? (
         <>
           <section className="overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60">
-            <div className="relative h-36 bg-gradient-to-br from-primary-500/35 via-ink-800 to-ink-900 sm:h-48">
+            <div className={`relative h-36 bg-gradient-to-br ${selectedTheme.panel} sm:h-48`}>
               {profile.banner_url && <img src={profile.banner_url} alt="Profile banner" className="h-full w-full object-cover" />}
               <label className="absolute bottom-3 right-3 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-black/65 px-3 py-2 text-xs font-semibold text-white backdrop-blur hover:bg-black/80">
                 {uploading === 'banner_url' ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />} Change banner
@@ -239,6 +260,11 @@ export function ProfileSection() {
             </label>
 
             <div className="border-t border-white/[0.06] pt-5">
+              <h3 className="text-sm font-semibold text-white">Profile appearance</h3>
+              <p className="mt-1 text-xs text-ink-500">Choose the accent theme shown on your public profile.</p>
+              <div className="mt-3 flex flex-wrap gap-2">{themeOptions.map((theme) => <button key={theme.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_theme: theme.value }))} aria-pressed={draft.profile_theme === theme.value} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${draft.profile_theme === theme.value ? 'border-white/30 bg-white/[0.09] text-white' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.04]'}`}><span className="h-3 w-3 rounded-full" style={{ backgroundColor: theme.swatch }} />{theme.label}</button>)}</div>
+            </div>
+            <div className="border-t border-white/[0.06] pt-5">
               <h3 className="text-sm font-semibold text-white">Social links</h3>
               <p className="mt-1 text-xs text-ink-500">Use complete links starting with https://</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -269,9 +295,12 @@ export function ProfileSection() {
             </div>
             {draft.bio && <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">{draft.bio}</p>}
             {socialLinks.length > 0 && <div className="flex flex-wrap gap-2">{socialLinks.map((item) => <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-primary-300 hover:bg-white/[0.07]">{item.label}<ExternalLink size={12} /></a>)}</div>}
+            <div className="grid grid-cols-3 gap-2 border-t border-white/[0.06] pt-4">
+              {[{ label: 'Public posts', value: stats.posts }, { label: 'Followers', value: stats.followers }, { label: 'Following', value: stats.following }].map((item) => <div key={item.label} className="rounded-xl border border-white/[0.06] bg-ink-950/60 p-3"><BarChart3 size={14} className="mb-2 text-primary-300" /><p className="text-lg font-bold text-white">{item.value.toLocaleString()}</p><p className="text-[11px] text-ink-500">{item.label}</p></div>)}
+            </div>
             <div className="border-t border-white/[0.06] pt-4">
-              <h3 className="mb-3 text-sm font-semibold text-ink-100">Your public posts</h3>
-              {posts.length === 0 ? <p className="py-6 text-center text-sm text-ink-500">You have not published any public posts yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{[...posts].sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((post) => <article key={post.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-950/70">
+              <div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-ink-100">Your content</h3><div className="flex rounded-lg border border-white/[0.08] p-1"><button type="button" onClick={() => setPostTab('all')} className={`rounded-md px-3 py-1.5 text-xs ${postTab === 'all' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-400'}`}>All posts</button><button type="button" onClick={() => setPostTab('videos')} className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs ${postTab === 'videos' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-400'}`}><Video size={12} />Videos</button></div></div>
+              {visiblePosts.length === 0 ? <p className="py-6 text-center text-sm text-ink-500">{postTab === 'videos' ? 'No videos published yet.' : 'You have not published any public posts yet.'}</p> : <div className="grid gap-3 sm:grid-cols-2">{[...visiblePosts].sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((post) => <article key={post.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-950/70">
                 {post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-56 w-full bg-black object-contain" />}
                 {post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="Post media" loading="lazy" className="max-h-56 w-full object-cover" />}
                 {post.body && <p className="whitespace-pre-wrap break-words p-3 text-sm text-ink-200">{post.body}</p>}
