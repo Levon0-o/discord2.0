@@ -9,9 +9,10 @@ interface MobileDrawerProps {
   activeSection: SectionId;
   onNavigate: (id: SectionId) => void;
   onClose: () => void;
+  unreadNotificationCount: number;
 }
 
-export function MobileDrawer({ open, activeSection, onNavigate, onClose }: MobileDrawerProps) {
+export function MobileDrawer({ open, activeSection, onNavigate, onClose, unreadNotificationCount }: MobileDrawerProps) {
   useEffect(() => {
     if (!open) return;
     const handleKey = (event: KeyboardEvent) => {
@@ -73,8 +74,18 @@ export function MobileDrawer({ open, activeSection, onNavigate, onClose }: Mobil
                     : 'text-ink-300 hover:bg-white/[0.04] hover:text-ink-50'
                 )}
               >
-                <Icon size={20} className={isActive ? 'text-primary-300' : 'text-ink-400'} />
+                <span className="relative">
+                  <Icon size={20} className={isActive ? 'text-primary-300' : 'text-ink-400'} />
+                  {section.id === 'notifications' && unreadNotificationCount > 0 && (
+                    <span className="absolute -right-2 -top-2 h-2.5 w-2.5 rounded-full bg-rose-500" />
+                  )}
+                </span>
                 {section.label}
+                {section.id === 'notifications' && unreadNotificationCount > 0 && (
+                  <span className="ml-auto rounded-full bg-rose-500/15 px-2 py-0.5 text-xs font-semibold text-rose-300">
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </span>
+                )}
               </button>
             );
           })}
