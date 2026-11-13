@@ -46,6 +46,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [searching, setSearching] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -55,6 +56,9 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLElement | null>>({});
   const shouldScrollToBottomRef = useRef(true);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const lastTypingBroadcastRef = useRef(0);
 
   const membersById = useMemo(() => new Map(members.map((member) => [member.user_id, member])), [members]);
   const messagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
@@ -114,6 +118,46 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
       void supabase.removeChannel(presenceChannel);
     };
   }, [channelId, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const typingChannel = supabase.channel(`channel-typing:${channelId}`, {
+      config: { private: true },
+    });
+    typingChannelRef.current = typingChannel;
+    typingChannel
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        const senderId = typeof payload?.user_id === 'string' ? payload.user_id : '';
+        if (!senderId || senderId === userId) return;
+        setTypingUserIds((current) => current.includes(senderId) ? current : [...current, senderId]);
+        const existingTimeout = typingTimeoutsRef.current[senderId];
+        if (existingTimeout) clearTimeout(existingTimeout);
+        typingTimeoutsRef.current[senderId] = setTimeout(() => {
+          setTypingUserIds((current) => current.filter((id) => id !== senderId));
+          delete typingTimeoutsRef.current[senderId];
+        }, 2200);
+      })
+      .subscribe();
+    return () => {
+      typingChannelRef.current = null;
+      Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
+      typingTimeoutsRef.current = {};
+      setTypingUserIds([]);
+      void supabase.removeChannel(typingChannel);
+    };
+  }, [channelId, userId]);
+
+  function handleMessageTextChange(value: string) {
+    setMessageText(value);
+    const now = Date.now();
+    if (!userId || !typingChannelRef.current || now - lastTypingBroadcastRef.current < 1000) return;
+    lastTypingBroadcastRef.current = now;
+    void typingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { user_id: userId },
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -535,9 +579,14 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
         <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 focus-within:border-primary-400/50">
           <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || loading} title="Attach a file (15 MB max)" aria-label="Attach a file" className="shrink-0 text-ink-400 transition hover:text-primary-200 disabled:opacity-40"><Paperclip size={19} /></button>
-          <input value={messageText} onChange={(event) => setMessageText(event.target.value)} placeholder={`Message #${channelName}`} maxLength={4000} disabled={sending || loading} className="min-w-0 flex-1 bg-transparent py-2 text-sm text-ink-100 outline-none placeholder:text-ink-600" />
+          <input value={messageText} onChange={(event) => handleMessageTextChange(event.target.value)} placeholder={`Message #${channelName}`} maxLength={4000} disabled={sending || loading} className="min-w-0 flex-1 bg-transparent py-2 text-sm text-ink-100 outline-none placeholder:text-ink-600" />
           <button type="submit" disabled={(!messageText.trim() && !selectedFile) || sending || loading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40" aria-label="Send message">{sending ? <RefreshCw size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
+        {typingUserIds.length ? (
+          <p className="mt-2 truncate text-[11px] text-primary-300">
+            {typingUserIds.map((id) => membersById.get(id)?.profile?.display_name || membersById.get(id)?.profile?.username || 'Someone').join(', ')} {typingUserIds.length === 1 ? 'is' : 'are'} typing…
+          </p>
+        ) : null}
         <p className="mt-2 text-[10px] text-ink-600">Enter to send · Files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV</p>
       </form>
     </section>
