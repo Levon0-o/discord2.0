@@ -15,6 +15,9 @@ interface ProfileData {
   twitch_url: string | null;
   youtube_url: string | null;
   profile_theme: 'blue' | 'violet' | 'crimson' | 'emerald' | 'amber';
+  user_status: 'online' | 'away' | 'busy' | 'dnd';
+  status_message: string;
+  featured_post_id: string | null;
   created_at: string;
 }
 
@@ -37,6 +40,9 @@ interface ProfileDraft {
   instagram_url: string;
   twitch_url: string;
   youtube_url: string;
+  user_status: 'online' | 'away' | 'busy' | 'dnd';
+  status_message: string;
+  featured_post_id: string;
 }
 
 const emptyProfile: ProfileDraft = {
@@ -47,7 +53,24 @@ const emptyProfile: ProfileDraft = {
   instagram_url: '',
   twitch_url: '',
   youtube_url: '',
+  user_status: 'online',
+  status_message: '',
+  featured_post_id: '',
 };
+
+const badgeLabels: Record<string, { label: string; description: string }> = {
+  founder: { label: 'Founder', description: 'Founding member of AFTERDARK' },
+  early_member: { label: 'Early Member', description: 'Joined during the early community period' },
+  verified: { label: 'Verified', description: 'Identity or account verified by the team' },
+  creator: { label: 'Creator', description: 'Recognized community creator' },
+};
+
+const statusOptions = [
+  { value: 'online', label: 'Online', color: '#34d399' },
+  { value: 'away', label: 'Away', color: '#fbbf24' },
+  { value: 'busy', label: 'Busy', color: '#fb7185' },
+  { value: 'dnd', label: 'Do Not Disturb', color: '#f87171' },
+] as const;
 
 const themeOptions = [
   { value: 'blue', label: 'Electric blue', swatch: '#38bdf8', panel: 'from-sky-500/30 via-ink-900 to-ink-950' },
@@ -79,6 +102,7 @@ export function ProfileSection() {
   const [draft, setDraft] = useState<ProfileDraft>(emptyProfile);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
+  const [badges, setBadges] = useState<string[]>([]);
   const [postTab, setPostTab] = useState<'all' | 'videos'>('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -93,9 +117,9 @@ export function ProfileSection() {
     }
     setLoading(true);
     setError('');
-    const [profileResult, postsResult, postCountResult, followersResult, followingResult] = await Promise.all([
+    const [profileResult, postsResult, postCountResult, followersResult, followingResult, badgesResult] = await Promise.all([
       supabase.from('profiles')
-        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at')
+        .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, created_at')
         .eq('id', userId)
         .maybeSingle(),
       supabase.from('posts')
@@ -107,6 +131,7 @@ export function ProfileSection() {
       supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).is('server_id', null),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', userId),
       supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', userId),
+      supabase.from('user_badges').select('badge_key').eq('user_id', userId),
     ]);
     if (profileResult.error) setError(profileResult.error.message);
     else if (profileResult.data) {
@@ -115,6 +140,9 @@ export function ProfileSection() {
       setDraft({
         display_name: data.display_name ?? '',
         profile_theme: data.profile_theme ?? 'blue',
+        user_status: data.user_status ?? 'online',
+        status_message: data.status_message ?? '',
+        featured_post_id: data.featured_post_id ?? '',
         bio: data.bio ?? '',
         website_url: data.website_url ?? '',
         instagram_url: data.instagram_url ?? '',
@@ -125,6 +153,7 @@ export function ProfileSection() {
     if (postsResult.error) setError(postsResult.error.message);
     else setPosts((postsResult.data ?? []) as ProfilePost[]);
     setStats({ posts: postCountResult.count ?? 0, followers: followersResult.count ?? 0, following: followingResult.count ?? 0 });
+    setBadges((badgesResult.data ?? []).map((item) => item.badge_key));
     setLoading(false);
   }, [userId]);
 
@@ -195,6 +224,9 @@ export function ProfileSection() {
       display_name: draft.display_name.trim() || null,
       bio: draft.bio.trim(),
       profile_theme: draft.profile_theme,
+      user_status: draft.user_status,
+      status_message: draft.status_message.trim(),
+      featured_post_id: draft.featured_post_id || null,
       ...links,
     }).eq('id', userId)
       .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at')
@@ -272,9 +304,22 @@ export function ProfileSection() {
             </label>
 
             <div className="border-t border-white/[0.06] pt-5">
+              <h3 className="text-sm font-semibold text-white">Status</h3>
+              <p className="mt-1 text-xs text-ink-500">Choose how your presence appears to other members.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-2"><span className="text-xs font-semibold text-ink-300">Presence</span><select value={draft.user_status} onChange={(event) => setDraft((current) => ({ ...current, user_status: event.target.value as ProfileDraft['user_status'] }))} className="w-full rounded-xl border border-white/[0.08] bg-ink-950 px-3 py-3 text-sm text-white">{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
+                <label className="block space-y-2"><span className="text-xs font-semibold text-ink-300">Status message</span><input value={draft.status_message} maxLength={60} onChange={(event) => setDraft((current) => ({ ...current, status_message: event.target.value.slice(0, 60) }))} placeholder="What are you up to?" className="w-full rounded-xl border border-white/[0.08] bg-ink-950 px-3 py-3 text-sm text-white" /><span className="block text-right text-[11px] text-ink-500">{draft.status_message.length}/60</span></label>
+              </div>
+            </div>
+            <div className="border-t border-white/[0.06] pt-5">
               <h3 className="text-sm font-semibold text-white">Profile appearance</h3>
               <p className="mt-1 text-xs text-ink-500">Choose the accent theme shown on your public profile.</p>
               <div className="mt-3 flex flex-wrap gap-2">{themeOptions.map((theme) => <button key={theme.value} type="button" onClick={() => setDraft((current) => ({ ...current, profile_theme: theme.value }))} aria-pressed={draft.profile_theme === theme.value} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${draft.profile_theme === theme.value ? 'border-white/30 bg-white/[0.09] text-white' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.04]'}`}><span className="h-3 w-3 rounded-full" style={{ backgroundColor: theme.swatch }} />{theme.label}</button>)}</div>
+            </div>
+            <div className="border-t border-white/[0.06] pt-5">
+              <h3 className="text-sm font-semibold text-white">Featured post</h3>
+              <p className="mt-1 text-xs text-ink-500">Choose one of your public posts to highlight at the top of your profile.</p>
+              <select value={draft.featured_post_id} onChange={(event) => setDraft((current) => ({ ...current, featured_post_id: event.target.value }))} className="mt-3 w-full rounded-xl border border-white/[0.08] bg-ink-950 px-3 py-3 text-sm text-white"><option value="">No featured post</option>{posts.map((post) => <option key={post.id} value={post.id}>{(post.body || (post.media_type === 'video' ? 'Video post' : 'Image post')).slice(0, 90)}</option>)}</select>
             </div>
             <div className="border-t border-white/[0.06] pt-5">
               <h3 className="text-sm font-semibold text-white">Social links</h3>
@@ -305,6 +350,8 @@ export function ProfileSection() {
               <div><h2 className="text-base font-semibold text-white">Public profile preview</h2><p className="mt-1 text-xs text-ink-500">This is what other AFTERDARK users can see.</p></div>
               <span className="text-xs text-ink-500">Joined {new Date(profile.created_at).toLocaleDateString()}</span>
             </div>
+            <div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-ink-950/70 px-3 py-1.5 text-xs text-ink-200"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusOptions.find((item) => item.value === draft.user_status)?.color }} />{statusOptions.find((item) => item.value === draft.user_status)?.label}</span>{draft.status_message && <span className="text-xs text-ink-400">{draft.status_message}</span>}</div>
+            {badges.length > 0 && <div className="flex flex-wrap gap-2">{badges.map((key) => <span key={key} title={badgeLabels[key]?.description} className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-semibold text-amber-200">{badgeLabels[key]?.label ?? key}</span>)}</div>}
             {draft.bio && <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">{draft.bio}</p>}
             {socialLinks.length > 0 && <div className="flex flex-wrap gap-2">{socialLinks.map((item) => <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-primary-300 hover:bg-white/[0.07]">{item.label}<ExternalLink size={12} /></a>)}</div>}
             <div className="grid grid-cols-3 gap-2 border-t border-white/[0.06] pt-4">
