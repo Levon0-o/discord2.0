@@ -13,6 +13,8 @@ import {
   Trash2,
   Copy,
   Check,
+  FileText,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -30,6 +32,8 @@ import {
   removeMessageReaction,
   updateDirectMessage,
   deleteDirectMessage,
+  uploadDirectMessageAttachment,
+  getDirectMessageAttachmentUrl,
 } from '@/lib/directMessagesApi';
 import type {
   DirectConversation,
@@ -40,6 +44,44 @@ import type { Message } from '@/types/messages';
 import type { ProfileLite } from '@/types/servers';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉'] as const;
+
+function renderLinkifiedBody(body: string) {
+  return body.split(/(https?:\/\/[^\s<]+)/gi).map((part, index) => {
+    if (!/^https?:\/\//i.test(part)) return part;
+    const href = part.replace(/[),.!?;:]+$/, '');
+    const trailing = part.slice(href.length);
+    let domain = href;
+    try {
+      domain = new URL(href).hostname.replace(/^www\./, '');
+    } catch {
+      // Keep the original URL if parsing fails.
+    }
+    return (
+      <span key={`${index}-${href}`}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="break-all text-primary-300 underline decoration-primary-400/40 underline-offset-2 hover:text-primary-200"
+          title={domain}
+        >
+          {href}
+        </a>
+        {trailing}
+      </span>
+    );
+  });
+}
+
+function attachmentName(storedValue: string) {
+  const path = storedValue.replace(/^dm-attachment:/, '');
+  const rawName = path.split('/').pop() ?? 'Attachment';
+  return rawName.replace(/^[a-f0-9-]{20,}-/i, '') || 'Attachment';
+}
+
+function isImageAttachment(storedValue: string) {
+  return /\.(jpe?g|png|gif|webp)$/i.test(storedValue);
+}
 
 interface DirectMessagesSectionProps {
   initialConversationId?: string | null;
@@ -114,6 +156,9 @@ export function DirectMessagesSection({
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [activeId, setActiveId] = useState('');
   const [messageText, setMessageText] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -742,24 +787,32 @@ export function DirectMessagesSection({
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!activeId || !messageText.trim() || sending) return;
+    if (!activeId || (!messageText.trim() && !attachmentFile) || sending) return;
 
     setSending(true);
     setError('');
 
     try {
+      const attachmentPath = attachmentFile
+        ? await uploadDirectMessageAttachment(activeId, attachmentFile)
+        : undefined;
       const message = await sendDirectMessage(
         activeId,
         messageText.trim(),
-        replyingTo?.id
+        replyingTo?.id,
+        attachmentPath
       );
 
-      setMessages((current) => [...current, message]);
+      setMessages((current) =>
+        current.some((item) => item.id === message.id) ? current : [...current, message]
+      );
       setLastMessages((current) => ({
         ...current,
         [activeId]: message,
       }));
       setMessageText('');
+      setAttachmentFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setReplyingTo(null);
 
       await loadConversations();
@@ -1174,12 +1227,48 @@ const isGrouped =
                             </div>
                           </div>
                         ) : (
-                          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
-                            {message.body}
-                            {message.updated_at && new Date(message.updated_at).getTime() > new Date(message.created_at).getTime() + 1000 && (
-                              <span className="ml-2 text-[10px] text-ink-600">(edited)</span>
+                          {message.body && (
+                            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
+                              {renderLinkifiedBody(message.body)}
+                              {message.updated_at && new Date(message.updated_at).getTime() > new Date(message.created_at).getTime() + 1000 && (
+                                <span className="ml-2 text-[10px] text-ink-600">(edited)</span>
+                              )}
+                            </p>
+                          )}
+                        )}
+                        {message.image_url && (
+                          <div className="mt-2">
+                            {attachmentUrls[message.id] ? (
+                              isImageAttachment(message.image_url) ? (
+                                <a
+                                  href={attachmentUrls[message.id]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-block max-w-full overflow-hidden rounded-xl border border-white/10 bg-ink-900"
+                                >
+                                  <img
+                                    src={attachmentUrls[message.id]}
+                                    alt={attachmentName(message.image_url)}
+                                    loading="lazy"
+                                    className="max-h-80 max-w-full object-contain"
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={attachmentUrls[message.id]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex max-w-full items-center gap-3 rounded-xl border border-white/10 bg-ink-900 px-3 py-3 text-sm text-ink-200 transition hover:border-primary-400/40 hover:bg-white/[0.04]"
+                                >
+                                  <FileText size={20} className="shrink-0 text-primary-300" />
+                                  <span className="min-w-0 truncate">{attachmentName(message.image_url)}</span>
+                                  <span className="shrink-0 text-xs text-primary-300">Open file</span>
+                                </a>
+                              )
+                            ) : (
+                              <span className="text-xs text-ink-500">Loading attachment…</span>
                             )}
-                          </p>
+                          </div>
                         )}
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <button
@@ -1302,12 +1391,64 @@ const isGrouped =
                   </button>
                 </div>
               )}
+              {attachmentFile && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary-400/20 bg-primary-500/[0.06] px-3 py-2">
+                  {attachmentFile.type.startsWith('image/') ? (
+                    <ImageIcon size={18} className="shrink-0 text-primary-300" />
+                  ) : (
+                    <FileText size={18} className="shrink-0 text-primary-300" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-ink-200">{attachmentFile.name}</p>
+                    <p className="text-[10px] text-ink-500">{(attachmentFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachmentFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-400 hover:bg-white/[0.08] hover:text-ink-100"
+                    aria-label="Remove attachment"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
               <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/10 bg-ink-900 px-3 py-2 transition focus-within:border-primary-400/50 sm:px-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (!file) return;
+                    const allowedTypes = [
+                      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+                      'application/pdf', 'text/plain', 'text/csv',
+                    ];
+                    if (!allowedTypes.includes(file.type)) {
+                      setError('Supported files: JPG, PNG, GIF, WEBP, PDF, TXT and CSV.');
+                      event.target.value = '';
+                      return;
+                    }
+                    if (file.size > 15 * 1024 * 1024) {
+                      setError('Maximum attachment size is 15 MB.');
+                      event.target.value = '';
+                      return;
+                    }
+                    setError('');
+                    setAttachmentFile(file);
+                  }}
+                />
                 <button
                   type="button"
-                  disabled
-                  title="File uploads are coming later"
-                  className="hidden shrink-0 text-ink-600 sm:block"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
+                  title="Attach an image or file (max 15 MB)"
+                  aria-label="Attach file"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-400 transition hover:bg-white/[0.06] hover:text-primary-300 disabled:opacity-40"
                 >
                   <Paperclip size={20} />
                 </button>
@@ -1347,7 +1488,7 @@ const isGrouped =
 
                 <button
                   type="submit"
-                  disabled={!messageText.trim() || sending}
+                  disabled={(!messageText.trim() && !attachmentFile) || sending}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label="Send message"
                 >
@@ -1360,7 +1501,7 @@ const isGrouped =
               </div>
 
               <p className="mt-2 hidden px-1 text-[11px] text-ink-600 sm:block">
-                Maximum message length: 4000 characters
+Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
               </p>
             </form>
           </>
