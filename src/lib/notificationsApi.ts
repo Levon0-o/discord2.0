@@ -4,7 +4,7 @@ export interface NotificationItem {
   id: string;
   recipient_id: string;
   actor_id: string;
-  type: 'follow' | 'like' | 'comment' | 'mention' | 'reply' | 'event_rsvp' | 'event_update';
+  type: 'follow' | 'like' | 'comment' | 'mention' | 'reply' | 'event_rsvp' | 'event_update' | 'event_reminder_24h' | 'event_reminder_1h' | 'event_reminder_15m';
   entity_id: string;
   created_at: string;
   read_at: string | null;
