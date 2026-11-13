@@ -31,6 +31,7 @@ export interface Channel {
   category: string;
   position: number;
   is_restricted: boolean;
+  slowmode_seconds: number;
   created_at: string;
   updated_at: string;
 }
