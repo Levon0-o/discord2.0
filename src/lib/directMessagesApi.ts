@@ -140,3 +140,39 @@ export async function sendDirectMessage(
 
   return data as Message;
 }
+
+
+export async function markConversationAsRead(
+  conversationId: string,
+): Promise<string> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const readAt = new Date().toISOString();
+  const { error } = await supabase
+    .from('conversation_members')
+    .update({ last_read_at: readAt })
+    .eq('conversation_id', conversationId)
+    .eq('user_id', user.id);
+
+  if (error) throw error;
+  return readAt;
+}
+
+export async function fetchUnreadMessageCount(
+  conversationId: string,
+  lastReadAt: string,
+  userId: string,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+    .neq('author_id', userId)
+    .gt('created_at', lastReadAt);
+
+  if (error) throw error;
+  return count ?? 0;
+}
