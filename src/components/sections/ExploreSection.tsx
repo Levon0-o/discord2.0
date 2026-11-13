@@ -71,8 +71,7 @@ export function ExploreSection() {
       .from('posts')
       .select('id, author_id, body, image_url, media_type, created_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
       .is('server_id', null)
-      .ilike('body', `%${searchTerm.replace(/[\\%_]/g, '\\      .is('server_id', null)
-      .order('created_at', { ascending: false })')}%`)
+      .ilike('body', `%${searchTerm}%`)
       .order('created_at', { ascending: false })
       .limit(80);
     if (queryError) setError(queryError.message);
@@ -180,7 +179,7 @@ export function ExploreSection() {
       ? await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', userId)
       : await supabase.from('likes').insert({ post_id: post.id, user_id: userId });
     if (result.error) setError(result.error.message);
-    else await loadPosts(true);
+    else await loadPosts(true, appliedPostSearch);
     setBusyLike(null);
   };
 
@@ -222,7 +221,7 @@ export function ExploreSection() {
           const Icon = item.icon;
           return <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === item.id ? 'bg-primary-500 text-white shadow-lg shadow-primary-950/30' : 'text-ink-400 hover:bg-white/[0.05] hover:text-ink-100'}`}><Icon size={16} />{item.label}</button>;
         })}
-        <button type="button" onClick={() => void loadPosts(true)} disabled={refreshing} className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />Refresh</button>
+        <button type="button" onClick={() => void loadPosts(true, appliedPostSearch)} disabled={refreshing} className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />Refresh</button>
       </nav>
 
       {tab !== 'people' && (
