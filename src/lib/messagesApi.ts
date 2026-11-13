@@ -442,3 +442,20 @@ export async function closeChannelPoll(pollId: string): Promise<void> {
   const { error } = await supabase.rpc('close_channel_poll', { p_poll_id: pollId });
   if (error) throw error;
 }
+
+
+export async function forwardChannelMessage(input: {
+  message: Message;
+  targetChannelId: string;
+  sourceChannelName: string;
+  originalAuthorLabel: string;
+}): Promise<Message> {
+  const body = input.message.body.trim();
+  if (!body) throw new Error('Only text messages can be forwarded.');
+  const forwardedBody = [
+    `↪ Forwarded from #${input.sourceChannelName} · originally by ${input.originalAuthorLabel}`,
+    '',
+    ...body.slice(0, 3500).split('\n').map((line) => `> ${line}`),
+  ].join('\n');
+  return sendChannelMessage(input.targetChannelId, forwardedBody);
+}
