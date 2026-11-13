@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark, BarChart3, Forward,
+  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark, BarChart3, Forward, Megaphone,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -11,7 +11,8 @@ import {
   fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
   fetchSavedChannelMessages, toggleSavedChannelMessage,
   fetchChannelPolls, createChannelPoll, castChannelPollVote, closeChannelPoll, forwardChannelMessage,
-  type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage, type ChannelPoll,
+  fetchChannelAnnouncements, createChannelAnnouncement,
+  type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage, type ChannelPoll, type ChannelAnnouncement,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
 import type { Channel, MemberWithProfile } from '@/types/servers';
@@ -47,6 +48,11 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [pinned, setPinned] = useState<PinnedChannelMessage[]>([]);
   const [savedMessages, setSavedMessages] = useState<SavedChannelMessage[]>([]);
   const [polls, setPolls] = useState<ChannelPoll[]>([]);
+  const [announcements, setAnnouncements] = useState<ChannelAnnouncement[]>([]);
+  const [showAnnouncementCreator, setShowAnnouncementCreator] = useState(false);
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementBody, setAnnouncementBody] = useState('');
+  const [announcementBusy, setAnnouncementBusy] = useState(false);
   const [showPollCreator, setShowPollCreator] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
@@ -99,16 +105,18 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       setMessages(result);
       setHasMore(result.length === 100);
       setThreadCounts(await fetchChannelThreadCounts(result.map((message) => message.id)));
-      const [reactionRows, pinRows, savedRows, pollRows] = await Promise.all([
+      const [reactionRows, pinRows, savedRows, pollRows, announcementRows] = await Promise.all([
         fetchChannelReactions(result.map((message) => message.id)),
         fetchPinnedChannelMessages(channelId),
         fetchSavedChannelMessages(channelId),
         fetchChannelPolls(channelId),
+        fetchChannelAnnouncements(channelId),
       ]);
       setReactions(reactionRows);
       setPinned(pinRows);
       setSavedMessages(savedRows);
       setPolls(pollRows);
+      setAnnouncements(announcementRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load channel messages.');
     } finally {
@@ -118,6 +126,10 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
 
   const refreshPolls = useCallback(async () => {
     setPolls(await fetchChannelPolls(channelId));
+  }, [channelId]);
+
+  const refreshAnnouncements = useCallback(async () => {
+    setAnnouncements(await fetchChannelAnnouncements(channelId));
   }, [channelId]);
 
   useEffect(() => {
@@ -289,6 +301,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
           setReactions((current) => current.filter((item) => !(item.message_id === old.message_id && item.user_id === old.user_id && item.emoji === old.emoji)));
         }
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_announcements', filter: `channel_id=eq.${channelId}` }, () => { void refreshAnnouncements(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_polls', filter: `channel_id=eq.${channelId}` }, () => { void refreshPolls(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_poll_votes' }, () => { void refreshPolls(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_pinned_messages', filter: `channel_id=eq.${channelId}` }, (payload) => {
@@ -302,7 +315,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [channelId, userId, activeThreadRoot?.id, refreshPolls]);
+  }, [channelId, userId, activeThreadRoot?.id, refreshPolls, refreshAnnouncements]);
 
   useEffect(() => {
     let active = true;
@@ -347,6 +360,29 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   }
 
 
+
+
+  async function handleCreateAnnouncement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!announcementTitle.trim() || !announcementBody.trim() || announcementBusy) return;
+    setAnnouncementBusy(true);
+    setError('');
+    try {
+      await createChannelAnnouncement({
+        channelId,
+        title: announcementTitle.trim(),
+        body: announcementBody.trim(),
+      });
+      setAnnouncementTitle('');
+      setAnnouncementBody('');
+      setShowAnnouncementCreator(false);
+      await loadMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not publish announcement. You may not have permission.');
+    } finally {
+      setAnnouncementBusy(false);
+    }
+  }
 
   async function handleForwardMessage() {
     if (!forwardingMessage || !forwardTargetChannelId || forwardingBusy) return;
@@ -757,13 +793,29 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                         </div>
                       ) : message.body ? (
                         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
-                          {message.body.split(/(@[a-zA-Z0-9_]+)/g).map((part, partIndex) =>
+                          {!announcements.some((announcement) => announcement.message_id === message.id) && message.body.split(/(@[a-zA-Z0-9_]+)/g).map((part, partIndex) =>
                             part.startsWith('@')
                               ? <span key={partIndex} className="rounded bg-primary-500/15 px-0.5 font-medium text-primary-200">{part}</span>
                               : part
                           )}
                         </p>
                       ) : null}
+
+
+                      {announcements.filter((announcement) => announcement.message_id === message.id).map((announcement) => (
+                        <div key={announcement.message_id} className="mt-2 max-w-2xl overflow-hidden rounded-xl border border-amber-300/25 bg-gradient-to-br from-amber-400/[0.10] via-ink-900 to-ink-950 shadow-lg shadow-amber-950/10">
+                          <div className="flex items-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.07] px-4 py-2.5">
+                            <Megaphone size={15} className="text-amber-300" />
+                            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-200">Server announcement</span>
+                            <span className="ml-auto text-[10px] text-amber-100/50">Official message</span>
+                          </div>
+                          <div className="p-4">
+                            <h3 className="mb-2 break-words text-base font-bold text-ink-50">{announcement.title}</h3>
+                            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-200">{message.body}</p>
+                            <div className="mt-3 border-t border-white/[0.07] pt-2 text-[10px] text-ink-500">Published by {displayName}</div>
+                          </div>
+                        </div>
+                      ))}
 
                       {polls.filter((poll) => poll.message_id === message.id).map((poll) => {
                         const totalVotes = poll.votes.length;
@@ -912,6 +964,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
           <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || loading} title="Attach a file (15 MB max)" aria-label="Attach a file" className="shrink-0 text-ink-400 transition hover:text-primary-200 disabled:opacity-40"><Paperclip size={19} /></button>
           <button type="button" onClick={() => setShowPollCreator(true)} disabled={sending || loading} title="Create poll" aria-label="Create poll" className="shrink-0 text-ink-400 transition hover:text-primary-200 disabled:opacity-40"><BarChart3 size={18} /></button>
+          {['owner', 'admin', 'moderator'].includes(membersById.get(userId)?.role ?? '') ? <button type="button" onClick={() => setShowAnnouncementCreator(true)} disabled={sending || loading} title="Publish announcement" aria-label="Publish announcement" className="shrink-0 text-amber-300/80 transition hover:text-amber-200 disabled:opacity-40"><Megaphone size={18} /></button> : null}
           <input value={messageText} onChange={(event) => handleMessageTextChange(event.target.value)} placeholder={`Message #${channelName}`} maxLength={4000} disabled={sending || loading} className="min-w-0 flex-1 bg-transparent py-2 text-sm text-ink-100 outline-none placeholder:text-ink-600" />
           <button type="submit" disabled={(!messageText.trim() && !selectedFile) || sending || loading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40" aria-label="Send message">{sending ? <RefreshCw size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
@@ -946,6 +999,25 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
               <button type="button" disabled={forwardingBusy || !forwardTargetChannelId} onClick={() => void handleForwardMessage()} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{forwardingBusy ? <RefreshCw size={14} className="animate-spin" /> : <Forward size={14} />} Forward</button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+
+      {showAnnouncementCreator ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <form onSubmit={handleCreateAnnouncement} className="w-full max-w-lg space-y-4 rounded-2xl border border-amber-300/20 bg-ink-950 p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-300"><Megaphone size={15} /> Official announcement</div><h3 className="mt-1 text-lg font-semibold text-ink-100">Publish to #{channelName}</h3></div>
+              <button type="button" onClick={() => setShowAnnouncementCreator(false)} className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close announcement creator"><X size={17} /></button>
+            </div>
+            <label className="block space-y-1.5"><span className="text-xs font-medium text-ink-300">Title</span><input autoFocus value={announcementTitle} onChange={(event) => setAnnouncementTitle(event.target.value)} maxLength={120} placeholder="Announcement headline" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-amber-300/50" /></label>
+            <label className="block space-y-1.5"><span className="text-xs font-medium text-ink-300">Message</span><textarea value={announcementBody} onChange={(event) => setAnnouncementBody(event.target.value)} maxLength={4000} rows={5} placeholder="Write the details…" className="w-full resize-y rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-amber-300/50" /></label>
+            <p className="text-[10px] leading-relaxed text-ink-500">Announcements are visually highlighted in the channel. Only server moderators and members with message-management permission can publish them.</p>
+            <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3">
+              <button type="button" onClick={() => setShowAnnouncementCreator(false)} className="rounded-lg px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]">Cancel</button>
+              <button type="submit" disabled={announcementBusy || !announcementTitle.trim() || !announcementBody.trim()} className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2 text-xs font-semibold text-ink-950 transition hover:bg-amber-300 disabled:opacity-40">{announcementBusy ? <RefreshCw size={14} className="animate-spin" /> : <Megaphone size={14} />} Publish announcement</button>
+            </div>
+          </form>
         </div>
       ) : null}
 
