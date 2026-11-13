@@ -960,23 +960,6 @@ export function ServerDetail({
               ) : null}
               {eventsLoading ? <div className="py-10 text-center text-xs text-ink-500">Loading events…</div> : events.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays size={25} className="mx-auto mb-2 text-ink-600" /><p className="text-sm font-medium text-ink-300">No events scheduled</p><p className="mt-1 text-xs text-ink-500">Events created for this server will appear here.</p></div> : displayedEvents.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><p className="text-sm font-medium text-ink-300">{eventView === 'calendar' ? 'No events on this date' : 'No matching events'}</p><p className="mt-1 text-xs text-ink-500">{eventView === 'calendar' ? 'Choose another day or month to see scheduled events.' : 'Try another search or change the date filter.'}</p></div> : (
                 <div className="space-y-3">
-                <input value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} placeholder="Search events, descriptions or locations…" aria-label="Search events" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex gap-1 rounded-lg bg-ink-900 p-1">
-                    {(['upcoming', 'all', 'past'] as const).map((filter) => (
-                      <button key={filter} type="button" onClick={() => setEventFilter(filter)} className={'rounded-md px-2.5 py-1.5 text-[10px] font-semibold capitalize transition ' + (eventFilter === filter ? 'bg-primary-500/20 text-primary-200' : 'text-ink-500 hover:text-ink-200')}>{filter}</button>
-                    ))}
-                  </div>
-                  <select value={eventSort} onChange={(e) => setEventSort(e.target.value as 'soonest' | 'latest')} aria-label="Sort events" className="rounded-lg border border-white/10 bg-ink-900 px-2.5 py-2 text-[10px] text-ink-300 outline-none focus:border-primary-400/50">
-                    <option value="soonest">Soonest first</option>
-                    <option value="latest">Latest first</option>
-                  </select>
-                </div>
-                <p className="text-[10px] text-ink-600">Showing {filteredEvents.length} of {events.length} events</p>
-              </div>
- : null}
-              {eventsLoading ? <div className="py-10 text-center text-xs text-ink-500">Loading events…</div> : events.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays size={25} className="mx-auto mb-2 text-ink-600" /><p className="text-sm font-medium text-ink-300">No events scheduled</p><p className="mt-1 text-xs text-ink-500">Events created for this server will appear here.</p></div> : filteredEvents.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><p className="text-sm font-medium text-ink-300">No matching events</p><p className="mt-1 text-xs text-ink-500">Try another search or change the date filter.</p></div> : (
-                <div className="space-y-3">
                   {displayedEvents.map((item) => {
                     const ownStatus = item.rsvps.find((rsvp) => rsvp.user_id === userId)?.status;
                     const going = item.rsvps.filter((rsvp) => rsvp.status === 'going').length;
