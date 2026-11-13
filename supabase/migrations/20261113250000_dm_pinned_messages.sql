@@ -3,7 +3,7 @@ create table if not exists public.conversation_pinned_messages (
   message_id uuid not null references public.messages(id) on delete cascade,
   pinned_by uuid not null default auth.uid() references public.profiles(id) on delete cascade,
   pinned_at timestamptz not null default now(),
-  primary key (conversation_id, message_id),
+  primary key (conversation_id, message_id)
 );
 
 alter table public.conversation_pinned_messages enable row level security;
