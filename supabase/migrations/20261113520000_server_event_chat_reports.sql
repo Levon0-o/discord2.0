@@ -20,6 +20,9 @@ create table if not exists public.server_event_chat_reports (
   constraint server_event_chat_reports_not_self check (reporter_id <> reported_user_id)
 );
 
+create unique index if not exists server_event_chat_reports_reporter_message_uidx
+  on public.server_event_chat_reports(reporter_id, message_id);
+
 create index if not exists server_event_chat_reports_event_status_created_idx
   on public.server_event_chat_reports(event_id, status, created_at desc);
 create index if not exists server_event_chat_reports_reporter_idx
