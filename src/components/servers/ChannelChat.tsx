@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Smile, Copy,
+  Trash2, Pin, X, Check, Copy,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
