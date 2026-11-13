@@ -22,6 +22,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ServerEventChatMessage[]>([]);
   const [searching, setSearching] = useState(false);
+  const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [body, setBody] = useState('');
   const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -36,6 +37,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const pendingScrollHeightRef = useRef<number | null>(null);
   const skipAutoScrollRef = useRef(false);
   const pendingJumpIdRef = useRef<string | null>(null);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const lastTypingBroadcastRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -91,6 +95,41 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       void supabase.removeChannel(channel);
     };
   }, [eventId]);
+
+  useEffect(() => {
+    const channel = supabase.channel('server-event-chat-typing:' + eventId, { config: { private: true } });
+    typingChannelRef.current = channel;
+    channel.on('broadcast', { event: 'typing' }, ({ payload }) => {
+      const senderId = typeof payload?.user_id === 'string' ? payload.user_id : '';
+      if (!senderId || senderId === userId) return;
+      setTypingUserIds((current) => current.includes(senderId) ? current : [...current, senderId]);
+      const existing = typingTimeoutsRef.current[senderId];
+      if (existing) clearTimeout(existing);
+      typingTimeoutsRef.current[senderId] = setTimeout(() => {
+        setTypingUserIds((current) => current.filter((id) => id !== senderId));
+        delete typingTimeoutsRef.current[senderId];
+      }, 2200);
+    }).subscribe();
+    return () => {
+      typingChannelRef.current = null;
+      Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
+      typingTimeoutsRef.current = {};
+      setTypingUserIds([]);
+      void supabase.removeChannel(channel);
+    };
+  }, [eventId, userId]);
+
+  function handleBodyChange(value: string) {
+    setBody(value);
+    const now = Date.now();
+    if (!userId || !typingChannelRef.current || now - lastTypingBroadcastRef.current < 1000) return;
+    lastTypingBroadcastRef.current = now;
+    void typingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { user_id: userId },
+    });
+  }
 
   useLayoutEffect(() => {
     if (pendingJumpIdRef.current) {
@@ -349,6 +388,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         })}
         <div ref={bottomRef} />
       </div>
+      {typingUserIds.length > 0 ? <p className="border-t border-white/[0.05] px-3 py-1.5 text-[10px] text-primary-300">{typingUserIds.map((id) => members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'Someone').slice(0, 3).join(', ')} {typingUserIds.length === 1 ? 'is' : 'are'} typing…</p> : null}
       {error ? <p role="alert" className="border-t border-red-400/10 bg-red-400/[0.05] px-3 py-2 text-[10px] text-red-300">{error}</p> : null}
       {replyingTo ? (
         <div className="flex items-center justify-between gap-2 border-t border-white/[0.07] bg-primary-500/[0.05] px-3 py-2">
@@ -360,7 +400,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         </div>
       ) : null}
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
-        <textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 flex-1 resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
+        <textarea value={body} onChange={(event) => handleBodyChange(event.target.value)} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 flex-1 resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
         <button type="submit" disabled={sending || !body.trim()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
       </form>
     </section>
