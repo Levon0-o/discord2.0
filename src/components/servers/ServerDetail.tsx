@@ -91,15 +91,37 @@ export function ServerDetail({
       setError('');
 
       try {
-        const [channelRows, memberRows] = await Promise.all([
-          fetchChannels(server.id),
-          fetchServerMembers(server.id),
-        ]);
+        const [channelRows, memberRows, roleRows, memberRoleRows] =
+          await Promise.all([
+            fetchChannels(server.id),
+            fetchServerMembers(server.id),
+            fetchCustomRoles(server.id),
+            fetchMemberRoles(server.id),
+          ]);
 
         if (cancelled) return;
 
+        const rolesById = new Map(roleRows.map((role) => [role.id, role]));
+        const customRolesByMember = new Map<string, typeof roleRows>();
+
+        for (const assignment of memberRoleRows) {
+          const role = rolesById.get(assignment.role_id);
+          if (!role) continue;
+
+          const assigned = customRolesByMember.get(assignment.user_id) ?? [];
+          assigned.push(role);
+          customRolesByMember.set(assignment.user_id, assigned);
+        }
+
+        const membersWithRoles = memberRows.map((member) => ({
+          ...member,
+          custom_roles: (customRolesByMember.get(member.user_id) ?? []).sort(
+            (a, b) => b.position - a.position,
+          ),
+        }));
+
         setChannels(channelRows);
-        setMembers(memberRows);
+        setMembers(membersWithRoles);
 
         setActiveChannelId((current) => {
           if (current && channelRows.some((c) => c.id === current)) {
