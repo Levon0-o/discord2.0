@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy,
+  Trash2, Pin, X, Check, Copy, FileText,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   fetchChannelMessages, sendChannelMessage, editMessage, deleteMessage,
   fetchChannelReactions, toggleChannelReaction, fetchPinnedChannelMessages,
-  toggleChannelPin,
+  toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl,
   type ChannelMessageReaction, type PinnedChannelMessage,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
@@ -29,6 +29,8 @@ function formatTime(value: string) {
 export function ChannelChat({ channelId, channelName, channelTopic, members }: ChannelChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -43,6 +45,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [editingText, setEditingText] = useState('');
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLElement | null>>({});
   const shouldScrollToBottomRef = useRef(true);
@@ -80,6 +83,22 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   }, []);
 
   useEffect(() => { void loadMessages(); }, [loadMessages]);
+
+  useEffect(() => {
+    let active = true;
+    const attachments = messages.filter((message) => message.image_url);
+    void Promise.all(attachments.map(async (message) => {
+      try {
+        return [message.id, await getChannelMessageAttachmentUrl(message.image_url!)] as const;
+      } catch {
+        return [message.id, ''] as const;
+      }
+    })).then((entries) => {
+      if (!active) return;
+      setAttachmentUrls((current) => ({ ...current, ...Object.fromEntries(entries) }));
+    });
+    return () => { active = false; };
+  }, [messages]);
 
   useEffect(() => {
     const channel = supabase.channel(`channel-chat:${channelId}`)
@@ -127,14 +146,19 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!messageText.trim() || sending) return;
+    if ((!messageText.trim() && !selectedFile) || sending) return;
     setSending(true);
     setError('');
     try {
-      const message = await sendChannelMessage(channelId, messageText, replyingTo?.id);
+      const attachmentPath = selectedFile
+        ? await uploadChannelMessageAttachment(channelId, selectedFile)
+        : undefined;
+      const message = await sendChannelMessage(channelId, messageText, replyingTo?.id, attachmentPath);
       shouldScrollToBottomRef.current = true;
       setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
       setMessageText('');
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setReplyingTo(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send message.');
@@ -301,7 +325,23 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
                             <button type="button" onClick={() => { setEditingId(null); setEditingText(''); }} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-400 hover:bg-white/[0.05]"><X size={12} /> Cancel</button>
                           </div>
                         </div>
-                      ) : <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">{message.body}</p>}
+                      ) : message.body ? <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">{message.body}</p> : null}
+                      {message.image_url ? (
+                        <div className="mt-2">
+                          {attachmentUrls[message.id] ? (
+                            /\.(jpe?g|png|gif|webp)(\?|$)/i.test(message.image_url) ? (
+                              <a href={attachmentUrls[message.id]} target="_blank" rel="noreferrer" className="inline-block max-w-full overflow-hidden rounded-xl border border-white/10">
+                                <img src={attachmentUrls[message.id]} alt="Message attachment" loading="lazy" className="max-h-80 max-w-full object-contain" />
+                              </a>
+                            ) : (
+                              <a href={attachmentUrls[message.id]} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 text-sm text-primary-200 transition hover:border-primary-400/40">
+                                <FileText size={18} className="shrink-0" />
+                                <span className="truncate">{message.image_url.split('/').pop()?.replace(/^channel-attachment:/, '') || 'Open attachment'}</span>
+                              </a>
+                            )
+                          ) : <span className="text-xs text-ink-500">Loading attachment…</span>}
+                        </div>
+                      ) : null}
                       {groupedReactions.length ? <div className="mt-1.5 flex flex-wrap gap-1">{groupedReactions.map(({ emoji, users }) => <button key={emoji} type="button" onClick={() => void handleReaction(message.id, emoji)} className={`rounded-full border px-2 py-0.5 text-xs transition ${users.some((item) => item.user_id === userId) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-300 hover:border-white/20'}`}>{emoji} {users.length}</button>)}</div> : null}
                       <div className="mt-1.5 flex flex-wrap items-center gap-1 opacity-100 transition-opacity sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <button type="button" title="Reply" onClick={() => setReplyingTo(message)} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Reply size={13} /></button>
@@ -328,12 +368,23 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
           <div className="min-w-0"><p className="text-[10px] font-semibold text-primary-300">Replying to {replyingTo.author_id === userId ? 'yourself' : membersById.get(replyingTo.author_id)?.profile?.display_name || membersById.get(replyingTo.author_id)?.profile?.username || 'member'}</p><p className="truncate text-xs text-ink-400">{replyingTo.body || 'Attachment'}</p></div>
           <button type="button" onClick={() => setReplyingTo(null)} className="rounded-md p-1 text-ink-500 hover:text-ink-200" aria-label="Cancel reply"><X size={15} /></button>
         </div> : null}
+        {selectedFile ? (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-primary-400/20 bg-primary-500/[0.06] px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-ink-300">
+              <FileText size={15} className="shrink-0 text-primary-300" />
+              <span className="truncate">{selectedFile.name}</span>
+              <span className="shrink-0 text-ink-500">{(selectedFile.size / 1024 / 1024).toFixed(1)} MB</span>
+            </div>
+            <button type="button" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="rounded-md p-1 text-ink-500 hover:text-ink-200" aria-label="Remove attachment"><X size={15} /></button>
+          </div>
+        ) : null}
         <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-900 px-3 py-2 focus-within:border-primary-400/50">
-          <button type="button" disabled title="File uploads are coming later" className="text-ink-600"><Paperclip size={19} /></button>
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || loading} title="Attach a file (15 MB max)" aria-label="Attach a file" className="shrink-0 text-ink-400 transition hover:text-primary-200 disabled:opacity-40"><Paperclip size={19} /></button>
           <input value={messageText} onChange={(event) => setMessageText(event.target.value)} placeholder={`Message #${channelName}`} maxLength={4000} disabled={sending || loading} className="min-w-0 flex-1 bg-transparent py-2 text-sm text-ink-100 outline-none placeholder:text-ink-600" />
-          <button type="submit" disabled={!messageText.trim() || sending || loading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40" aria-label="Send message">{sending ? <RefreshCw size={17} className="animate-spin" /> : <Send size={17} />}</button>
+          <button type="submit" disabled={(!messageText.trim() && !selectedFile) || sending || loading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40" aria-label="Send message">{sending ? <RefreshCw size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
-        <p className="mt-2 text-[10px] text-ink-600">Enter to send · Maximum 4000 characters</p>
+        <p className="mt-2 text-[10px] text-ink-600">Enter to send · Files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV</p>
       </form>
     </section>
   );
