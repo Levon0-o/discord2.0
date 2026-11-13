@@ -563,7 +563,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200"><Flag size={11} /> Message reports</p>
           {reports.length === 0 ? <p className="text-[10px] text-ink-500">No reports submitted for this event.</p> : <div className="max-h-52 space-y-2 overflow-y-auto">
             {reports.map((report) => <div key={report.id} className="rounded-md border border-white/[0.07] bg-white/[0.03] p-2.5">
-              <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold text-ink-200">{report.reason.replaceAll('_', ' ')}</span><span className={'text-[9px] uppercase ' + (report.status === 'open' ? 'text-amber-300' : 'text-ink-500')}>{report.status}</span></div>
+              <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold text-ink-200">{report.reason.replace(/_/g, ' ')}</span><span className={'text-[9px] uppercase ' + (report.status === 'open' ? 'text-amber-300' : 'text-ink-500')}>{report.status}</span></div>
               <p className="mt-1 whitespace-pre-wrap break-words text-[10px] text-ink-400">{report.message_body || 'Attachment-only message'}</p>
               {report.details ? <p className="mt-1 text-[10px] text-ink-500">Details: {report.details}</p> : null}
               <p className="mt-1 text-[9px] text-ink-600">Reported {new Date(report.created_at).toLocaleString()}</p>
