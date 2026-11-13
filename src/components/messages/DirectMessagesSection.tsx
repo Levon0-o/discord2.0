@@ -1219,7 +1219,7 @@ const isGrouped =
                           )}
                           <button
                             type="button"
-                            onClick={() => setReplyingTo(message)
+                            onClick={() => setReplyingTo(message)}
                             className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
                             aria-label={`Reply to ${name}'s message`}
                             title="Reply"
