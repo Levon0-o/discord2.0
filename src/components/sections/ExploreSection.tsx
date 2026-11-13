@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles, MessageCircle,
-  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, Pencil, Trash2,
+  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, Pencil, Trash2, Bookmark, Pin,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -41,6 +41,7 @@ interface ExploreProfilePost {
   image_url: string | null;
   media_type: 'text' | 'image' | 'video';
   created_at: string;
+  is_pinned: boolean;
   likes: { user_id: string }[];
   comments: { id: string }[];
 }
@@ -52,6 +53,7 @@ interface ExplorePost {
   image_url: string | null;
   media_type: 'text' | 'image' | 'video';
   created_at: string;
+  is_pinned: boolean;
   author: ExploreAuthor | null;
   likes: { user_id: string }[];
   comments: { id: string }[];
@@ -78,6 +80,7 @@ export function ExploreSection() {
   const userId = session?.user.id;
   const [tab, setTab] = useState<ExploreTab>('for-you');
   const [posts, setPosts] = useState<ExplorePost[]>([]);
+  const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [people, setPeople] = useState<ProfileLite[]>([]);
   const [search, setSearch] = useState('');
   const [postSearch, setPostSearch] = useState('');
@@ -116,7 +119,7 @@ export function ExploreSection() {
     setError('');
     let query = supabase
       .from('posts')
-      .select('id, author_id, body, image_url, media_type, created_at, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
+      .select('id, author_id, body, image_url, media_type, created_at, is_pinned, author:profiles!posts_author_id_fkey(username, display_name, avatar_url), likes(user_id), comments(id)')
       .is('server_id', null)
       .ilike('body', `%${searchTerm}%`);
     if (trending) {
@@ -128,9 +131,16 @@ export function ExploreSection() {
       .limit(trending ? 200 : 80);
     if (queryError) setError(queryError.message);
     else setPosts((data ?? []) as unknown as ExplorePost[]);
+    if (userId) {
+      const { data: savedRows, error: savedError } = await supabase.from('saved_posts').select('post_id').eq('user_id', userId);
+      if (savedError) setError(savedError.message);
+      else setSavedPostIds((savedRows ?? []).map((row) => row.post_id));
+    } else {
+      setSavedPostIds([]);
+    }
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     void loadPosts(false, appliedPostSearch, tab === 'trending');
@@ -243,6 +253,30 @@ export function ExploreSection() {
     setBusyLike(null);
   };
 
+  const toggleSaved = async (postId: string) => {
+    if (!userId || contentBusy) return;
+    const isSaved = savedPostIds.includes(postId);
+    setContentBusy(postId);
+    const result = isSaved
+      ? await supabase.from('saved_posts').delete().eq('user_id', userId).eq('post_id', postId)
+      : await supabase.from('saved_posts').insert({ user_id: userId, post_id: postId });
+    if (result.error) setError(result.error.message);
+    else setSavedPostIds((current) => isSaved ? current.filter((id) => id !== postId) : [...current, postId]);
+    setContentBusy(null);
+  };
+
+  const togglePin = async (post: ExplorePost) => {
+    if (!userId || post.author_id !== userId || contentBusy) return;
+    setContentBusy(post.id);
+    const { error: updateError } = await supabase.from('posts').update({ is_pinned: !post.is_pinned }).eq('id', post.id).eq('author_id', userId);
+    if (updateError) setError(updateError.message);
+    else {
+      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, is_pinned: !item.is_pinned } : item));
+      setProfilePosts((current) => current.map((item) => item.id === post.id ? { ...item, is_pinned: !item.is_pinned } : item));
+    }
+    setContentBusy(null);
+  };
+
   const savePostEdit = async (postId: string) => {
     const body = postEditDraft.trim();
     if (!body || body.length > 2000 || contentBusy || !userId) return;
@@ -309,7 +343,7 @@ export function ExploreSection() {
     setProfileLoading(true);
     const [profileResult, postsResult, followersResult, followingResult, followResult] = await Promise.all([
       supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, created_at').eq('id', profileId).maybeSingle(),
-      supabase.from('posts').select('id, body, image_url, media_type, created_at, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
+      supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
       supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', profileId),
       userId && userId !== profileId
@@ -505,6 +539,10 @@ export function ExploreSection() {
                   <button type="button" onClick={() => void openProfile(post.author_id)} className="block max-w-full truncate text-left text-sm font-semibold text-ink-100 transition hover:text-primary-300">{name}</button>
                   <p className="text-xs text-ink-500">@{post.author?.username || 'user'} · {age(post.created_at)}</p>
                 </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={() => void toggleSaved(post.id)} aria-label={savedPostIds.includes(post.id) ? 'Remove bookmark' : 'Save post'} className={`rounded-lg p-2 transition hover:bg-white/[0.06] ${savedPostIds.includes(post.id) ? 'text-primary-300' : 'text-ink-400 hover:text-primary-300'}`}><Bookmark size={14} className={savedPostIds.includes(post.id) ? 'fill-current' : ''} /></button>
+                  {post.author_id === userId && <button type="button" onClick={() => void togglePin(post)} disabled={contentBusy === post.id} aria-label={post.is_pinned ? 'Unpin post from profile' : 'Pin post to profile'} className={`rounded-lg p-2 transition hover:bg-white/[0.06] ${post.is_pinned ? 'text-primary-300' : 'text-ink-400 hover:text-primary-300'}`}><Pin size={14} className={post.is_pinned ? 'fill-current' : ''} /></button>}
+                </div>
                 {post.author_id === userId && <div className="flex shrink-0 items-center gap-1">
                   <button type="button" onClick={() => { setEditingPostId(post.id); setPostEditDraft(post.body); }} aria-label="Edit post" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-primary-300"><Pencil size={14} /></button>
                   <button type="button" onClick={() => void deletePost(post)} disabled={contentBusy === post.id} aria-label="Delete post" className="rounded-lg p-2 text-ink-400 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-40"><Trash2 size={14} /></button>
@@ -604,11 +642,11 @@ export function ExploreSection() {
                 </div>
                 <div className="border-t border-white/[0.06] px-5 py-4">
                   <h3 className="mb-3 text-sm font-semibold text-ink-100">Public posts</h3>
-                  {profilePosts.length === 0 ? <p className="py-8 text-center text-sm text-ink-500">No public posts yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{profilePosts.map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/70">
+                  {profilePosts.length === 0 ? <p className="py-8 text-center text-sm text-ink-500">No public posts yet.</p> : <div className="grid gap-3 sm:grid-cols-2">{[...profilePosts].sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/70">
                     {item.media_type === 'video' && item.image_url && <video src={item.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}
                     {item.media_type === 'image' && item.image_url && <img src={item.image_url} alt="Post media" loading="lazy" className="max-h-64 w-full object-cover" />}
                     {item.body && <p className="whitespace-pre-wrap break-words p-3 text-sm leading-5 text-ink-200">{item.body}</p>}
-                    <div className="border-t border-white/[0.05] px-3 py-2 text-xs text-ink-500">{item.likes.length} likes · {item.comments.length} comments · {age(item.created_at)}</div>
+                    <div className="flex items-center justify-between border-t border-white/[0.05] px-3 py-2 text-xs text-ink-500">{item.is_pinned && <span className="inline-flex items-center gap-1 text-primary-300"><Pin size={12} /> Pinned</span>}<span>{item.likes.length} likes · {item.comments.length} comments · {age(item.created_at)}</span></div>
                   </article>)}</div>}
                 </div>
               </>
