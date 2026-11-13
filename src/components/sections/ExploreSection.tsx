@@ -37,6 +37,9 @@ interface ExploreProfile {
   twitch_url: string | null;
   youtube_url: string | null;
   profile_theme: 'blue' | 'violet' | 'crimson' | 'emerald' | 'amber';
+  user_status: 'online' | 'away' | 'busy' | 'dnd';
+  status_message: string;
+  featured_post_id: string | null;
   created_at: string;
 }
 
@@ -118,6 +121,8 @@ export function ExploreSection() {
   const [contentBusy, setContentBusy] = useState<string | null>(null);
   const [profile, setProfile] = useState<ExploreProfile | null>(null);
   const [profilePosts, setProfilePosts] = useState<ExploreProfilePost[]>([]);
+  const [profileBadges, setProfileBadges] = useState<string[]>([]);
+  const [featuredPost, setFeaturedPost] = useState<ExploreProfilePost | null>(null);
   const [profileContentTab, setProfileContentTab] = useState<'all' | 'videos'>('all');
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
@@ -355,20 +360,30 @@ export function ExploreSection() {
   const openProfile = async (profileId: string) => {
     setProfile(null);
     setProfilePosts([]);
+    setProfileBadges([]);
+    setFeaturedPost(null);
     setProfileError('');
     setProfileLoading(true);
-    const [profileResult, postsResult, followersResult, followingResult, followResult] = await Promise.all([
-      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at').eq('id', profileId).maybeSingle(),
+    const [profileResult, postsResult, followersResult, followingResult, followResult, badgesResult] = await Promise.all([
+      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, created_at').eq('id', profileId).maybeSingle(),
       supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
       supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', profileId),
+      supabase.from('user_badges').select('badge_key').eq('user_id', profileId),
       userId && userId !== profileId
         ? supabase.from('follows').select('follower_id').eq('follower_id', userId).eq('following_id', profileId).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
     ]);
     if (profileResult.error) setProfileError(profileResult.error.message);
     else if (!profileResult.data) setProfileError('This profile could not be found.');
-    else setProfile(profileResult.data as ExploreProfile);
+    else {
+      setProfile(profileResult.data as ExploreProfile);
+      setProfileBadges((badgesResult.data ?? []).map((item) => item.badge_key));
+      if (profileResult.data.featured_post_id) {
+        const featuredResult = await supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('id', profileResult.data.featured_post_id).eq('author_id', profileId).is('server_id', null).maybeSingle();
+        if (featuredResult.data) setFeaturedPost(featuredResult.data as unknown as ExploreProfilePost);
+      }
+    }
     if (postsResult.error) setProfileError(postsResult.error.message);
     else setProfilePosts((postsResult.data ?? []) as unknown as ExploreProfilePost[]);
     setProfileStats({ followers: followersResult.count ?? 0, following: followingResult.count ?? 0 });
@@ -649,6 +664,8 @@ export function ExploreSection() {
                   </div>
                   <h2 className="mt-3 text-xl font-bold text-white">{profile.display_name || profile.username}</h2>
                   <p className="text-sm text-ink-400">@{profile.username}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-ink-900/70 px-3 py-1.5 text-xs text-ink-200"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ({ online: '#34d399', away: '#fbbf24', busy: '#fb7185', dnd: '#f87171' } as const)[profile.user_status ?? 'online'] }} />{{ online: 'Online', away: 'Away', busy: 'Busy', dnd: 'Do Not Disturb' }[profile.user_status ?? 'online']}</span>{profile.status_message && <span className="text-xs text-ink-400">{profile.status_message}</span>}</div>
+                  {profileBadges.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{profileBadges.map((key) => <span key={key} className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-semibold text-amber-200">{{ founder: 'Founder', early_member: 'Early Member', verified: 'Verified', creator: 'Creator' }[key] ?? key}</span>)}</div>}
                   {profile.bio && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink-200">{profile.bio}</p>}
                   {(profile.website_url || profile.instagram_url || profile.twitch_url || profile.youtube_url) && <div className="mt-3 flex flex-wrap gap-2">
                     {([
@@ -658,6 +675,7 @@ export function ExploreSection() {
                       ['YouTube', profile.youtube_url],
                     ] as const).flatMap(([label, url]) => url ? [{ label, url }] : []).map(({ label, url }) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-primary-300 transition hover:bg-white/[0.07]">{label}<ExternalLink size={12} /></a>)}
                   </div>}
+                  {featuredPost && <article className="mt-4 overflow-hidden rounded-2xl border border-primary-400/20 bg-primary-400/[0.04]"><div className="flex items-center justify-between border-b border-primary-400/10 px-3 py-2"><span className="text-xs font-semibold text-primary-200">Featured post</span><span className="text-[11px] text-ink-500">{age(featuredPost.created_at)}</span></div>{featuredPost.media_type === 'video' && featuredPost.image_url && <video src={featuredPost.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{featuredPost.media_type === 'image' && featuredPost.image_url && <img src={featuredPost.image_url} alt="Featured post" className="max-h-64 w-full object-cover" />}{featuredPost.body && <p className="whitespace-pre-wrap break-words p-3 text-sm text-ink-200">{featuredPost.body}</p>}</article>}
                   <div className="mt-4 flex flex-wrap items-center gap-5 text-xs text-ink-400">
                     <span><strong className="text-ink-100">{profileStats.followers}</strong> followers</span>
                     <span><strong className="text-ink-100">{profileStats.following}</strong> following</span>
