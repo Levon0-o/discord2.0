@@ -1488,39 +1488,37 @@ const isGrouped =
                             )}
                           </div>
                         )}
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <div className="mt-2 flex flex-wrap items-center gap-1 rounded-lg opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                           <button
                             type="button"
                             onClick={() => void handleCopyMessage(message)}
-                            className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-ink-100"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-ink-900/70 p-0 text-ink-400 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-ink-100"
                             aria-label="Copy message"
                             title="Copy message"
                           >
                             {copiedMessageId === message.id ? <Check size={13} /> : <Copy size={13} />}
-                            {copiedMessageId === message.id ? 'Copied' : 'Copy'}
+                            
                           </button>
                           {mine && editingMessageId !== message.id && (
                             <>
                               <button
                                 type="button"
                                 onClick={() => startEditingMessage(message)}
-                                className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-ink-900/70 p-0 text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
                                 aria-label="Edit message"
                                 title="Edit message"
                               >
                                 <Pencil size={13} />
-                                Edit
                               </button>
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteMessage(message.id)}
                                 disabled={deletingMessageId === message.id}
-                                className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-red-400/15 bg-ink-900/70 px-2 py-1 text-xs text-red-300/80 transition hover:border-red-400/40 hover:bg-red-400/10 hover:text-red-200 disabled:opacity-50"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-400/15 bg-ink-900/70 p-0 text-red-300/80 transition hover:border-red-400/40 hover:bg-red-400/10 hover:text-red-200 disabled:opacity-50"
                                 aria-label="Delete message"
                                 title="Delete message"
                               >
                                 <Trash2 size={13} />
-                                {deletingMessageId === message.id ? 'Deleting…' : 'Delete'}
                               </button>
                             </>
                           )}
@@ -1529,21 +1527,19 @@ const isGrouped =
                             onClick={() => void handleTogglePinnedMessage(message.id)}
                             disabled={pinningMessageId === message.id}
                             aria-pressed={pinnedMessages.some((item) => item.message_id === message.id)}
-                            className={`inline-flex min-h-7 items-center gap-1 rounded-lg border px-2 py-1 text-xs transition disabled:opacity-50 ${pinnedMessages.some((item) => item.message_id === message.id) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-400 hover:border-white/20 hover:text-ink-100'}`}
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border p-0 text-base transition disabled:opacity-50 ${pinnedMessages.some((item) => item.message_id === message.id) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-400 hover:border-white/20 hover:text-ink-100'}`}
                             title={pinnedMessages.some((item) => item.message_id === message.id) ? 'Unpin message' : 'Pin message'}
                           >
                             <Pin size={13} />
-                            {pinnedMessages.some((item) => item.message_id === message.id) ? 'Pinned' : 'Pin'}
                           </button>
                           <button
                             type="button"
                             onClick={() => setReplyingTo(message)}
-                            className="inline-flex min-h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-ink-900/70 px-2 py-1 text-xs text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-ink-900/70 p-0 text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200"
                             aria-label={`Reply to ${name}'s message`}
                             title="Reply"
                           >
                             <Reply size={13} />
-                            Reply
                           </button>
                           {QUICK_REACTIONS.map((emoji) => {
                             const emojiReactions = reactions.filter(
@@ -1563,7 +1559,7 @@ const isGrouped =
                                 disabled={reactingMessageIds.includes(message.id)}
                                 aria-label={`React with ${emoji}`}
                                 aria-pressed={reactedByMe}
-                                className={`inline-flex min-h-7 items-center gap-1 rounded-lg border px-2 py-1 text-xs transition disabled:opacity-50 ${
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border p-0 text-base transition disabled:opacity-50 ${
                                   reactedByMe
                                     ? 'border-primary-400/50 bg-primary-500/20 text-primary-100'
                                     : 'border-white/[0.08] bg-ink-900/70 text-ink-400 hover:border-white/20 hover:bg-white/[0.06] hover:text-ink-100'
