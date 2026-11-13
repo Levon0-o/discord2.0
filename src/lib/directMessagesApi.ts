@@ -234,12 +234,38 @@ export async function updateDirectMessage(
 }
 
 export async function deleteDirectMessage(messageId: string): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { data: message, error: fetchError } = await supabase
+    .from('messages')
+    .select('author_id, image_url, conversation_id')
+    .eq('id', messageId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
   const { error } = await supabase
     .from('messages')
     .delete()
     .eq('id', messageId);
 
   if (error) throw error;
+
+  // Only remove files owned by the current user. A moderator deleting
+  // somebody else's message must not attempt to delete that user's object.
+  if (
+    message.author_id === user.id &&
+    message.image_url?.startsWith(DM_ATTACHMENT_PREFIX)
+  ) {
+    const path = message.image_url.slice(DM_ATTACHMENT_PREFIX.length);
+    const expectedPrefix = `${message.conversation_id ?? ''}/${user.id}/`;
+    if (path.startsWith(expectedPrefix)) {
+      // Message deletion is already complete; storage cleanup is best-effort.
+      await supabase.storage.from(DM_ATTACHMENT_BUCKET).remove([path]);
+    }
+  }
 }
 
 export async function markConversationAsRead(
