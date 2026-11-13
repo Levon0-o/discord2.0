@@ -5,13 +5,14 @@ export interface ServerEventChatMessage {
   event_id: string;
   author_id: string;
   body: string;
+  reply_to_id: string | null;
   created_at: string;
 }
 
 export async function fetchServerEventChatMessages(eventId: string): Promise<ServerEventChatMessage[]> {
   const { data, error } = await supabase
     .from('server_event_chat_messages')
-    .select('id, event_id, author_id, body, created_at')
+    .select('id, event_id, author_id, body, reply_to_id, created_at')
     .eq('event_id', eventId)
     .order('created_at', { ascending: true })
     .limit(200);
@@ -19,7 +20,7 @@ export async function fetchServerEventChatMessages(eventId: string): Promise<Ser
   return (data ?? []) as ServerEventChatMessage[];
 }
 
-export async function sendServerEventChatMessage(eventId: string, body: string): Promise<ServerEventChatMessage> {
+export async function sendServerEventChatMessage(eventId: string, body: string, replyToId?: string | null): Promise<ServerEventChatMessage> {
   const trimmed = body.trim();
   if (!trimmed || trimmed.length > 2000) {
     throw new Error('Message must contain 1–2000 characters.');
@@ -30,7 +31,7 @@ export async function sendServerEventChatMessage(eventId: string, body: string):
 
   const { data, error } = await supabase
     .from('server_event_chat_messages')
-    .insert({ event_id: eventId, author_id: user.id, body: trimmed })
+    .insert({ event_id: eventId, author_id: user.id, body: trimmed, reply_to_id: replyToId ?? null })
     .select('id, event_id, author_id, body, created_at')
     .single();
   if (error) throw error;
