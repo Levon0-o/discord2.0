@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MessageCircle, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, fetchServerEventChatMessages, sendServerEventChatMessage, type ServerEventChatMessage } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatReactions, sendServerEventChatMessage, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -15,6 +15,7 @@ interface ServerEventChatProps {
 
 export function ServerEventChat({ eventId, eventTitle, userId, members, onClose }: ServerEventChatProps) {
   const [messages, setMessages] = useState<ServerEventChatMessage[]>([]);
+  const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);
   const [body, setBody] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -25,8 +26,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     let active = true;
     const load = async () => {
       try {
-        const rows = await fetchServerEventChatMessages(eventId);
-        if (active) setMessages(rows);
+        const [rows, reactionRows] = await Promise.all([fetchServerEventChatMessages(eventId), fetchServerEventChatReactions(eventId)]);
+        if (active) { setMessages(rows); setReactions(reactionRows); }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Could not load event chat.');
       } finally {
@@ -49,6 +50,20 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         } else if (payload.eventType === 'DELETE') {
           const removed = payload.old as { id?: string };
           if (removed.id) setMessages((current) => current.filter((message) => message.id !== removed.id));
+        }
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'server_event_chat_reactions',
+        filter: 'event_id=eq.' + eventId,
+      }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const incoming = payload.new as ServerEventChatReaction;
+          setReactions((current) => current.some((reaction) => reaction.id === incoming.id) ? current : [...current, incoming]);
+        } else if (payload.eventType === 'DELETE') {
+          const removed = payload.old as { id?: string };
+          if (removed.id) setReactions((current) => current.filter((reaction) => reaction.id !== removed.id));
         }
       })
       .subscribe();
@@ -89,6 +104,22 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     }
   }
 
+  async function handleReaction(messageId: string, emoji: ServerEventChatReaction['emoji']) {
+    setError('');
+    try {
+      await toggleServerEventChatReaction(eventId, messageId, emoji);
+      const rows = await fetchServerEventChatReactions(eventId);
+      setReactions(rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update reaction.');
+    }
+  }
+
+  const canModerate = ['owner', 'admin', 'moderator'].includes(
+    members.find((entry) => entry.user_id === userId)?.role ?? '',
+  );
+  const reactionOptions: ServerEventChatReaction['emoji'][] = ['👍', '❤️', '😂', '😮', '🎉'];
+
   return (
     <section className="overflow-hidden rounded-xl border border-primary-400/20 bg-ink-900/80">
       <div className="flex items-center justify-between border-b border-white/[0.07] px-3 py-2.5">
@@ -109,8 +140,25 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-[11px] font-semibold text-ink-200">{label}</span><time className="text-[9px] text-ink-600">{new Date(message.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</time></div>
                 <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {reactionOptions.map((emoji) => {
+                    const matching = reactions.filter((reaction) => reaction.message_id === message.id && reaction.emoji === emoji);
+                    const selected = matching.some((reaction) => reaction.user_id === userId);
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => void handleReaction(message.id, emoji)}
+                        aria-label={emoji + ' reaction, ' + matching.length + ' total'}
+                        className={'rounded-md border px-1.5 py-0.5 text-[10px] transition ' + (selected ? 'border-primary-400/50 bg-primary-500/15 text-primary-100' : 'border-white/[0.07] text-ink-400 hover:border-white/20 hover:bg-white/[0.04]')}
+                      >
+                        {emoji} {matching.length > 0 ? matching.length : ''}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              {(own || ['owner', 'admin', 'moderator'].includes(member?.role ?? '')) ? <button type="button" onClick={() => void handleDelete(message.id)} className="rounded p-1 text-ink-600 opacity-0 transition hover:bg-red-400/10 hover:text-red-300 group-hover:opacity-100" aria-label="Delete message"><Trash2 size={12} /></button> : null}
+              {(own || canModerate) ? <button type="button" onClick={() => void handleDelete(message.id)} className="rounded p-1 text-ink-600 opacity-0 transition hover:bg-red-400/10 hover:text-red-300 group-hover:opacity-100" aria-label="Delete message"><Trash2 size={12} /></button> : null}
             </article>
           );
         })}
