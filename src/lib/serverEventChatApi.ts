@@ -8,9 +8,13 @@ export interface ServerEventChatMessage {
   reply_to_id: string | null;
   created_at: string;
   edited_at: string | null;
+  attachment_path: string | null;
 }
 
 const EVENT_CHAT_PAGE_SIZE = 50;
+const EVENT_CHAT_ATTACHMENT_BUCKET = 'event-chat-attachments';
+const EVENT_CHAT_ATTACHMENT_MAX_SIZE = 15 * 1024 * 1024;
+const EVENT_CHAT_ATTACHMENT_TYPES = new Set(['image/jpeg','image/png','image/gif','image/webp','application/pdf','text/plain','text/csv']);
 
 export async function fetchServerEventChatMessages(
   eventId: string,
@@ -18,7 +22,7 @@ export async function fetchServerEventChatMessages(
 ): Promise<{ messages: ServerEventChatMessage[]; hasMore: boolean }> {
   let query = supabase
     .from('server_event_chat_messages')
-    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at')
+    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at, attachment_path')
     .eq('event_id', eventId)
     .order('created_at', { ascending: false })
     .limit(EVENT_CHAT_PAGE_SIZE + 1);
@@ -35,7 +39,7 @@ export async function searchServerEventChatMessages(eventId: string, searchTerm:
   if (term.length < 2) return [];
   const { data, error } = await supabase
     .from('server_event_chat_messages')
-    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at')
+    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at, attachment_path')
     .eq('event_id', eventId)
     .ilike('body', '%' + term + '%')
     .order('created_at', { ascending: false })
@@ -44,10 +48,33 @@ export async function searchServerEventChatMessages(eventId: string, searchTerm:
   return (data ?? []) as ServerEventChatMessage[];
 }
 
-export async function sendServerEventChatMessage(eventId: string, body: string, replyToId?: string | null): Promise<ServerEventChatMessage> {
+export async function uploadServerEventChatAttachment(eventId: string, file: File): Promise<string> {
+  if (!EVENT_CHAT_ATTACHMENT_TYPES.has(file.type)) throw new Error('Supported files: JPG, PNG, GIF, WEBP, PDF, TXT and CSV.');
+  if (file.size <= 0 || file.size > EVENT_CHAT_ATTACHMENT_MAX_SIZE) throw new Error('Attachments must be smaller than 15 MB.');
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  const safeName = file.name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(-100) || 'attachment';
+  const path = eventId + '/' + user.id + '/' + crypto.randomUUID() + '-' + safeName;
+  const { error } = await supabase.storage.from(EVENT_CHAT_ATTACHMENT_BUCKET).upload(path, file, { contentType: file.type, cacheControl: '3600', upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+export async function getServerEventChatAttachmentUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage.from(EVENT_CHAT_ATTACHMENT_BUCKET).createSignedUrl(path, 3600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function removeServerEventChatAttachment(path: string): Promise<void> {
+  const { error } = await supabase.storage.from(EVENT_CHAT_ATTACHMENT_BUCKET).remove([path]);
+  if (error) throw error;
+}
+export async function sendServerEventChatMessage(eventId: string, body: string, replyToId?: string | null, attachmentPath?: string): Promise<ServerEventChatMessage> {
   const trimmed = body.trim();
-  if (!trimmed || trimmed.length > 2000) {
-    throw new Error('Message must contain 1–2000 characters.');
+  if ((!trimmed && !attachmentPath) || trimmed.length > 2000) {
+    throw new Error('Add a message or attachment (message limit: 2000 characters).');
   }
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
@@ -55,8 +82,8 @@ export async function sendServerEventChatMessage(eventId: string, body: string, 
 
   const { data, error } = await supabase
     .from('server_event_chat_messages')
-    .insert({ event_id: eventId, author_id: user.id, body: trimmed, reply_to_id: replyToId ?? null })
-    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at')
+    .insert({ event_id: eventId, author_id: user.id, body: trimmed, reply_to_id: replyToId ?? null, attachment_path: attachmentPath ?? null })
+    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at, attachment_path')
     .single();
   if (error) throw error;
   return data as ServerEventChatMessage;
@@ -69,18 +96,21 @@ export async function editServerEventChatMessage(messageId: string, body: string
     .from('server_event_chat_messages')
     .update({ body: trimmed })
     .eq('id', messageId)
-    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at')
+    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at, attachment_path')
     .single();
   if (error) throw error;
   return data as ServerEventChatMessage;
 }
 
 export async function deleteServerEventChatMessage(messageId: string): Promise<void> {
-  const { error } = await supabase
-    .from('server_event_chat_messages')
-    .delete()
-    .eq('id', messageId);
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  const { data: message, error: fetchError } = await supabase.from('server_event_chat_messages').select('author_id, attachment_path').eq('id', messageId).single();
+  if (fetchError) throw fetchError;
+  const { error } = await supabase.from('server_event_chat_messages').delete().eq('id', messageId);
   if (error) throw error;
+  if (message.author_id === user.id && message.attachment_path) await supabase.storage.from(EVENT_CHAT_ATTACHMENT_BUCKET).remove([message.attachment_path]);
 }
 
 
