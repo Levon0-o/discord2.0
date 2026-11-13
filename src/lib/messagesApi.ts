@@ -354,3 +354,91 @@ export async function fetchChannelThreadCounts(messageIds: string[]): Promise<Re
     return counts;
   }, {});
 }
+
+
+export interface ChannelPollOption {
+  id: string;
+  label: string;
+}
+
+export interface ChannelPollVote {
+  id: string;
+  poll_id: string;
+  option_id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export interface ChannelPoll {
+  id: string;
+  channel_id: string;
+  message_id: string;
+  created_by: string;
+  question: string;
+  options: ChannelPollOption[];
+  allow_multiple: boolean;
+  expires_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  votes: ChannelPollVote[];
+}
+
+export async function fetchChannelPolls(channelId: string): Promise<ChannelPoll[]> {
+  const { data, error } = await supabase
+    .from('channel_polls')
+    .select('id, channel_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at')
+    .eq('channel_id', channelId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  const polls = (data ?? []) as Omit<ChannelPoll, 'votes'>[];
+  if (!polls.length) return [];
+  const { data: voteRows, error: voteError } = await supabase
+    .from('channel_poll_votes')
+    .select('id, poll_id, option_id, user_id, created_at')
+    .in('poll_id', polls.map((poll) => poll.id));
+  if (voteError) throw voteError;
+  const votes = (voteRows ?? []) as ChannelPollVote[];
+  return polls.map((poll) => ({
+    ...poll,
+    options: Array.isArray(poll.options) ? poll.options : [],
+    votes: votes.filter((vote) => vote.poll_id === poll.id),
+  }));
+}
+
+export async function createChannelPoll(input: {
+  channelId: string;
+  question: string;
+  options: string[];
+  allowMultiple: boolean;
+  expiresAt: string | null;
+}): Promise<{ pollId: string; messageId: string }> {
+  const { data, error } = await supabase.rpc('create_channel_poll', {
+    p_channel_id: input.channelId,
+    p_question: input.question,
+    p_options: input.options,
+    p_allow_multiple: input.allowMultiple,
+    p_expires_at: input.expiresAt,
+  });
+  if (error) throw error;
+  const row = (Array.isArray(data) ? data[0] : data) as { poll_id?: string; message_id?: string } | null;
+  if (!row?.poll_id || !row.message_id) throw new Error('The poll was created but its response could not be read.');
+  return { pollId: row.poll_id, messageId: row.message_id };
+}
+
+export async function castChannelPollVote(
+  pollId: string,
+  optionId: string,
+  selected: boolean,
+): Promise<void> {
+  const { error } = await supabase.rpc('cast_channel_poll_vote', {
+    p_poll_id: pollId,
+    p_option_id: optionId,
+    p_selected: selected,
+  });
+  if (error) throw error;
+}
+
+export async function closeChannelPoll(pollId: string): Promise<void> {
+  const { error } = await supabase.rpc('close_channel_poll', { p_poll_id: pollId });
+  if (error) throw error;
+}
