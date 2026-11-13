@@ -30,6 +30,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollHeightRef = useRef<number | null>(null);
+  const skipAutoScrollRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -95,8 +96,12 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   }, [messages]);
 
   useEffect(() => {
-    if (!loadingOlder) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length, loadingOlder]);
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length]);
 
   async function handleLoadOlder() {
     const oldest = messages[0];
@@ -105,6 +110,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setLoadingOlder(true);
     setError('');
     pendingScrollHeightRef.current = list.scrollHeight;
+    skipAutoScrollRef.current = true;
     try {
       const page = await fetchServerEventChatMessages(eventId, oldest.created_at);
       setMessages((current) => {
@@ -114,6 +120,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       setHasMore(page.hasMore);
     } catch (err) {
       pendingScrollHeightRef.current = null;
+      skipAutoScrollRef.current = false;
       setError(err instanceof Error ? err.message : 'Could not load older messages.');
     } finally {
       setLoadingOlder(false);
