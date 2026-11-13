@@ -1179,6 +1179,29 @@ export function DirectMessagesSection({
               </p>
             )}
 
+            {messageSearch.trim() && (
+              <div className="shrink-0 border-b border-white/[0.08] bg-ink-900/70 px-4 py-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">Search results · loaded messages</p>
+                  <span className="text-xs text-ink-400">{messageSearchResults.length} matches</span>
+                </div>
+                {messageSearchResults.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {messageSearchResults.map((result) => (
+                      <button key={result.id} type="button"
+                        onClick={() => messageRefs.current.get(result.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                        className="max-w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-left text-xs text-ink-300 transition hover:border-primary-400/40">
+                        <span className="mr-2 text-primary-300">{result.author_id === userId ? 'You' : (profiles[result.author_id]?.display_name || profiles[result.author_id]?.username || displayName)}</span>
+                        <span>{result.body.slice(0, 100)}{result.body.length > 100 ? '…' : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-ink-500">No matches in the currently loaded message history.</p>
+                )}
+              </div>
+            )}
+
             {showPinnedMessages && (
               <section className="shrink-0 border-b border-white/[0.08] bg-ink-900/70 px-4 py-3">
                 <div className="mb-2 flex items-center justify-between">
