@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { Check, MessageCircle, Pencil, Pin, Reply, Search, Send, Trash2, X } from 'lucide-react';
+import { Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, getServerEventChatAttachmentUrl, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, uploadServerEventChatAttachment, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -24,6 +24,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [searching, setSearching] = useState(false);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [body, setBody] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
@@ -33,6 +36,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollHeightRef = useRef<number | null>(null);
   const skipAutoScrollRef = useRef(false);
@@ -96,6 +100,15 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     };
   }, [eventId]);
 
+  useEffect(() => {
+    let active = true;
+    const attachments = messages.filter((message) => message.attachment_path && !attachmentUrls[message.id]);
+    void Promise.all(attachments.map(async (message) => {
+      try { return [message.id, await getServerEventChatAttachmentUrl(message.attachment_path!)] as const; }
+      catch { return [message.id, ''] as const; }
+    })).then((entries) => { if (active) setAttachmentUrls((current) => ({ ...current, ...Object.fromEntries(entries) })); });
+    return () => { active = false; };
+  }, [messages, attachmentUrls]);
   useEffect(() => {
     const channel = supabase.channel('server-event-chat-typing:' + eventId, { config: { private: true } });
     typingChannelRef.current = channel;
@@ -204,14 +217,20 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!body.trim() || sending) return;
+    if ((!body.trim() && !selectedFile) || sending) return;
     setSending(true);
     setError('');
     try {
-      const created = await sendServerEventChatMessage(eventId, body, replyingTo?.id);
-      setMessages((current) => current.some((message) => message.id === created.id) ? current : [...current, created]);
-      setBody('');
-      setReplyingTo(null);
+      let uploadedPath: string | undefined;
+      if (selectedFile) uploadedPath = await uploadServerEventChatAttachment(eventId, selectedFile);
+      try {
+        const created = await sendServerEventChatMessage(eventId, body, replyingTo?.id, uploadedPath);
+        setMessages((current) => current.some((message) => message.id === created.id) ? current : [...current, created]);
+        setBody(''); setSelectedFile(null); setFileInputKey((value) => value + 1); setReplyingTo(null);
+      } catch (sendError) {
+        if (uploadedPath) await removeServerEventChatAttachment(uploadedPath).catch(() => undefined);
+        throw sendError;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send message.');
     } finally {
@@ -351,7 +370,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                   </div>
                 ) : (
                   <>
-                    <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p>
+                    {message.body ? <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p> : null}
+                    {message.attachment_path ? (() => { const fileName = message.attachment_path.split('/').pop()?.replace(/^[^-]+-/, '') || 'Attachment'; const url = attachmentUrls[message.id]; const isImage = /\.(jpe?g|png|gif|webp)$/i.test(fileName); return url ? (isImage ? <a href={url} target="_blank" rel="noreferrer" className="mt-2 block max-w-full"><img src={url} alt={fileName} className="max-h-48 max-w-full rounded-lg border border-white/10 object-contain" /></a> : <a href={url} target="_blank" rel="noreferrer" className="mt-2 flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[10px] text-primary-200 hover:bg-white/[0.06]"><FileText size={14} className="shrink-0" /><span className="truncate">{fileName}</span><span className="ml-auto shrink-0 text-ink-500">Open</span></a>) : <p className="mt-2 text-[10px] text-ink-500">Loading attachment…</p>; })() : null}
                     {message.edited_at ? <span className="ml-1 text-[9px] text-ink-600">(edited)</span> : null}
                   </>
                 )}
@@ -400,8 +420,10 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         </div>
       ) : null}
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
-        <textarea value={body} onChange={(event) => handleBodyChange(event.target.value)} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 flex-1 resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
-        <button type="submit" disabled={sending || !body.trim()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
+        <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-ink-400 transition hover:border-primary-400/40 hover:text-primary-200 disabled:opacity-40" aria-label="Attach file"><Paperclip size={14} /></button>
+        <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-ink-300"><span className="truncate">{selectedFile.name} · {(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="text-ink-500 hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<textarea value={body} onChange={(event) => handleBodyChange(event.target.value)} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
+        <button type="submit" disabled={sending || (!body.trim() && !selectedFile)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
       </form>
     </section>
   );
