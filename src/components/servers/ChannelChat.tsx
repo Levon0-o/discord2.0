@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy, FileText, AtSign,
+  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   fetchChannelMessages, sendChannelMessage, editMessage, deleteMessage,
   fetchChannelReactions, toggleChannelReaction, fetchPinnedChannelMessages,
-  toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl,
+  toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
   type ChannelMessageReaction, type PinnedChannelMessage,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
