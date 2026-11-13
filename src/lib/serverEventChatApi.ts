@@ -467,3 +467,9 @@ export async function closeServerEventChatPoll(pollId: string): Promise<void> {
   const { error } = await supabase.rpc('close_server_event_chat_poll', { p_poll_id: pollId });
   if (error) throw error;
 }
+
+
+export async function deleteServerEventChatPoll(pollId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_server_event_chat_poll', { p_poll_id: pollId });
+  if (error) throw error;
+}
