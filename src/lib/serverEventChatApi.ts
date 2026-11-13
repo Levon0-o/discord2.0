@@ -44,3 +44,54 @@ export async function deleteServerEventChatMessage(messageId: string): Promise<v
     .eq('id', messageId);
   if (error) throw error;
 }
+
+
+export interface ServerEventChatReaction {
+  id: string;
+  event_id: string;
+  message_id: string;
+  user_id: string;
+  emoji: '👍' | '❤️' | '😂' | '😮' | '🎉';
+  created_at: string;
+}
+
+export async function fetchServerEventChatReactions(eventId: string): Promise<ServerEventChatReaction[]> {
+  const { data, error } = await supabase
+    .from('server_event_chat_reactions')
+    .select('id, event_id, message_id, user_id, emoji, created_at')
+    .eq('event_id', eventId);
+  if (error) throw error;
+  return (data ?? []) as ServerEventChatReaction[];
+}
+
+export async function toggleServerEventChatReaction(
+  eventId: string,
+  messageId: string,
+  emoji: ServerEventChatReaction['emoji'],
+): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('server_event_chat_reactions')
+    .select('id')
+    .eq('message_id', messageId)
+    .eq('user_id', user.id)
+    .eq('emoji', emoji)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+
+  if (existing) {
+    const { error } = await supabase.from('server_event_chat_reactions').delete().eq('id', existing.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from('server_event_chat_reactions').insert({
+      event_id: eventId,
+      message_id: messageId,
+      user_id: user.id,
+      emoji,
+    });
+    if (error) throw error;
+  }
+}
