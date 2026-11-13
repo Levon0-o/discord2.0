@@ -111,6 +111,7 @@ export async function fetchDirectMessages(
 export async function sendDirectMessage(
   conversationId: string,
   body: string,
+  replyToId?: string,
 ): Promise<Message> {
   const trimmed = body.trim();
 
@@ -130,6 +131,7 @@ export async function sendDirectMessage(
       conversation_id: conversationId,
       author_id: user.id,
       body: trimmed,
+      reply_to_id: replyToId ?? null,
     })
     .select(
       'id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at',
