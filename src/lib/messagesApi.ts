@@ -340,3 +340,17 @@ export async function toggleSavedChannelMessage(
       });
   if (result.error) throw result.error;
 }
+
+
+export async function fetchChannelThreadCounts(messageIds: string[]): Promise<Record<string, number>> {
+  if (!messageIds.length) return {};
+  const { data, error } = await supabase
+    .from('messages')
+    .select('thread_id')
+    .in('thread_id', messageIds);
+  if (error) throw error;
+  return (data ?? []).reduce<Record<string, number>>((counts, row) => {
+    if (row.thread_id) counts[row.thread_id] = (counts[row.thread_id] ?? 0) + 1;
+    return counts;
+  }, {});
+}
