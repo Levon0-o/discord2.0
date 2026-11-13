@@ -206,3 +206,34 @@ export async function setServerEventChatPin(
     if (error) throw error;
   }
 }
+
+
+export interface ServerEventChatReadReceipt {
+  event_id: string;
+  user_id: string;
+  last_read_at: string;
+  updated_at: string;
+}
+
+export async function fetchServerEventChatReadReceipts(eventId: string): Promise<ServerEventChatReadReceipt[]> {
+  const { data, error } = await supabase
+    .from('server_event_chat_reads')
+    .select('event_id, user_id, last_read_at, updated_at')
+    .eq('event_id', eventId);
+  if (error) throw error;
+  return (data ?? []) as ServerEventChatReadReceipt[];
+}
+
+export async function markServerEventChatRead(eventId: string): Promise<ServerEventChatReadReceipt> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('server_event_chat_reads')
+    .upsert({ event_id: eventId, user_id: user.id, last_read_at: now, updated_at: now }, { onConflict: 'event_id,user_id' })
+    .select('event_id, user_id, last_read_at, updated_at')
+    .single();
+  if (error) throw error;
+  return data as ServerEventChatReadReceipt;
+}
