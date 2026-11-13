@@ -308,3 +308,50 @@ export async function deleteChannel(channelId: string): Promise<void> {
     .eq('id', channelId);
   if (error) throw error;
 }
+
+
+export type ChannelMemberPermissionKey =
+  | 'can_view'
+  | 'can_send_messages'
+  | 'can_attach_files'
+  | 'can_manage_messages';
+
+export interface ChannelMemberPermission {
+  channel_id: string;
+  user_id: string;
+  can_view: boolean | null;
+  can_send_messages: boolean | null;
+  can_attach_files: boolean | null;
+  can_manage_messages: boolean | null;
+  updated_at: string;
+}
+
+export async function fetchChannelMemberPermissions(
+  channelId: string,
+): Promise<ChannelMemberPermission[]> {
+  const { data, error } = await supabase
+    .from('channel_member_permissions')
+    .select('channel_id, user_id, can_view, can_send_messages, can_attach_files, can_manage_messages, updated_at')
+    .eq('channel_id', channelId);
+  if (error) throw error;
+  return (data ?? []) as ChannelMemberPermission[];
+}
+
+export async function setChannelMemberPermission(
+  channelId: string,
+  userId: string,
+  permission: ChannelMemberPermissionKey,
+  value: boolean | null,
+): Promise<ChannelMemberPermission> {
+  const { data, error } = await supabase
+    .from('channel_member_permissions')
+    .upsert({
+      channel_id: channelId,
+      user_id: userId,
+      [permission]: value,
+    }, { onConflict: 'channel_id,user_id' })
+    .select('channel_id, user_id, can_view, can_send_messages, can_attach_files, can_manage_messages, updated_at')
+    .single();
+  if (error) throw error;
+  return data as ChannelMemberPermission;
+}
