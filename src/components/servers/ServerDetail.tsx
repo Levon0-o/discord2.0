@@ -705,7 +705,7 @@ export function ServerDetail({
             <div>
               <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-red-400/10 text-red-300"><Trash2 size={18} /></div>
               <h2 className="text-base font-semibold text-ink-50">Delete #{deletingChannel.name}?</h2>
-              <p className="mt-2 text-sm leading-relaxed text-ink-400">This permanently deletes the channel and its message history, attachments, pins and channel settings. This action cannot be undone.</p>
+              <p className="mt-2 text-sm leading-relaxed text-ink-400">This permanently deletes the channel, its message history, pins and notification settings. Uploaded files become inaccessible with the deleted channel. This action cannot be undone.</p>
             </div>
             {deleteError && <p role="alert" className="rounded-lg bg-red-400/10 p-2 text-xs text-red-300">{deleteError}</p>}
             <div className="flex gap-2">
