@@ -285,7 +285,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => { setSearchOpen((value) => !value); setPinnedOpen(false); }} className={'rounded-md p-1.5 transition ' + (searchOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-label="Search event chat" aria-expanded={searchOpen}><Search size={13} /></button>
-          <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSearchOpen(false); }}((value) => !value)} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
+          <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
         </div>
       </div>
