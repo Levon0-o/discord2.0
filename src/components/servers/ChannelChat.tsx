@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff,
+  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -9,7 +9,8 @@ import {
   fetchChannelReactions, toggleChannelReaction, fetchPinnedChannelMessages,
   toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
   fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
-  type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference,
+  fetchSavedChannelMessages, toggleSavedChannelMessage,
+  type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
 import type { MemberWithProfile } from '@/types/servers';
@@ -42,6 +43,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [userId, setUserId] = useState('');
   const [reactions, setReactions] = useState<ChannelMessageReaction[]>([]);
   const [pinned, setPinned] = useState<PinnedChannelMessage[]>([]);
+  const [savedMessages, setSavedMessages] = useState<SavedChannelMessage[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
   const [showPins, setShowPins] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,12 +85,14 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       const result = await fetchChannelMessages(channelId);
       setMessages(result);
       setHasMore(result.length === 100);
-      const [reactionRows, pinRows] = await Promise.all([
+      const [reactionRows, pinRows, savedRows] = await Promise.all([
         fetchChannelReactions(result.map((message) => message.id)),
         fetchPinnedChannelMessages(channelId),
+        fetchSavedChannelMessages(channelId),
       ]);
       setReactions(reactionRows);
       setPinned(pinRows);
+      setSavedMessages(savedRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load channel messages.');
     } finally {
@@ -377,6 +382,18 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
     }
   }
 
+  async function handleSaveMessage(messageId: string) {
+    const isSaved = savedMessages.some((item) => item.message_id === messageId);
+    try {
+      await toggleSavedChannelMessage(channelId, messageId, isSaved);
+      setSavedMessages((current) => isSaved
+        ? current.filter((item) => item.message_id !== messageId)
+        : [...current, { channel_id: channelId, message_id: messageId, user_id: userId, saved_at: new Date().toISOString() }]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save message.');
+    }
+  }
+
   async function handlePin(messageId: string) {
     const isPinned = pinned.some((item) => item.message_id === messageId);
     setBusyMessageId(messageId);
@@ -505,6 +522,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
               </div>
             ) : null}
           </div>
+          <button type="button" title="Saved messages" onClick={() => { setShowSaved((value) => !value); setShowPins(false); setShowSearch(false); setShowMembers(false); }} className={showSaved ? "rounded-lg border border-primary-400/40 bg-primary-500/10 p-2 text-primary-200" : "rounded-lg border border-white/[0.08] p-2 text-ink-400 hover:bg-white/[0.05]"}><Bookmark size={15} /></button>
           <button type="button" title="Search channel messages" onClick={() => { setShowSearch((value) => !value); setShowMembers(false); }} className={`rounded-lg border p-2 transition ${showSearch ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] text-ink-400 hover:bg-white/[0.05]'}`}>
             <Search size={15} />
           </button>
@@ -558,6 +576,18 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         </div>
       ) : null}
 
+      {showSaved ? (
+        <div className="max-h-56 shrink-0 overflow-y-auto border-b border-white/[0.06] bg-ink-950/50 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Saved messages · {savedMessages.length}</p>
+          {savedMessages.length ? savedMessages.map((saved) => {
+            const message = messagesById.get(saved.message_id);
+            return <button key={saved.message_id} type="button" disabled={!message} onClick={() => { setShowSaved(false); messageRefs.current[saved.message_id]?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} className="mb-1 block w-full truncate rounded-lg px-2 py-1.5 text-left text-xs text-ink-300 hover:bg-white/[0.05] disabled:cursor-default disabled:opacity-50">
+              <Bookmark size={11} className="mr-1 inline text-primary-300" />{message?.body || (message ? 'Attachment' : 'Saved message — load older history to locate it')}
+            </button>;
+          }) : <p className="text-xs text-ink-500">You have not saved any messages in this channel.</p>}
+        </div>
+      ) : null}
+
       {showPins ? (
         <div className="max-h-40 shrink-0 overflow-y-auto border-b border-white/[0.06] bg-ink-950/50 p-3">
           {pinnedMessages.length ? pinnedMessages.map((message) => (
@@ -596,6 +626,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
               const grouped = Boolean(previous && previous.author_id === message.author_id && previousDate?.toDateString() === date.toDateString() && date.getTime() - previousDate!.getTime() <= 15 * 60 * 1000);
               const messageReactions = reactions.filter((item) => item.message_id === message.id);
               const isPinned = pinned.some((item) => item.message_id === message.id);
+              const isSaved = savedMessages.some((item) => item.message_id === message.id);
               const isMine = message.author_id === userId;
               const replyTarget = message.reply_to_id ? messagesById.get(message.reply_to_id) : null;
               const groupedReactions = QUICK_REACTIONS.map((emoji) => ({ emoji, users: messageReactions.filter((item) => item.emoji === emoji) })).filter((item) => item.users.length);
@@ -655,6 +686,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                       <div className="mt-1.5 flex flex-wrap items-center gap-1 opacity-100 transition-opacity sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <button type="button" title="Open thread" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><MessageSquare size={13} /></button>
                         <button type="button" title="Reply" onClick={() => setReplyingTo(message)} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Reply size={13} /></button>
+                        <button type="button" title={isSaved ? "Remove saved message" : "Save message"} onClick={() => void handleSaveMessage(message.id)} className={`rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 ${isSaved ? "text-primary-200" : "text-ink-400 hover:text-primary-200"}`}><Bookmark size={13} /></button>
                         <button type="button" title="Pin / unpin" disabled={busyMessageId === message.id} onClick={() => void handlePin(message.id)} className={`rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 ${isPinned ? 'text-primary-200' : 'text-ink-400 hover:text-primary-200'}`}><Pin size={13} /></button>
                         {isMine ? <>
                           <button type="button" title="Edit" onClick={() => { setEditingId(message.id); setEditingText(message.body); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Pencil size={13} /></button>
