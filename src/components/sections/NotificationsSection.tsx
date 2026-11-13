@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bell, Heart, MessageCircle, UserPlus, CheckCheck, Loader2 } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, CheckCheck, Loader2, AtSign } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   fetchNotifications,
@@ -12,6 +12,7 @@ function notificationCopy(item: NotificationItem) {
   const actor = item.actor?.display_name || item.actor?.username || 'Someone';
   if (item.type === 'follow') return { title: actor, detail: 'started following you', Icon: UserPlus };
   if (item.type === 'like') return { title: actor, detail: 'liked your post', Icon: Heart };
+  if (item.type === 'mention') return { title: actor, detail: 'mentioned you in a server channel', Icon: AtSign };
   return { title: actor, detail: 'commented on your post', Icon: MessageCircle };
 }
 
@@ -127,7 +128,7 @@ export function NotificationsSection() {
               <Bell size={24} />
             </div>
             <h2 className="text-base font-semibold text-ink-100">No notifications yet</h2>
-            <p className="mt-1 max-w-sm text-sm text-ink-400">When someone follows you, likes your post or comments on it, you will see it here.</p>
+            <p className="mt-1 max-w-sm text-sm text-ink-400">When someone follows you, interacts with your posts or mentions you in a server, you will see it here.</p>
           </div>
         ) : (
           <ul className="divide-y divide-white/[0.06]">
