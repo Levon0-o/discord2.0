@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { MessageCircle, Reply, Send, Trash2, X } from 'lucide-react';
+import { MessageCircle, Pin, Reply, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatReactions, sendServerEventChatMessage, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -15,7 +15,7 @@ interface ServerEventChatProps {
 
 export function ServerEventChat({ eventId, eventTitle, userId, members, onClose }: ServerEventChatProps) {
   const [messages, setMessages] = useState<ServerEventChatMessage[]>([]);
-  const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);
+  const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);\n  const [pins, setPins] = useState<ServerEventChatPin[]>([]);\n  const [pinnedOpen, setPinnedOpen] = useState(false);
   const [body, setBody] = useState('');
   const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,6 +106,18 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     }
   }
 
+  async function handlePin(messageId: string) {
+    const pinned = pins.some((pin) => pin.message_id === messageId);
+    setError('');
+    try {
+      await setServerEventChatPin(eventId, messageId, !pinned);
+      const rows = await fetchServerEventChatPins(eventId);
+      setPins(rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update pinned messages.');
+    }
+  }
+
   async function handleReaction(messageId: string, emoji: ServerEventChatReaction['emoji']) {
     setError('');
     try {
@@ -129,8 +141,25 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <MessageCircle size={15} className="shrink-0 text-primary-300" />
           <div className="min-w-0"><p className="text-xs font-semibold text-ink-100">Event chat</p><p className="truncate text-[10px] text-ink-500">{eventTitle}</p></div>
         </div>
-        <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setPinnedOpen((value) => !value)} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
+          <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
+        </div>
       </div>
+      {pinnedOpen ? (
+        <div className="border-b border-white/[0.07] bg-primary-500/[0.04] p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary-200"><Pin size={11} /> Pinned messages</p>
+          {pins.length === 0 ? <p className="text-[10px] text-ink-500">No pinned messages yet.</p> : <div className="space-y-1.5">
+            {pins.map((pin) => {
+              const message = messages.find((item) => item.id === pin.message_id);
+              if (!message) return null;
+              const author = members.find((entry) => entry.user_id === message.author_id);
+              const name = author?.profile?.display_name || author?.profile?.username || 'Server member';
+              return <button key={pin.message_id} type="button" onClick={() => document.getElementById('event-chat-message-' + message.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className="block w-full rounded-md bg-white/[0.03] px-2.5 py-2 text-left hover:bg-white/[0.07]"><span className="block text-[10px] font-semibold text-ink-300">{name}</span><span className="block truncate text-[10px] text-ink-500">{message.body}</span></button>;
+            })}
+          </div>}
+        </div>
+      ) : null}
       <div className="max-h-64 min-h-32 space-y-3 overflow-y-auto p-3">
         {loading ? <p className="py-8 text-center text-xs text-ink-500">Loading chat…</p> : messages.length === 0 ? <div className="py-8 text-center"><MessageCircle size={20} className="mx-auto mb-2 text-ink-600" /><p className="text-xs text-ink-400">No messages yet</p><p className="mt-1 text-[10px] text-ink-600">Start coordinating with event attendees.</p></div> : messages.map((message) => {
           const member = members.find((entry) => entry.user_id === message.author_id);
@@ -181,6 +210,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                   })}
                 </div>
               </div>
+              {canModerate ? <button type="button" onClick={() => void handlePin(message.id)} className={'rounded p-1 transition hover:bg-primary-400/10 hover:text-primary-200 ' + (pins.some((pin) => pin.message_id === message.id) ? 'text-primary-300' : 'text-ink-600 opacity-0 group-hover:opacity-100')} aria-label={pins.some((pin) => pin.message_id === message.id) ? 'Unpin message' : 'Pin message'} title={pins.some((pin) => pin.message_id === message.id) ? 'Unpin message' : 'Pin message'}><Pin size={12} /></button> : null}
               {(own || canModerate) ? <button type="button" onClick={() => void handleDelete(message.id)} className="rounded p-1 text-ink-600 opacity-0 transition hover:bg-red-400/10 hover:text-red-300 group-hover:opacity-100" aria-label="Delete message"><Trash2 size={12} /></button> : null}
             </article>
           );
