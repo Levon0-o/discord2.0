@@ -30,6 +30,20 @@ export async function fetchServerEventChatMessages(
   return { messages: rows.slice(0, EVENT_CHAT_PAGE_SIZE).reverse(), hasMore };
 }
 
+export async function searchServerEventChatMessages(eventId: string, searchTerm: string): Promise<ServerEventChatMessage[]> {
+  const term = searchTerm.trim();
+  if (term.length < 2) return [];
+  const { data, error } = await supabase
+    .from('server_event_chat_messages')
+    .select('id, event_id, author_id, body, reply_to_id, created_at, edited_at')
+    .eq('event_id', eventId)
+    .ilike('body', '%' + term + '%')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return (data ?? []) as ServerEventChatMessage[];
+}
+
 export async function sendServerEventChatMessage(eventId: string, body: string, replyToId?: string | null): Promise<ServerEventChatMessage> {
   const trimmed = body.trim();
   if (!trimmed || trimmed.length > 2000) {
