@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { MessageCircle, Pin, Reply, Send, Trash2, X } from 'lucide-react';
+import { Check, MessageCircle, Pencil, Pin, Reply, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -20,6 +20,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [body, setBody] = useState('');
   const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -50,6 +52,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         if (payload.eventType === 'INSERT') {
           const incoming = payload.new as ServerEventChatMessage;
           setMessages((current) => current.some((message) => message.id === incoming.id) ? current : [...current, incoming]);
+        } else if (payload.eventType === 'UPDATE') {
+          const incoming = payload.new as ServerEventChatMessage;
+          setMessages((current) => current.map((message) => message.id === incoming.id ? incoming : message));
         } else if (payload.eventType === 'DELETE') {
           const removed = payload.old as { id?: string };
           if (removed.id) setMessages((current) => current.filter((message) => message.id !== removed.id));
@@ -95,6 +100,25 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       setError(err instanceof Error ? err.message : 'Could not send message.');
     } finally {
       setSending(false);
+    }
+  }
+
+  function startEditing(message: ServerEventChatMessage) {
+    setEditingId(message.id);
+    setEditBody(message.body);
+    setReplyingTo(null);
+  }
+
+  async function handleEdit(messageId: string) {
+    if (!editBody.trim()) return;
+    setError('');
+    try {
+      const updated = await editServerEventChatMessage(messageId, editBody);
+      setMessages((current) => current.map((message) => message.id === updated.id ? updated : message));
+      setEditingId(null);
+      setEditBody('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not edit message.');
     }
   }
 
@@ -186,7 +210,21 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                     </button>
                   ) : <p className="mt-1 text-[10px] text-ink-600">Reply to a message that is no longer available</p>;
                 })() : null}
-                <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p>
+                {editingId === message.id ? (
+                  <div className="mt-1 space-y-1.5">
+                    <textarea value={editBody} onChange={(event) => setEditBody(event.target.value)} maxLength={2000} rows={2} className="w-full rounded-md border border-primary-400/30 bg-ink-950 px-2 py-1.5 text-xs text-ink-100 outline-none focus:border-primary-400/60" />
+                    <div className="flex gap-1.5">
+                      <button type="button" onClick={() => void handleEdit(message.id)} className="inline-flex items-center gap-1 rounded bg-primary-500/15 px-2 py-1 text-[10px] text-primary-200 hover:bg-primary-500/25"><Check size={11} /> Save</button>
+                      <button type="button" onClick={() => { setEditingId(null); setEditBody(''); }} className="rounded px-2 py-1 text-[10px] text-ink-500 hover:bg-white/[0.06]">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p>
+                    {message.edited_at ? <span className="ml-1 text-[9px] text-ink-600">(edited)</span> : null}
+                  </>
+                )}
+                {own && editingId !== message.id ? <button type="button" onClick={() => startEditing(message)} className="mt-1 mr-2 inline-flex items-center gap-1 text-[10px] text-ink-500 transition hover:text-primary-300"><Pencil size={10} /> Edit</button> : null}
                 <button
                   type="button"
                   onClick={() => setReplyingTo(message)}
