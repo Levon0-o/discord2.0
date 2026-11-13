@@ -176,3 +176,63 @@ export async function fetchUnreadMessageCount(
   if (error) throw error;
   return count ?? 0;
 }
+
+
+export interface DirectMessageReaction {
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+}
+
+export async function fetchMessageReactions(
+  messageIds: string[],
+): Promise<DirectMessageReaction[]> {
+  if (messageIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('message_reactions')
+    .select('message_id, user_id, emoji, created_at')
+    .in('message_id', messageIds);
+
+  if (error) throw error;
+  return (data ?? []) as DirectMessageReaction[];
+}
+
+export async function addMessageReaction(
+  messageId: string,
+  emoji: string,
+): Promise<DirectMessageReaction> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { data, error } = await supabase
+    .from('message_reactions')
+    .insert({ message_id: messageId, user_id: user.id, emoji })
+    .select('message_id, user_id, emoji, created_at')
+    .single();
+
+  if (error) throw error;
+  return data as DirectMessageReaction;
+}
+
+export async function removeMessageReaction(
+  messageId: string,
+  emoji: string,
+): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { error } = await supabase
+    .from('message_reactions')
+    .delete()
+    .eq('message_id', messageId)
+    .eq('user_id', user.id)
+    .eq('emoji', emoji);
+
+  if (error) throw error;
+}
