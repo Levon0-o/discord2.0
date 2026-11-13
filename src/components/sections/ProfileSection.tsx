@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Camera, ExternalLink, Image as ImageIcon, Loader2, Save, UserRound, Video } from 'lucide-react';
+import { Camera, ExternalLink, Image as ImageIcon, Loader2, Save, UserRound } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
