@@ -364,7 +364,7 @@ export function ExploreSection() {
     setFeaturedPost(null);
     setProfileError('');
     setProfileLoading(true);
-    const [profileResult, postsResult, followersResult, followingResult, followResult, badgesResult] = await Promise.all([
+    const [profileResult, postsResult, followersResult, followingResult, badgesResult, followResult] = await Promise.all([
       supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, created_at').eq('id', profileId).maybeSingle(),
       supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
