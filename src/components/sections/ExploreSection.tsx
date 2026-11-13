@@ -40,6 +40,8 @@ interface ExploreProfile {
   user_status: 'online' | 'away' | 'busy' | 'dnd';
   status_message: string;
   featured_post_id: string | null;
+  profile_layout: 'standard' | 'creator' | 'minimal';
+  profile_sections: { about: boolean; featured: boolean; links: boolean; stats: boolean; posts: boolean };
   created_at: string;
 }
 
@@ -365,7 +367,7 @@ export function ExploreSection() {
     setProfileError('');
     setProfileLoading(true);
     const [profileResult, postsResult, followersResult, followingResult, badgesResult, followResult] = await Promise.all([
-      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, created_at').eq('id', profileId).maybeSingle(),
+      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, created_at').eq('id', profileId).maybeSingle(),
       supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
       supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', profileId),
@@ -647,7 +649,7 @@ export function ExploreSection() {
       )}
       {(profileLoading || profile || profileError) && (
         <div role="dialog" aria-modal="true" aria-label="User profile" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) { setProfile(null); setProfileError(''); } }}>
-          <section className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-ink-950 shadow-2xl shadow-black/50">
+          <section className={`max-h-[90dvh] w-full ${profile?.profile_layout === 'creator' ? 'max-w-4xl' : profile?.profile_layout === 'minimal' ? 'max-w-xl' : 'max-w-2xl'} overflow-y-auto rounded-3xl border border-white/10 bg-ink-950 shadow-2xl shadow-black/50">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] bg-ink-950/95 px-4 py-3 backdrop-blur">
               <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-ink-300 hover:bg-white/[0.06]"><ArrowLeft size={16} /> Back to Explore</button>
               <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} aria-label="Close profile" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06]"><X size={17} /></button>
@@ -666,8 +668,8 @@ export function ExploreSection() {
                   <p className="text-sm text-ink-400">@{profile.username}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-ink-900/70 px-3 py-1.5 text-xs text-ink-200"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ({ online: '#34d399', away: '#fbbf24', busy: '#fb7185', dnd: '#f87171' } as const)[profile.user_status ?? 'online'] }} />{{ online: 'Online', away: 'Away', busy: 'Busy', dnd: 'Do Not Disturb' }[profile.user_status ?? 'online']}</span>{profile.status_message && <span className="text-xs text-ink-400">{profile.status_message}</span>}</div>
                   {profileBadges.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{profileBadges.map((key) => <span key={key} className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-semibold text-amber-200">{{ founder: 'Founder', early_member: 'Early Member', verified: 'Verified', creator: 'Creator' }[key] ?? key}</span>)}</div>}
-                  {profile.bio && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink-200">{profile.bio}</p>}
-                  {(profile.website_url || profile.instagram_url || profile.twitch_url || profile.youtube_url) && <div className="mt-3 flex flex-wrap gap-2">
+                  {profile.profile_sections?.about !== false && profile.bio && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink-200">{profile.bio}</p>}
+                  {profile.profile_sections?.links !== false && (profile.website_url || profile.instagram_url || profile.twitch_url || profile.youtube_url) && <div className="mt-3 flex flex-wrap gap-2">
                     {([
                       ['Website', profile.website_url],
                       ['Instagram', profile.instagram_url],
@@ -675,14 +677,14 @@ export function ExploreSection() {
                       ['YouTube', profile.youtube_url],
                     ] as const).flatMap(([label, url]) => url ? [{ label, url }] : []).map(({ label, url }) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-primary-300 transition hover:bg-white/[0.07]">{label}<ExternalLink size={12} /></a>)}
                   </div>}
-                  {featuredPost && <article className="mt-4 overflow-hidden rounded-2xl border border-primary-400/20 bg-primary-400/[0.04]"><div className="flex items-center justify-between border-b border-primary-400/10 px-3 py-2"><span className="text-xs font-semibold text-primary-200">Featured post</span><span className="text-[11px] text-ink-500">{age(featuredPost.created_at)}</span></div>{featuredPost.media_type === 'video' && featuredPost.image_url && <video src={featuredPost.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{featuredPost.media_type === 'image' && featuredPost.image_url && <img src={featuredPost.image_url} alt="Featured post" className="max-h-64 w-full object-cover" />}{featuredPost.body && <p className="whitespace-pre-wrap break-words p-3 text-sm text-ink-200">{featuredPost.body}</p>}</article>}
-                  <div className="mt-4 flex flex-wrap items-center gap-5 text-xs text-ink-400">
+                  {profile.profile_sections?.featured !== false && featuredPost && <article className="mt-4 overflow-hidden rounded-2xl border border-primary-400/20 bg-primary-400/[0.04]"><div className="flex items-center justify-between border-b border-primary-400/10 px-3 py-2"><span className="text-xs font-semibold text-primary-200">Featured post</span><span className="text-[11px] text-ink-500">{age(featuredPost.created_at)}</span></div>{featuredPost.media_type === 'video' && featuredPost.image_url && <video src={featuredPost.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{featuredPost.media_type === 'image' && featuredPost.image_url && <img src={featuredPost.image_url} alt="Featured post" className="max-h-64 w-full object-cover" />}{featuredPost.body && <p className="whitespace-pre-wrap break-words p-3 text-sm text-ink-200">{featuredPost.body}</p>}</article>}
+                  {profile.profile_sections?.stats !== false && <div className="mt-4 flex flex-wrap items-center gap-5 text-xs text-ink-400">
                     <span><strong className="text-ink-100">{profileStats.followers}</strong> followers</span>
                     <span><strong className="text-ink-100">{profileStats.following}</strong> following</span>
                     <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> Joined {new Date(profile.created_at).toLocaleDateString()}</span>
-                  </div>
+                  </div>}
                 </div>
-                <div className="border-t border-white/[0.06] px-5 py-4">
+                {profile.profile_sections?.posts !== false && <div className="border-t border-white/[0.06] px-5 py-4">
                   <div className="mb-3 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-ink-100">Public content</h3><div className="flex rounded-lg border border-white/[0.08] p-1"><button type="button" onClick={() => setProfileContentTab('all')} className={`rounded-md px-3 py-1.5 text-xs ${profileContentTab === 'all' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-400'}`}>All posts</button><button type="button" onClick={() => setProfileContentTab('videos')} className={`rounded-md px-3 py-1.5 text-xs ${profileContentTab === 'videos' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-400'}`}>Videos</button></div></div>
                   {visibleProfilePosts.length === 0 ? <p className="py-8 text-center text-sm text-ink-500">{profileContentTab === 'videos' ? 'No public videos yet.' : 'No public posts yet.'}</p> : <div className="grid gap-3 sm:grid-cols-2">{[...visibleProfilePosts].sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/70">
                     {item.media_type === 'video' && item.image_url && <video src={item.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}
@@ -690,7 +692,7 @@ export function ExploreSection() {
                     {item.body && <p className="whitespace-pre-wrap break-words p-3 text-sm leading-5 text-ink-200">{item.body}</p>}
                     <div className="flex items-center justify-between border-t border-white/[0.05] px-3 py-2 text-xs text-ink-500">{item.is_pinned && <span className="inline-flex items-center gap-1 text-primary-300"><Pin size={12} /> Pinned</span>}<span>{item.likes.length} likes · {item.comments.length} comments · {age(item.created_at)}</span></div>
                   </article>)}</div>}
-                </div>
+                </div>}
               </>
             ) : <div className="px-5 py-16 text-center text-sm text-red-300">{profileError || 'Could not load this profile.'}</div>}
             {profileError && profile && <p role="alert" className="px-5 pb-4 text-xs text-red-300">{profileError}</p>}
