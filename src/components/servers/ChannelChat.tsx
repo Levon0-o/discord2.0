@@ -891,6 +891,37 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         ) : null}
         <p className="mt-2 text-[10px] text-ink-600">Enter to send · Files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV</p>
       </form>
+
+      {showPollCreator ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <form onSubmit={handleCreatePoll} className="w-full max-w-lg space-y-4 rounded-2xl border border-white/10 bg-ink-950 p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-300"><BarChart3 size={15} /> New poll</div><h3 className="mt-1 text-lg font-semibold text-ink-100">Create a channel poll</h3></div>
+              <button type="button" onClick={() => setShowPollCreator(false)} className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close poll creator"><X size={17} /></button>
+            </div>
+            <label className="block space-y-1.5"><span className="text-xs font-medium text-ink-300">Question</span><input autoFocus value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} maxLength={200} placeholder="Ask your community…" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50" /></label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between"><span className="text-xs font-medium text-ink-300">Options</span><span className="text-[10px] text-ink-500">{pollOptions.length}/6</span></div>
+              {pollOptions.map((option, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input value={option} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={80} placeholder={'Option ' + (index + 1)} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/50" />
+                  {pollOptions.length > 2 ? <button type="button" onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="rounded-md p-2 text-ink-500 hover:bg-white/[0.06] hover:text-red-300" aria-label={'Remove option ' + (index + 1)}><X size={15} /></button> : null}
+                </div>
+              ))}
+              {pollOptions.length < 6 ? <button type="button" onClick={() => setPollOptions((current) => [...current, ''])} className="rounded-md px-2 py-1.5 text-xs font-medium text-primary-300 hover:bg-primary-500/10">+ Add option</button> : null}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-xs text-ink-300"><input type="checkbox" checked={pollAllowMultiple} onChange={(event) => setPollAllowMultiple(event.target.checked)} className="accent-primary-400" /> Allow multiple choices</label>
+              <label className="space-y-1"><span className="block text-xs font-medium text-ink-300">Close after</span><select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-xs text-ink-200"><option value="never">Never</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3">
+              <button type="button" onClick={() => setShowPollCreator(false)} className="rounded-lg px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]">Cancel</button>
+              <button type="submit" disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{pollBusy ? <RefreshCw size={14} className="animate-spin" /> : <BarChart3 size={14} />} Create poll</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
     </section>
   );
 }
