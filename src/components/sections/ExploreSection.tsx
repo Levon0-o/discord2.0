@@ -19,6 +19,7 @@ interface ExploreAuthor {
 interface ExploreComment {
   id: string;
   author_id: string;
+  parent_id: string | null;
   body: string;
   created_at: string;
   author: ExploreAuthor | null;
@@ -91,6 +92,8 @@ export function ExploreSection() {
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, ExploreComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
   const [profile, setProfile] = useState<ExploreProfile | null>(null);
   const [profilePosts, setProfilePosts] = useState<ExploreProfilePost[]>([]);
@@ -276,7 +279,7 @@ export function ExploreSection() {
   const loadComments = async (postId: string) => {
     const { data, error: queryError } = await supabase
       .from('comments')
-      .select('id, author_id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
+      .select('id, author_id, parent_id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     if (queryError) setError(queryError.message);
@@ -300,6 +303,25 @@ export function ExploreSection() {
     if (insertError) setError(insertError.message);
     else {
       setCommentDrafts((current) => ({ ...current, [postId]: '' }));
+      await loadComments(postId);
+      await loadPosts(true, appliedPostSearch, tab === 'trending');
+    }
+    setCommentBusy(null);
+  };
+
+  const publishReply = async (postId: string, parentId: string) => {
+    const body = (replyDrafts[parentId] ?? '').trim();
+    if (!body || !userId || commentBusy) return;
+    setCommentBusy(parentId);
+    const { error: insertError } = await supabase.from('comments').insert({
+      post_id: postId,
+      parent_id: parentId,
+      body,
+    });
+    if (insertError) setError(insertError.message);
+    else {
+      setReplyDrafts((current) => ({ ...current, [parentId]: '' }));
+      setReplyingTo(null);
       await loadComments(postId);
       await loadPosts(true, appliedPostSearch, tab === 'trending');
     }
@@ -431,14 +453,32 @@ export function ExploreSection() {
               {expandedPost === post.id && (
                 <div className="border-t border-white/[0.06] bg-ink-950/35 px-4 py-4">
                   <div className="mb-4 space-y-3">
-                    {(comments[post.id] ?? []).length === 0 ? <p className="text-xs text-ink-500">No comments yet. Start the discussion.</p> : (comments[post.id] ?? []).map((comment) => {
+                    {(comments[post.id] ?? []).filter((comment) => !comment.parent_id).length === 0 ? <p className="text-xs text-ink-500">No comments yet. Start the discussion.</p> : (comments[post.id] ?? []).filter((comment) => !comment.parent_id).map((comment) => {
                       const commentAuthor = authorName(comment.author);
-                      return <div key={comment.id} className="flex gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[10px] font-bold text-ink-300">{comment.author?.avatar_url ? <img src={comment.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(commentAuthor)}</div>
-                        <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
-                          <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(comment.author_id)} className="transition hover:text-primary-300">{commentAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(comment.created_at)}</span></p>
-                          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>
+                      const replies = (comments[post.id] ?? []).filter((reply) => reply.parent_id === comment.id);
+                      return <div key={comment.id} className="space-y-2">
+                        <div className="flex gap-2.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[10px] font-bold text-ink-300">{comment.author?.avatar_url ? <img src={comment.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(commentAuthor)}</div>
+                          <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
+                            <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(comment.author_id)} className="transition hover:text-primary-300">{commentAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(comment.created_at)}</span></p>
+                            <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>
+                            <button type="button" onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)} className="mt-2 text-[11px] font-semibold text-primary-300 hover:text-primary-200">Reply{replies.length ? ` · ${replies.length}` : ''}</button>
+                            {replyingTo === comment.id && <div className="mt-2 flex gap-2">
+                              <input value={replyDrafts[comment.id] ?? ''} onChange={(event) => setReplyDrafts((current) => ({ ...current, [comment.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishReply(post.id, comment.id); } }} placeholder={`Reply to ${commentAuthor}…`} maxLength={1000} className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+                              <button type="button" onClick={() => void publishReply(post.id, comment.id)} disabled={!(replyDrafts[comment.id] ?? '').trim() || commentBusy === comment.id} aria-label="Send reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white hover:bg-primary-400 disabled:opacity-40"><Send size={14} /></button>
+                            </div>}
+                          </div>
                         </div>
+                        {replies.map((reply) => {
+                          const replyAuthor = authorName(reply.author);
+                          return <div key={reply.id} className="ml-9 flex gap-2 border-l border-primary-400/20 pl-3">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[9px] font-bold text-ink-300">{reply.author?.avatar_url ? <img src={reply.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(replyAuthor)}</div>
+                            <div className="min-w-0 flex-1 rounded-xl bg-white/[0.025] px-3 py-2">
+                              <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(reply.author_id)} className="transition hover:text-primary-300">{replyAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(reply.created_at)}</span></p>
+                              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{reply.body}</p>
+                            </div>
+                          </div>;
+                        })}
                       </div>;
                     })}
                   </div>
