@@ -29,6 +29,7 @@ function formatTime(value: string) {
 export function ChannelChat({ channelId, channelName, channelTopic, members }: ChannelChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
+  const [draftRestored, setDraftRestored] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -96,6 +97,38 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
 
   useEffect(() => {
     if (!userId) return;
+    const draftKey = `afterdark:channel-draft:${userId}:${channelId}`;
+    try {
+      setMessageText(window.localStorage.getItem(draftKey) ?? '');
+    } catch {
+      setMessageText('');
+    }
+    setDraftRestored(true);
+  }, [channelId, userId]);
+
+  function saveDraft(value: string) {
+    setMessageText(value);
+    if (!userId || !draftRestored) return;
+    try {
+      const draftKey = `afterdark:channel-draft:${userId}:${channelId}`;
+      if (value.trim()) window.localStorage.setItem(draftKey, value);
+      else window.localStorage.removeItem(draftKey);
+    } catch {
+      // Draft persistence is best-effort when browser storage is unavailable.
+    }
+  }
+
+  function clearCurrentDraft() {
+    if (!userId) return;
+    try {
+      window.localStorage.removeItem(`afterdark:channel-draft:${userId}:${channelId}`);
+    } catch {
+      // Ignore unavailable browser storage.
+    }
+  }
+
+  useEffect(() => {
+    if (!userId) return;
     const presenceChannel = supabase.channel(`channel-presence:${channelId}`, {
       config: { presence: { key: userId } },
     });
@@ -148,7 +181,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   }, [channelId, userId]);
 
   function handleMessageTextChange(value: string) {
-    setMessageText(value);
+    saveDraft(value);
     const now = Date.now();
     if (!userId || !typingChannelRef.current || now - lastTypingBroadcastRef.current < 1000) return;
     lastTypingBroadcastRef.current = now;
@@ -232,6 +265,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
       shouldScrollToBottomRef.current = true;
       setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
       setMessageText('');
+      clearCurrentDraft();
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setReplyingTo(null);
