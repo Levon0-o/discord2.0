@@ -44,7 +44,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const messageRefs = useRef<Record<string, HTMLElement | null>>({});
   const shouldScrollToBottomRef = useRef(true);
 
   const membersById = useMemo(() => new Map(members.map((member) => [member.user_id, member])), [members]);
