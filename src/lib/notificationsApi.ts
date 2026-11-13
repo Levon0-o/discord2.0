@@ -4,7 +4,7 @@ export interface NotificationItem {
   id: string;
   recipient_id: string;
   actor_id: string;
-  type: 'follow' | 'like' | 'comment';
+  type: 'follow' | 'like' | 'comment' | 'mention';
   entity_id: string;
   created_at: string;
   read_at: string | null;
