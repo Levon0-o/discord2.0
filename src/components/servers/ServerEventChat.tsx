@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Trash2, X } from 'lucide-react';
+import { Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
 import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, getServerEventChatAttachmentUrl, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, uploadServerEventChatAttachment, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction } from '@/lib/serverEventChatApi';
@@ -24,6 +24,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [searching, setSearching] = useState(false);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [body, setBody] = useState('');
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const draftStorageKey = 'afterdark:event-chat-draft:' + userId + ':' + eventId;
   const [draftLoadedKey, setDraftLoadedKey] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -165,6 +167,21 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       void supabase.removeChannel(channel);
     };
   }, [eventId, userId]);
+
+  function insertComposerEmoji(emoji: string) {
+    const input = composerRef.current;
+    if (!input) { handleBodyChange(body + emoji); return; }
+    const start = input.selectionStart ?? body.length;
+    const end = input.selectionEnd ?? start;
+    const next = body.slice(0, start) + emoji + body.slice(end);
+    handleBodyChange(next);
+    requestAnimationFrame(() => {
+      input.focus();
+      const cursor = start + emoji.length;
+      input.setSelectionRange(cursor, cursor);
+    });
+    setEmojiPickerOpen(false);
+  }
 
   function handleBodyChange(value: string) {
     setBody(value);
@@ -515,7 +532,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
         <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => selectAttachment(event.target.files?.[0])} />
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-ink-400 transition hover:border-primary-400/40 hover:text-primary-200 disabled:opacity-40" aria-label="Attach file"><Paperclip size={14} /></button>
-        <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-2 flex items-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] p-2">{selectedFilePreview ? <img src={selectedFilePreview} alt="Attachment preview" className="h-10 w-10 shrink-0 rounded object-cover" /> : <FileText size={16} className="shrink-0 text-primary-300" />}<div className="min-w-0 flex-1"><p className="truncate text-[10px] text-ink-200">{selectedFile.name}</p><p className="text-[9px] text-ink-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p></div><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="shrink-0 rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<textarea value={body} onChange={(event) => handleBodyChange(event.target.value)} onPaste={handleComposerPaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
+        <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-2 flex items-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] p-2">{selectedFilePreview ? <img src={selectedFilePreview} alt="Attachment preview" className="h-10 w-10 shrink-0 rounded object-cover" /> : <FileText size={16} className="shrink-0 text-primary-300" />}<div className="min-w-0 flex-1"><p className="truncate text-[10px] text-ink-200">{selectedFile.name}</p><p className="text-[9px] text-ink-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p></div><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="shrink-0 rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<div className="mb-1 flex items-center gap-1"><button type="button" onClick={() => setEmojiPickerOpen((value) => !value)} className={'rounded-md p-1.5 transition ' + (emojiPickerOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-500 hover:bg-white/[0.06] hover:text-ink-200')} aria-label="Insert emoji" aria-expanded={emojiPickerOpen}><Smile size={14} /></button>{emojiPickerOpen ? <div className="flex flex-wrap gap-1 rounded-lg border border-white/10 bg-ink-950 p-2">{['😀','😃','😄','😁','😆','😂','🤣','😊','😍','🥳','😎','🤔','😭','😮','😴','👍','👎','❤️','🔥','🎉','👏','🙏','💀','🚀'].map((emoji) => <button key={emoji} type="button" onClick={() => insertComposerEmoji(emoji)} className="rounded p-1 text-base hover:bg-white/[0.08]" aria-label={'Insert ' + emoji}>{emoji}</button>)}</div> : null}</div><textarea ref={composerRef} value={body} onChange={(event) => handleBodyChange(event.target.value)} onPaste={handleComposerPaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
         <button type="submit" disabled={sending || (!body.trim() && !selectedFile)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
       </form>
     </section>
