@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles, MessageCircle,
-  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, UserRound,
+  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
