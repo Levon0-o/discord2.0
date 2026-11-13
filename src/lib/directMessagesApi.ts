@@ -144,6 +144,39 @@ export async function sendDirectMessage(
 }
 
 
+
+export async function updateDirectMessage(
+  messageId: string,
+  body: string,
+): Promise<Message> {
+  const trimmed = body.trim();
+
+  if (!trimmed || trimmed.length > 4000) {
+    throw new Error('Message must contain 1–4000 characters.');
+  }
+
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ body: trimmed, updated_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .select(
+      'id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at',
+    )
+    .single();
+
+  if (error) throw error;
+  return data as Message;
+}
+
+export async function deleteDirectMessage(messageId: string): Promise<void> {
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId);
+
+  if (error) throw error;
+}
+
 export async function markConversationAsRead(
   conversationId: string,
 ): Promise<string> {
