@@ -90,6 +90,7 @@ export function ServerDetail({
   const [editTopic, setEditTopic] = useState('');
   const [editCategory, setEditCategory] = useState('General');
   const [editRestricted, setEditRestricted] = useState(false);
+  const [editSlowmode, setEditSlowmode] = useState(0);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
   const [permissionsChannel, setPermissionsChannel] = useState<Channel | null>(null);
@@ -275,6 +276,7 @@ export function ServerDetail({
     setEditTopic(channel.topic);
     setEditCategory(channel.category);
     setEditRestricted(channel.is_restricted);
+    setEditSlowmode(channel.slowmode_seconds ?? 0);
     setEditError('');
   }
 
@@ -321,6 +323,7 @@ export function ServerDetail({
         topic: editTopic,
         category: editCategory,
         is_restricted: editRestricted,
+        slowmode_seconds: editSlowmode,
       });
       setChannels(await fetchChannels(server.id));
       setEditingChannel(null);
@@ -593,6 +596,7 @@ export function ServerDetail({
                 channelId={activeChannel.id}
                 channelName={activeChannel.name}
                 channelTopic={activeChannel.topic}
+                slowmodeSeconds={activeChannel.slowmode_seconds ?? 0}
                 members={members}
               />
             ) : (
@@ -755,6 +759,12 @@ export function ServerDetail({
             <label className="flex items-start gap-2 rounded-lg border border-white/[0.07] p-3 text-xs text-ink-300">
               <input type="checkbox" checked={editRestricted} onChange={(event) => setEditRestricted(event.target.checked)} className="mt-0.5" />
               <span><strong className="block text-ink-100">Restricted channel</strong>Only moderators and above can view this channel.</span>
+            </label>
+            <label className="block text-xs font-medium text-ink-300">Slowmode
+              <select value={editSlowmode} onChange={(event) => setEditSlowmode(Number(event.target.value))} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60">
+                <option value={0}>Off</option><option value={5}>5 seconds</option><option value={10}>10 seconds</option><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={300}>5 minutes</option><option value={600}>10 minutes</option><option value={1800}>30 minutes</option><option value={3600}>1 hour</option>
+              </select>
+              <span className="mt-1 block text-[10px] text-ink-500">Members must wait this long between messages. Moderators and admins bypass slowmode.</span>
             </label>
             {editError && <p role="alert" className="rounded-lg bg-red-400/10 p-2 text-xs text-red-300">{editError}</p>}
             <div className="flex gap-2">
