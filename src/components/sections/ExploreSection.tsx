@@ -42,6 +42,8 @@ interface ExploreProfile {
   featured_post_id: string | null;
   profile_layout: 'standard' | 'creator' | 'minimal';
   profile_sections: { about: boolean; featured: boolean; links: boolean; stats: boolean; posts: boolean };
+  profile_accent_color: string;
+  profile_card_style: 'glass' | 'solid' | 'gradient';
   created_at: string;
 }
 
@@ -367,7 +369,7 @@ export function ExploreSection() {
     setProfileError('');
     setProfileLoading(true);
     const [profileResult, postsResult, followersResult, followingResult, badgesResult, followResult] = await Promise.all([
-      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, created_at').eq('id', profileId).maybeSingle(),
+      supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, user_status, status_message, featured_post_id, profile_layout, profile_sections, profile_accent_color, profile_card_style, created_at').eq('id', profileId).maybeSingle(),
       supabase.from('posts').select('id, body, image_url, media_type, created_at, is_pinned, likes(user_id), comments(id)').eq('author_id', profileId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
       supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', profileId),
       supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', profileId),
@@ -649,24 +651,24 @@ export function ExploreSection() {
       )}
       {(profileLoading || profile || profileError) && (
         <div role="dialog" aria-modal="true" aria-label="User profile" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) { setProfile(null); setProfileError(''); } }}>
-          <section className={`max-h-[90dvh] w-full ${profile?.profile_layout === 'creator' ? 'max-w-4xl' : profile?.profile_layout === 'minimal' ? 'max-w-xl' : 'max-w-2xl'} overflow-y-auto rounded-3xl border border-white/10 bg-ink-950 shadow-2xl shadow-black/50`}>
+          <section className={`max-h-[90dvh] w-full ${profile?.profile_layout === 'creator' ? 'max-w-4xl' : profile?.profile_layout === 'minimal' ? 'max-w-xl' : 'max-w-2xl'} overflow-y-auto rounded-3xl border border-white/10 shadow-2xl shadow-black/50 ${profile?.profile_card_style === 'solid' ? 'bg-ink-950' : 'bg-ink-950/90 backdrop-blur-xl'}`} style={profile?.profile_card_style === 'gradient' ? { background: `linear-gradient(145deg, ${profile.profile_accent_color ?? '#38bdf8'}20, #09090b 48%)` } : undefined}>
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] bg-ink-950/95 px-4 py-3 backdrop-blur">
               <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-ink-300 hover:bg-white/[0.06]"><ArrowLeft size={16} /> Back to Explore</button>
               <button type="button" onClick={() => { setProfile(null); setProfileError(''); }} aria-label="Close profile" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06]"><X size={17} /></button>
             </div>
             {profileLoading ? <div className="flex items-center justify-center gap-3 py-20 text-sm text-ink-400"><Loader2 size={18} className="animate-spin" />Loading profile…</div> : profile ? (
               <>
-                <div className={`relative h-36 bg-gradient-to-br ${profileThemePanels[profile.profile_theme ?? 'blue']} sm:h-48`}>
+                <div className={`relative z-0 h-36 bg-gradient-to-br ${profileThemePanels[profile.profile_theme ?? 'blue']} sm:h-48`}>
                   {profile.banner_url && <img src={profile.banner_url} alt="" className="h-full w-full object-cover" />}
                 </div>
-                <div className="px-5 pb-5">
+                <div className="relative z-10 px-5 pb-5">
                   <div className="-mt-12 flex flex-wrap items-end justify-between gap-3">
-                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border-4 border-ink-950 bg-ink-800 text-2xl font-bold text-ink-200">{profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(profile.display_name || profile.username)}</div>
-                    {userId !== profile.id && <button type="button" onClick={() => void toggleFollow()} disabled={followBusy} className="rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-400 disabled:opacity-50">{followBusy ? 'Please wait…' : isFollowing ? 'Following' : 'Follow'}</button>}
+                    <div className="relative z-20 flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border-4 border-ink-950 bg-ink-800 text-2xl font-bold text-ink-200 shadow-xl">{profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(profile.display_name || profile.username)}</div>
+                    {userId !== profile.id && <button type="button" onClick={() => void toggleFollow()} disabled={followBusy} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50" style={{ backgroundColor: profile.profile_accent_color ?? '#38bdf8' }}>{followBusy ? 'Please wait…' : isFollowing ? 'Following' : 'Follow'}</button>}
                   </div>
                   <h2 className="mt-3 text-xl font-bold text-white">{profile.display_name || profile.username}</h2>
                   <p className="text-sm text-ink-400">@{profile.username}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-ink-900/70 px-3 py-1.5 text-xs text-ink-200"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ({ online: '#34d399', away: '#fbbf24', busy: '#fb7185', dnd: '#f87171' } as const)[profile.user_status ?? 'online'] }} />{{ online: 'Online', away: 'Away', busy: 'Busy', dnd: 'Do Not Disturb' }[profile.user_status ?? 'online']}</span>{profile.status_message && <span className="text-xs text-ink-400">{profile.status_message}</span>}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full border bg-ink-900/70 px-3 py-1.5 text-xs text-ink-200" style={{ borderColor: (profile.profile_accent_color ?? '#38bdf8') + '55' }}><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ({ online: '#34d399', away: '#fbbf24', busy: '#fb7185', dnd: '#f87171' } as const)[profile.user_status ?? 'online'] }} />{{ online: 'Online', away: 'Away', busy: 'Busy', dnd: 'Do Not Disturb' }[profile.user_status ?? 'online']}</span>{profile.status_message && <span className="text-xs text-ink-400">{profile.status_message}</span>}</div>
                   {profileBadges.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{profileBadges.map((key) => <span key={key} className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-semibold text-amber-200">{{ founder: 'Founder', early_member: 'Early Member', verified: 'Verified', creator: 'Creator' }[key] ?? key}</span>)}</div>}
                   {profile.profile_sections?.about !== false && profile.bio && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink-200">{profile.bio}</p>}
                   {profile.profile_sections?.links !== false && (profile.website_url || profile.instagram_url || profile.twitch_url || profile.youtube_url) && <div className="mt-3 flex flex-wrap gap-2">
@@ -677,7 +679,7 @@ export function ExploreSection() {
                       ['YouTube', profile.youtube_url],
                     ] as const).flatMap(([label, url]) => url ? [{ label, url }] : []).map(({ label, url }) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-primary-300 transition hover:bg-white/[0.07]">{label}<ExternalLink size={12} /></a>)}
                   </div>}
-                  {profile.profile_sections?.featured !== false && featuredPost && <article className="mt-4 overflow-hidden rounded-2xl border border-primary-400/20 bg-primary-400/[0.04]"><div className="flex items-center justify-between border-b border-primary-400/10 px-3 py-2"><span className="text-xs font-semibold text-primary-200">Featured post</span><span className="text-[11px] text-ink-500">{age(featuredPost.created_at)}</span></div>{featuredPost.media_type === 'video' && featuredPost.image_url && <video src={featuredPost.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{featuredPost.media_type === 'image' && featuredPost.image_url && <img src={featuredPost.image_url} alt="Featured post" className="max-h-64 w-full object-cover" />}{featuredPost.body && <p className="whitespace-pre-wrap break-words p-3 text-sm text-ink-200">{featuredPost.body}</p>}</article>}
+                  {profile.profile_sections?.featured !== false && featuredPost && <article className="mt-4 overflow-hidden rounded-2xl border bg-black/10" style={{ borderColor: (profile.profile_accent_color ?? '#38bdf8') + '55' }}><div className="flex items-center justify-between border-b border-primary-400/10 px-3 py-2"><span className="text-xs font-semibold text-primary-200">Featured post</span><span className="text-[11px] text-ink-500">{age(featuredPost.created_at)}</span></div>{featuredPost.media_type === 'video' && featuredPost.image_url && <video src={featuredPost.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{featuredPost.media_type === 'image' && featuredPost.image_url && <img src={featuredPost.image_url} alt="Featured post" className="max-h-64 w-full object-cover" />}{featuredPost.body && <p className="whitespace-pre-wrap break-words p-3 text-sm text-ink-200">{featuredPost.body}</p>}</article>}
                   {profile.profile_sections?.stats !== false && <div className="mt-4 flex flex-wrap items-center gap-5 text-xs text-ink-400">
                     <span><strong className="text-ink-100">{profileStats.followers}</strong> followers</span>
                     <span><strong className="text-ink-100">{profileStats.following}</strong> following</span>
