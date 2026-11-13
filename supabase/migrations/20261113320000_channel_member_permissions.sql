@@ -96,14 +96,17 @@ AS $$
     FROM public.channels c
     WHERE c.id = p_channel_id
       AND public.server_rank(c.server_id) >= 1
-      AND COALESCE(
-        (
-          SELECT cmp.can_view
-          FROM public.channel_member_permissions cmp
-          WHERE cmp.channel_id = c.id
-            AND cmp.user_id = auth.uid()
-        ),
-        (NOT c.is_restricted OR public.server_rank(c.server_id) >= 2)
+      AND (
+        public.server_rank(c.server_id) >= 3
+        OR COALESCE(
+          (
+            SELECT cmp.can_view
+            FROM public.channel_member_permissions cmp
+            WHERE cmp.channel_id = c.id
+              AND cmp.user_id = auth.uid()
+          ),
+          (NOT c.is_restricted OR public.server_rank(c.server_id) >= 2)
+        )
       )
   );
 $$;
