@@ -119,6 +119,7 @@ export function ServerDetail({
   const [eventRsvpBusy, setEventRsvpBusy] = useState<string | null>(null);
   const [eventEditingId, setEventEditingId] = useState<string | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+  const [expandedEventAttendees, setExpandedEventAttendees] = useState<string | null>(null);
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
@@ -882,6 +883,31 @@ export function ServerDetail({
                           <span className={'rounded-full px-2 py-1 text-[10px] ' + (past ? 'bg-white/[0.05] text-ink-500' : 'bg-emerald-400/10 text-emerald-300')}>{past ? 'Past' : 'Upcoming'}</span>
                         </div>
                         {item.description ? <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{item.description}</p> : null}
+
+
+                        <button type="button" onClick={() => setExpandedEventAttendees((current) => current === item.id ? null : item.id)} className="mt-2 text-[10px] font-semibold text-primary-300 hover:text-primary-200">
+                          {expandedEventAttendees === item.id ? 'Hide attendees' : 'View attendees'} · {item.rsvps.filter((rsvp) => rsvp.status !== 'not_going').length}
+                        </button>
+                        {expandedEventAttendees === item.id ? (
+                          <div className="mt-2 grid gap-2 rounded-lg border border-white/[0.06] bg-black/10 p-3 sm:grid-cols-2">
+                            {(['going', 'interested'] as const).map((status) => {
+                              const attendees = item.rsvps.filter((rsvp) => rsvp.status === status);
+                              return (
+                                <div key={status} className="min-w-0">
+                                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-500">{status === 'going' ? 'Going' : 'Interested'} ({attendees.length})</p>
+                                  {attendees.length ? <div className="space-y-1.5">{attendees.map((rsvp) => {
+                                    const member = members.find((entry) => entry.user_id === rsvp.user_id);
+                                    const label = member?.profile?.display_name || member?.profile?.username || 'Server member';
+                                    return <div key={rsvp.user_id} className="flex min-w-0 items-center gap-2 text-xs text-ink-300">
+                                      {member?.profile?.avatar_url ? <img src={member.profile.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" /> : <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.07] text-[10px]">{label.slice(0, 1).toUpperCase()}</span>}
+                                      <span className="truncate">{label}</span>
+                                    </div>;
+                                  })}</div> : <p className="text-[10px] text-ink-600">No responses yet</p>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
 
                         {(item.created_by === userId || ['owner', 'admin', 'moderator'].includes(server.my_role ?? '')) ? (
                           <div className="mt-3 flex justify-end gap-2 border-t border-white/[0.06] pt-2">
