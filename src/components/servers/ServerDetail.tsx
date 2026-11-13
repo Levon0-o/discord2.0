@@ -15,6 +15,8 @@ import {
   SlidersHorizontal,
   Users,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   X,
   MapPin,
   Clock,
@@ -123,6 +125,12 @@ export function ServerDetail({
   const [eventSearch, setEventSearch] = useState('');
   const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'past'>('upcoming');
   const [eventSort, setEventSort] = useState<'soonest' | 'latest'>('soonest');
+  const [eventView, setEventView] = useState<'list' | 'calendar'>('list');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
+    const now = new Date();
+    return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+  });
 
   const [rolesOpen, setRolesOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
@@ -145,6 +153,19 @@ export function ServerDetail({
         ? new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
         : new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime());
   }, [events, eventSearch, eventFilter, eventSort]);
+
+  const calendarDateKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  const calendarDays = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    return [...Array<null>(firstWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, index) => new Date(year, month, index + 1))];
+  }, [calendarMonth]);
+  const calendarEvents = useMemo(() => events.filter((event) => calendarDateKey(new Date(event.starts_at)).startsWith(calendarMonth.getFullYear() + '-' + String(calendarMonth.getMonth() + 1).padStart(2, '0'))), [events, calendarMonth]);
+  const displayedEvents = useMemo(() => eventView === 'calendar'
+    ? filteredEvents.filter((event) => calendarDateKey(new Date(event.starts_at)) === selectedCalendarDate)
+    : filteredEvents, [filteredEvents, eventView, selectedCalendarDate]);
 
   const canManageRoles =
     isAdminOrOwner ||
@@ -887,7 +908,58 @@ export function ServerDetail({
                   <div className="flex justify-end"><button type="submit" disabled={eventBusy || !eventTitle.trim() || !eventStartsAt} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{eventBusy ? 'Saving…' : eventEditingId ? 'Save changes' : 'Create event'}</button></div>
                 </form>
               ) : null}
-              {events.length > 0 ?               <div className="space-y-2 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+              {events.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] p-2">
+                    <div className="flex gap-1 rounded-lg bg-ink-900 p-1">
+                      <button type="button" onClick={() => setEventView('list')} className={'rounded-md px-3 py-1.5 text-[10px] font-semibold ' + (eventView === 'list' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-500 hover:text-ink-200')}>List</button>
+                      <button type="button" onClick={() => setEventView('calendar')} className={'rounded-md px-3 py-1.5 text-[10px] font-semibold ' + (eventView === 'calendar' ? 'bg-primary-500/20 text-primary-200' : 'text-ink-500 hover:text-ink-200')}>Calendar</button>
+                    </div>
+                    <span className="text-[10px] text-ink-600">{events.length} total events</span>
+                  </div>
+                  {eventView === 'calendar' ? (
+                    <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                      <div className="mb-3 flex items-center justify-between">
+                        <button type="button" onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))} className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Previous month"><ChevronLeft size={16} /></button>
+                        <h3 className="text-sm font-semibold text-ink-100">{calendarMonth.toLocaleDateString([], { month: 'long', year: 'numeric' })}</h3>
+                        <button type="button" onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))} className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Next month"><ChevronRight size={16} /></button>
+                      </div>
+                      <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[9px] font-bold uppercase tracking-wide text-ink-600">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <span key={day} className="py-1">{day}</span>)}</div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {calendarDays.map((date, index) => {
+                          if (!date) return <span key={'empty-' + index} className="min-h-10 rounded-lg" />;
+                          const key = calendarDateKey(date);
+                          const dayEvents = calendarEvents.filter((item) => calendarDateKey(new Date(item.starts_at)) === key);
+                          const selected = selectedCalendarDate === key;
+                          const today = calendarDateKey(new Date()) === key;
+                          return <button key={key} type="button" onClick={() => setSelectedCalendarDate(key)} className={'relative flex min-h-10 flex-col items-center justify-center rounded-lg border text-xs transition ' + (selected ? 'border-primary-400/60 bg-primary-500/20 text-primary-100' : today ? 'border-primary-400/25 bg-primary-500/[0.06] text-ink-100' : 'border-transparent text-ink-400 hover:border-white/10 hover:bg-white/[0.04]')} aria-label={date.toLocaleDateString() + ' · ' + dayEvents.length + ' events'}>
+                            <span>{date.getDate()}</span>
+                            {dayEvents.length > 0 ? <span className="mt-0.5 flex gap-0.5">{dayEvents.slice(0, 3).map((item) => <span key={item.id} className="h-1 w-1 rounded-full bg-primary-300" />)}</span> : <span className="mt-0.5 h-1" />}
+                          </button>;
+                        })}
+                      </div>
+                      <p className="mt-3 text-[10px] font-semibold text-ink-400">{new Date(selectedCalendarDate + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · {displayedEvents.length} matching events</p>
+                    </section>
+                  ) : null}
+                  <div className="space-y-2 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                    <input value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} placeholder="Search events, descriptions or locations…" aria-label="Search events" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex gap-1 rounded-lg bg-ink-900 p-1">
+                        {(['upcoming', 'all', 'past'] as const).map((filter) => (
+                          <button key={filter} type="button" onClick={() => setEventFilter(filter)} className={'rounded-md px-2.5 py-1.5 text-[10px] font-semibold capitalize transition ' + (eventFilter === filter ? 'bg-primary-500/20 text-primary-200' : 'text-ink-500 hover:text-ink-200')}>{filter}</button>
+                        ))}
+                      </div>
+                      <select value={eventSort} onChange={(e) => setEventSort(e.target.value as 'soonest' | 'latest')} aria-label="Sort events" className="rounded-lg border border-white/10 bg-ink-900 px-2.5 py-2 text-[10px] text-ink-300 outline-none focus:border-primary-400/50">
+                        <option value="soonest">Soonest first</option>
+                        <option value="latest">Latest first</option>
+                      </select>
+                    </div>
+                    <p className="text-[10px] text-ink-600">Showing {displayedEvents.length} of {events.length} events</p>
+                  </div>
+                </div>
+              ) : null}
+              {eventsLoading ? <div className="py-10 text-center text-xs text-ink-500">Loading events…</div> : events.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays size={25} className="mx-auto mb-2 text-ink-600" /><p className="text-sm font-medium text-ink-300">No events scheduled</p><p className="mt-1 text-xs text-ink-500">Events created for this server will appear here.</p></div> : displayedEvents.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><p className="text-sm font-medium text-ink-300">{eventView === 'calendar' ? 'No events on this date' : 'No matching events'}</p><p className="mt-1 text-xs text-ink-500">{eventView === 'calendar' ? 'Choose another day or month to see scheduled events.' : 'Try another search or change the date filter.'}</p></div> : (
+                <div className="space-y-3">
                 <input value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} placeholder="Search events, descriptions or locations…" aria-label="Search events" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" />
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex gap-1 rounded-lg bg-ink-900 p-1">
@@ -905,7 +977,7 @@ export function ServerDetail({
  : null}
               {eventsLoading ? <div className="py-10 text-center text-xs text-ink-500">Loading events…</div> : events.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays size={25} className="mx-auto mb-2 text-ink-600" /><p className="text-sm font-medium text-ink-300">No events scheduled</p><p className="mt-1 text-xs text-ink-500">Events created for this server will appear here.</p></div> : filteredEvents.length === 0 ? <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><p className="text-sm font-medium text-ink-300">No matching events</p><p className="mt-1 text-xs text-ink-500">Try another search or change the date filter.</p></div> : (
                 <div className="space-y-3">
-                  {filteredEvents.map((item) => {
+                  {displayedEvents.map((item) => {
                     const ownStatus = item.rsvps.find((rsvp) => rsvp.user_id === userId)?.status;
                     const going = item.rsvps.filter((rsvp) => rsvp.status === 'going').length;
                     const interested = item.rsvps.filter((rsvp) => rsvp.status === 'interested').length;
