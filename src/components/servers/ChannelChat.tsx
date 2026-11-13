@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
-  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark, BarChart3,
+  Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark, BarChart3, Forward,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -10,11 +10,11 @@ import {
   toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
   fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
   fetchSavedChannelMessages, toggleSavedChannelMessage,
-  fetchChannelPolls, createChannelPoll, castChannelPollVote, closeChannelPoll,
+  fetchChannelPolls, createChannelPoll, castChannelPollVote, closeChannelPoll, forwardChannelMessage,
   type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage, type ChannelPoll,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
-import type { MemberWithProfile } from '@/types/servers';
+import type { Channel, MemberWithProfile } from '@/types/servers';
 
 interface ChannelChatProps {
   channelId: string;
@@ -22,6 +22,7 @@ interface ChannelChatProps {
   channelTopic?: string;
   slowmodeSeconds?: number;
   members: MemberWithProfile[];
+  availableChannels: Channel[];
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉'] as const;
@@ -30,7 +31,7 @@ function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeconds = 0, members }: ChannelChatProps) {
+export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeconds = 0, members, availableChannels }: ChannelChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [draftRestored, setDraftRestored] = useState(false);
@@ -52,6 +53,9 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
   const [pollExpiresIn, setPollExpiresIn] = useState('never');
   const [pollBusy, setPollBusy] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [forwardTargetChannelId, setForwardTargetChannelId] = useState('');
+  const [forwardingBusy, setForwardingBusy] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [showPins, setShowPins] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -342,6 +346,32 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
     }
   }
 
+
+
+  async function handleForwardMessage() {
+    if (!forwardingMessage || !forwardTargetChannelId || forwardingBusy) return;
+    const originalAuthor = membersById.get(forwardingMessage.author_id);
+    const originalAuthorLabel = originalAuthor?.profile?.display_name || originalAuthor?.profile?.username || 'Unknown user';
+    const target = availableChannels.find((channel) => channel.id === forwardTargetChannelId);
+    if (!target) return;
+    setForwardingBusy(true);
+    setError('');
+    try {
+      await forwardChannelMessage({
+        message: forwardingMessage,
+        targetChannelId: target.id,
+        sourceChannelName: channelName,
+        originalAuthorLabel,
+      });
+      setForwardingMessage(null);
+      setForwardTargetChannelId('');
+      if (target.id === channelId) await loadMessages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not forward message. Check your permission in the target channel.');
+    } finally {
+      setForwardingBusy(false);
+    }
+  }
 
   async function handleCreatePoll(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -792,6 +822,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                       <div className="mt-1.5 flex flex-wrap items-center gap-1 opacity-100 transition-opacity sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <button type="button" title="Open thread" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><MessageSquare size={13} /></button>
                         <button type="button" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md px-1.5 py-1 text-[10px] text-ink-500 hover:text-primary-200">{threadCounts[message.id] ?? 0} replies</button>
+                        {message.body.trim() && !polls.some((poll) => poll.message_id === message.id) ? <button type="button" title="Forward message" onClick={() => { setForwardingMessage(message); setForwardTargetChannelId(availableChannels.find((channel) => channel.id !== channelId)?.id ?? ''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Forward size={13} /></button> : null}
                         <button type="button" title="Reply" onClick={() => setReplyingTo(message)} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Reply size={13} /></button>
                         <button type="button" title={isSaved ? "Remove saved message" : "Save message"} onClick={() => void handleSaveMessage(message.id)} className={`rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 ${isSaved ? "text-primary-200" : "text-ink-400 hover:text-primary-200"}`}><Bookmark size={13} /></button>
                         <button type="button" title="Pin / unpin" disabled={busyMessageId === message.id} onClick={() => void handlePin(message.id)} className={`rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 ${isPinned ? 'text-primary-200' : 'text-ink-400 hover:text-primary-200'}`}><Pin size={13} /></button>
@@ -891,6 +922,32 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         ) : null}
         <p className="mt-2 text-[10px] text-ink-600">Enter to send · Files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV</p>
       </form>
+
+
+      {forwardingMessage ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-white/10 bg-ink-950 p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-300"><Forward size={15} /> Forward message</div><h3 className="mt-1 text-lg font-semibold text-ink-100">Choose a destination</h3></div>
+              <button type="button" onClick={() => setForwardingMessage(null)} className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close forwarding dialog"><X size={17} /></button>
+            </div>
+            <div className="max-h-28 overflow-y-auto rounded-lg border border-white/[0.07] bg-ink-900 px-3 py-2 text-xs text-ink-400">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-500">Message preview</p>
+              <p className="line-clamp-4 whitespace-pre-wrap break-words">{forwardingMessage.body}</p>
+            </div>
+            <label className="block space-y-1.5"><span className="text-xs font-medium text-ink-300">Target channel</span>
+              <select value={forwardTargetChannelId} onChange={(event) => setForwardTargetChannelId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50">
+                {availableChannels.filter((channel) => channel.id !== channelId).map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+              </select>
+            </label>
+            <p className="text-[10px] leading-relaxed text-ink-500">The text and original author attribution will be forwarded. Attachments and poll cards are not copied. Your permissions in the destination channel are checked when sending.</p>
+            <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3">
+              <button type="button" onClick={() => setForwardingMessage(null)} className="rounded-lg px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]">Cancel</button>
+              <button type="button" disabled={forwardingBusy || !forwardTargetChannelId} onClick={() => void handleForwardMessage()} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{forwardingBusy ? <RefreshCw size={14} className="animate-spin" /> : <Forward size={14} />} Forward</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showPollCreator ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
