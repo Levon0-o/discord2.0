@@ -15,7 +15,9 @@ interface ServerEventChatProps {
 
 export function ServerEventChat({ eventId, eventTitle, userId, members, onClose }: ServerEventChatProps) {
   const [messages, setMessages] = useState<ServerEventChatMessage[]>([]);
-  const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);\n  const [pins, setPins] = useState<ServerEventChatPin[]>([]);\n  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [reactions, setReactions] = useState<ServerEventChatReaction[]>([]);
+  const [pins, setPins] = useState<ServerEventChatPin[]>([]);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
   const [body, setBody] = useState('');
   const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
