@@ -598,6 +598,7 @@ export function ServerDetail({
                 channelTopic={activeChannel.topic}
                 slowmodeSeconds={activeChannel.slowmode_seconds ?? 0}
                 members={members}
+                availableChannels={channels}
               />
             ) : (
               <section className="panel flex h-full min-h-[320px] flex-col items-center justify-center overflow-hidden px-6 text-center">
