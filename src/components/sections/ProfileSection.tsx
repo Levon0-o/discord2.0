@@ -81,7 +81,7 @@ export function ProfileSection() {
     }
     setLoading(true);
     setError('');
-    const [profileResult, postsResult] = await Promise.all([
+    const [profileResult, postsResult, postCountResult, followersResult, followingResult] = await Promise.all([
       supabase.from('profiles')
         .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at')
         .eq('id', userId)
@@ -185,7 +185,7 @@ export function ProfileSection() {
       profile_theme: draft.profile_theme,
       ...links,
     }).eq('id', userId)
-      .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, created_at')
+      .select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, created_at')
       .single();
     if (updateError) setError(updateError.message);
     else {
