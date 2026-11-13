@@ -11,9 +11,10 @@ export async function fetchChannelMessages(
   let query = supabase
     .from('messages')
     .select(
-      'id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at',
+      'id, conversation_id, channel_id, author_id, reply_to_id, thread_id, body, image_url, created_at, updated_at',
     )
     .eq('channel_id', channelId)
+    .is('thread_id', null)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(CHANNEL_MESSAGE_LIMIT);
@@ -84,6 +85,7 @@ export async function sendChannelMessage(
   body: string,
   replyToId?: string,
   attachmentPath?: string,
+  threadId?: string,
 ): Promise<Message> {
   const trimmed = body.trim();
   if ((!trimmed && !attachmentPath) || trimmed.length > 4000) {
@@ -99,13 +101,25 @@ export async function sendChannelMessage(
     author_id: user.id,
     body: trimmed,
     image_url: attachmentPath ? `${CHANNEL_ATTACHMENT_PREFIX}${attachmentPath}` : null,
-    reply_to_id: replyToId ?? null,
+    reply_to_id: threadId ?? replyToId ?? null,
+    thread_id: threadId ?? null,
   }).select(
     'id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at',
   ).single();
 
   if (error) throw error;
   return data as Message;
+}
+
+export async function fetchChannelThreadMessages(threadId: string): Promise<Message[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, conversation_id, channel_id, author_id, reply_to_id, thread_id, body, image_url, created_at, updated_at')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []) as Message[];
 }
 
 export async function editMessage(
@@ -218,7 +232,8 @@ export async function searchChannelMessages(channelId: string, searchTerm: strin
   const { data, error } = await supabase
     .from('messages')
     .select('id, conversation_id, channel_id, author_id, reply_to_id, body, image_url, created_at, updated_at')
-    .eq('channel_id', channelId)
+     .eq('channel_id', channelId)
+    .is('thread_id', null)
     .ilike('body', `%${term}%`)
     .order('created_at', { ascending: false })
     .limit(50);
