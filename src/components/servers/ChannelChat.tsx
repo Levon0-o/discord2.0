@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase';
 import {
   fetchChannelMessages, sendChannelMessage, editMessage, deleteMessage,
   fetchChannelReactions, toggleChannelReaction, fetchPinnedChannelMessages,
-  toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,\n  fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
+  toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
+  fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
   type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
@@ -45,7 +46,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [searching, setSearching] = useState(false);
-  const [showMembers, setShowMembers] = useState(false);\n  const [showNotificationMenu, setShowNotificationMenu] = useState(false);\n  const [notificationPreference, setNotificationPreference] = useState<ChannelNotificationPreference | null>(null);\n  const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [showNotificationMenu, setShowNotificationMenu] = useState(false);\n  const [notificationPreference, setNotificationPreference] = useState<ChannelNotificationPreference | null>(null);\n  const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -93,7 +95,17 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
     return () => { active = false; };
   }, []);
 
-  useEffect(() => { void loadMessages(); }, [loadMessages]);\n\n  useEffect(() => {\n    let active = true;\n    setNotificationPreference(null);\n    setShowNotificationMenu(false);\n    if (!userId) return () => { active = false; };\n    void fetchChannelNotificationPreference(channelId).then((preference) => {\n      if (active) setNotificationPreference(preference);\n    }).catch((err) => {\n      if (active) setError(err instanceof Error ? err.message : 'Could not load channel notification settings.');\n    });\n    return () => { active = false; };\n  }, [channelId, userId]);
+  useEffect(() => { void loadMessages(); }, [loadMessages]);
+
+  useEffect(() => {
+    let active = true;
+    setNotificationPreference(null);\n    setShowNotificationMenu(false);
+    if (!userId) return () => { active = false; };
+    void fetchChannelNotificationPreference(channelId).then((preference) => {\n      if (active) setNotificationPreference(preference);
+    }).catch((err) => {\n      if (active) setError(err instanceof Error ? err.message : 'Could not load channel notification settings.');
+    });
+    return () => { active = false; };
+  }, [channelId, userId]);
 
   useEffect(() => {
     if (!userId) return;
