@@ -47,7 +47,9 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [searching, setSearching] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
-  const [showNotificationMenu, setShowNotificationMenu] = useState(false);\n  const [notificationPreference, setNotificationPreference] = useState<ChannelNotificationPreference | null>(null);\n  const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
+  const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+  const [notificationPreference, setNotificationPreference] = useState<ChannelNotificationPreference | null>(null);
+  const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -99,10 +101,13 @@ export function ChannelChat({ channelId, channelName, channelTopic, members }: C
 
   useEffect(() => {
     let active = true;
-    setNotificationPreference(null);\n    setShowNotificationMenu(false);
+    setNotificationPreference(null);
+    setShowNotificationMenu(false);
     if (!userId) return () => { active = false; };
-    void fetchChannelNotificationPreference(channelId).then((preference) => {\n      if (active) setNotificationPreference(preference);
-    }).catch((err) => {\n      if (active) setError(err instanceof Error ? err.message : 'Could not load channel notification settings.');
+    void fetchChannelNotificationPreference(channelId).then((preference) => {
+      if (active) setNotificationPreference(preference);
+    }).catch((err) => {
+      if (active) setError(err instanceof Error ? err.message : 'Could not load channel notification settings.');
     });
     return () => { active = false; };
   }, [channelId, userId]);
