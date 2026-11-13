@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { Check, FileText, MessageCircle, Paperclip, Pencil, Pin, Reply, Search, Send, Trash2, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
@@ -25,7 +25,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [typingUserIds, setTypingUserIds] = useState<string[]>([]);
   const [body, setBody] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string | null>>({});
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const dragDepthRef = useRef(0);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [replyingTo, setReplyingTo] = useState<ServerEventChatMessage | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -102,10 +104,10 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
 
   useEffect(() => {
     let active = true;
-    const attachments = messages.filter((message) => message.attachment_path && !attachmentUrls[message.id]);
+    const attachments = messages.filter((message) => message.attachment_path && !(message.id in attachmentUrls));
     void Promise.all(attachments.map(async (message) => {
       try { return [message.id, await getServerEventChatAttachmentUrl(message.attachment_path!)] as const; }
-      catch { return [message.id, ''] as const; }
+      catch { return [message.id, null] as const; }
     })).then((entries) => { if (active) setAttachmentUrls((current) => ({ ...current, ...Object.fromEntries(entries) })); });
     return () => { active = false; };
   }, [messages, attachmentUrls]);
@@ -215,6 +217,45 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setSearchResults([]);
   }
 
+  function selectAttachment(file?: File) {
+    if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain', 'text/csv'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Supported files: JPG, PNG, GIF, WEBP, PDF, TXT and CSV.');
+      return;
+    }
+    if (file.size <= 0 || file.size > 15 * 1024 * 1024) {
+      setError('Attachments must be smaller than 15 MB.');
+      return;
+    }
+    setError('');
+    setSelectedFile(file);
+  }
+
+  function handleFileDragEnter(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    if (event.dataTransfer.types.includes('Files')) setIsDraggingFile(true);
+  }
+
+  function handleFileDragOver(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    if (event.dataTransfer.types.includes('Files')) event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleFileDragLeave(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFile(false);
+  }
+
+  function handleFileDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+    selectAttachment(event.dataTransfer.files?.[0]);
+  }
+
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if ((!body.trim() && !selectedFile) || sending) return;
@@ -296,7 +337,14 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const reactionOptions: ServerEventChatReaction['emoji'][] = ['👍', '❤️', '😂', '😮', '🎉'];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-primary-400/20 bg-ink-900/80">
+    <section
+      className="relative overflow-hidden rounded-xl border border-primary-400/20 bg-ink-900/80"
+      onDragEnter={handleFileDragEnter}
+      onDragOver={handleFileDragOver}
+      onDragLeave={handleFileDragLeave}
+      onDrop={handleFileDrop}
+    >
+      {isDraggingFile ? <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center border-2 border-dashed border-primary-300 bg-ink-950/90"><div className="rounded-xl border border-primary-300/30 bg-primary-500/10 px-5 py-4 text-center"><Paperclip size={22} className="mx-auto mb-2 text-primary-200" /><p className="text-sm font-semibold text-primary-100">Drop file to attach</p><p className="mt-1 text-[10px] text-ink-400">JPG, PNG, GIF, WEBP, PDF, TXT or CSV · max 15 MB</p></div></div> : null}
       <div className="flex items-center justify-between border-b border-white/[0.07] px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <MessageCircle size={15} className="shrink-0 text-primary-300" />
@@ -371,7 +419,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
                 ) : (
                   <>
                     {message.body ? <p className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-5 text-ink-300">{message.body}</p> : null}
-                    {message.attachment_path ? (() => { const fileName = message.attachment_path.split('/').pop()?.replace(/^[^-]+-/, '') || 'Attachment'; const url = attachmentUrls[message.id]; const isImage = /\.(jpe?g|png|gif|webp)$/i.test(fileName); return url ? (isImage ? <a href={url} target="_blank" rel="noreferrer" className="mt-2 block max-w-full"><img src={url} alt={fileName} className="max-h-48 max-w-full rounded-lg border border-white/10 object-contain" /></a> : <a href={url} target="_blank" rel="noreferrer" className="mt-2 flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[10px] text-primary-200 hover:bg-white/[0.06]"><FileText size={14} className="shrink-0" /><span className="truncate">{fileName}</span><span className="ml-auto shrink-0 text-ink-500">Open</span></a>) : <p className="mt-2 text-[10px] text-ink-500">Loading attachment…</p>; })() : null}
+                    {message.attachment_path ? (() => { const fileName = message.attachment_path.split('/').pop()?.replace(/^[0-9a-f-]{36}-/i, '') || 'Attachment'; const url = attachmentUrls[message.id]; const isImage = /\.(jpe?g|png|gif|webp)$/i.test(fileName); return url ? (isImage ? <a href={url} target="_blank" rel="noreferrer" className="mt-2 block max-w-full"><img src={url} alt={fileName} className="max-h-48 max-w-full rounded-lg border border-white/10 object-contain" /></a> : <a href={url} target="_blank" rel="noreferrer" className="mt-2 flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-[10px] text-primary-200 hover:bg-white/[0.06]"><FileText size={14} className="shrink-0" /><span className="truncate">{fileName}</span><span className="ml-auto shrink-0 text-ink-500">Open</span></a>) : attachmentUrls[message.id] === null ? <p className="mt-2 text-[10px] text-red-300">Attachment unavailable</p> : <p className="mt-2 text-[10px] text-ink-500">Loading attachment…</p>; })() : null}
                     {message.edited_at ? <span className="ml-1 text-[9px] text-ink-600">(edited)</span> : null}
                   </>
                 )}
@@ -420,7 +468,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         </div>
       ) : null}
       <form onSubmit={(event) => void handleSend(event)} className="flex items-end gap-2 border-t border-white/[0.07] p-2.5">
-        <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
+        <input key={fileInputKey} ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv" className="hidden" onChange={(event) => selectAttachment(event.target.files?.[0])} />
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-ink-400 transition hover:border-primary-400/40 hover:text-primary-200 disabled:opacity-40" aria-label="Attach file"><Paperclip size={14} /></button>
         <div className="min-w-0 flex-1">{selectedFile ? <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-ink-300"><span className="truncate">{selectedFile.name} · {(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span><button type="button" onClick={() => { setSelectedFile(null); setFileInputKey((value) => value + 1); }} className="text-ink-500 hover:text-ink-100" aria-label="Remove attachment"><X size={12} /></button></div> : null}<textarea value={body} onChange={(event) => handleBodyChange(event.target.value)} maxLength={2000} rows={2} placeholder="Message event attendees…" className="max-h-24 min-h-10 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/50" /></div>
         <button type="submit" disabled={sending || (!body.trim() && !selectedFile)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send event message"><Send size={14} /></button>
