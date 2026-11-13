@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles, MessageCircle,
-  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays,
+  Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, Pencil, Trash2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -95,6 +95,11 @@ export function ExploreSection() {
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [postEditDraft, setPostEditDraft] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [commentEditDraft, setCommentEditDraft] = useState('');
+  const [contentBusy, setContentBusy] = useState<string | null>(null);
   const [profile, setProfile] = useState<ExploreProfile | null>(null);
   const [profilePosts, setProfilePosts] = useState<ExploreProfilePost[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -236,6 +241,65 @@ export function ExploreSection() {
     if (result.error) setError(result.error.message);
     else await loadPosts(true, appliedPostSearch, tab === 'trending');
     setBusyLike(null);
+  };
+
+  const savePostEdit = async (postId: string) => {
+    const body = postEditDraft.trim();
+    if (!body || body.length > 2000 || contentBusy || !userId) return;
+    setContentBusy(postId);
+    const { error: updateError } = await supabase.from('posts').update({ body }).eq('id', postId).eq('author_id', userId);
+    if (updateError) setError(updateError.message);
+    else {
+      setEditingPostId(null);
+      setPostEditDraft('');
+      await loadPosts(true, appliedPostSearch, tab === 'trending');
+    }
+    setContentBusy(null);
+  };
+
+  const deletePost = async (post: ExplorePost) => {
+    if (!userId || post.author_id !== userId || contentBusy) return;
+    if (!window.confirm('Delete this post? Its comments and replies will also be deleted.')) return;
+    setContentBusy(post.id);
+    const { error: deleteError } = await supabase.from('posts').delete().eq('id', post.id).eq('author_id', userId);
+    if (deleteError) setError(deleteError.message);
+    else {
+      setPosts((current) => current.filter((item) => item.id !== post.id));
+      setComments((current) => {
+        const next = { ...current };
+        delete next[post.id];
+        return next;
+      });
+    }
+    setContentBusy(null);
+  };
+
+  const saveCommentEdit = async (postId: string, commentId: string) => {
+    const body = commentEditDraft.trim();
+    if (!body || body.length > 1000 || contentBusy || !userId) return;
+    setContentBusy(commentId);
+    const { error: updateError } = await supabase.from('comments').update({ body }).eq('id', commentId).eq('author_id', userId);
+    if (updateError) setError(updateError.message);
+    else {
+      setEditingCommentId(null);
+      setCommentEditDraft('');
+      await loadComments(postId);
+      await loadPosts(true, appliedPostSearch, tab === 'trending');
+    }
+    setContentBusy(null);
+  };
+
+  const deleteComment = async (postId: string, commentId: string) => {
+    if (!userId || contentBusy) return;
+    if (!window.confirm('Delete this comment? Any replies to it will also be deleted.')) return;
+    setContentBusy(commentId);
+    const { error: deleteError } = await supabase.from('comments').delete().eq('id', commentId).eq('author_id', userId);
+    if (deleteError) setError(deleteError.message);
+    else {
+      await loadComments(postId);
+      await loadPosts(true, appliedPostSearch, tab === 'trending');
+    }
+    setContentBusy(null);
   };
 
   const openProfile = async (profileId: string) => {
@@ -441,11 +505,21 @@ export function ExploreSection() {
                   <button type="button" onClick={() => void openProfile(post.author_id)} className="block max-w-full truncate text-left text-sm font-semibold text-ink-100 transition hover:text-primary-300">{name}</button>
                   <p className="text-xs text-ink-500">@{post.author?.username || 'user'} · {age(post.created_at)}</p>
                 </div>
+                {post.author_id === userId && <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={() => { setEditingPostId(post.id); setPostEditDraft(post.body); }} aria-label="Edit post" className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-primary-300"><Pencil size={14} /></button>
+                  <button type="button" onClick={() => void deletePost(post)} disabled={contentBusy === post.id} aria-label="Delete post" className="rounded-lg p-2 text-ink-400 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-40"><Trash2 size={14} /></button>
+                </div>}
                 {post.media_type === 'video' && <span className="rounded-full bg-primary-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary-200">Video</span>}
               </div>
               {post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-[560px] w-full bg-black object-contain" />}
               {post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="Post media" loading="lazy" className="max-h-[560px] w-full object-cover" />}
-              {post.body && <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-ink-200">{post.body}</p>}
+              {editingPostId === post.id ? <div className="space-y-2 px-4 py-3">
+                <textarea value={postEditDraft} onChange={(event) => setPostEditDraft(event.target.value.slice(0, 2000))} rows={3} maxLength={2000} className="w-full rounded-xl border border-primary-400/30 bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit post text" />
+                <div className="flex items-center justify-between gap-2"><span className="text-[11px] text-ink-500">{postEditDraft.length}/2000</span><div className="flex gap-2">
+                  <button type="button" onClick={() => setEditingPostId(null)} className="rounded-lg px-3 py-2 text-xs text-ink-300 hover:bg-white/[0.06]">Cancel</button>
+                  <button type="button" onClick={() => void savePostEdit(post.id)} disabled={!postEditDraft.trim() || contentBusy === post.id} className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Save</button>
+                </div></div>
+              </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-ink-200">{post.body}</p>}
               <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2">
                 <button type="button" onClick={() => void toggleLike(post)} disabled={busyLike === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}><Heart size={16} className={liked ? 'fill-current' : ''} />{post.likes.length} likes</button>
                 <button type="button" onClick={() => void toggleComments(post.id)} aria-expanded={expandedPost === post.id} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-ink-400 transition hover:bg-white/[0.05] hover:text-ink-100"><MessageCircle size={16} />{post.comments.length} comments</button>
@@ -461,8 +535,14 @@ export function ExploreSection() {
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[10px] font-bold text-ink-300">{comment.author?.avatar_url ? <img src={comment.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(commentAuthor)}</div>
                           <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
                             <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(comment.author_id)} className="transition hover:text-primary-300">{commentAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(comment.created_at)}</span></p>
-                            <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>
-                            <button type="button" onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)} className="mt-2 text-[11px] font-semibold text-primary-300 hover:text-primary-200">Reply{replies.length ? ` · ${replies.length}` : ''}</button>
+                            {editingCommentId === comment.id ? <div className="mt-2 space-y-2">
+                              <textarea value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value.slice(0, 1000))} rows={2} maxLength={1000} className="w-full rounded-lg border border-primary-400/30 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit comment" />
+                              <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingCommentId(null)} className="rounded-lg px-2 py-1 text-[11px] text-ink-400">Cancel</button><button type="button" onClick={() => void saveCommentEdit(post.id, comment.id)} disabled={!commentEditDraft.trim() || contentBusy === comment.id} className="rounded-lg bg-primary-500 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40">Save</button></div>
+                            </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>}
+                            <div className="mt-2 flex flex-wrap items-center gap-3">
+                              <button type="button" onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)} className="text-[11px] font-semibold text-primary-300 hover:text-primary-200">Reply{replies.length ? ` · ${replies.length}` : ''}</button>
+                              {comment.author_id === userId && <><button type="button" onClick={() => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button><button type="button" onClick={() => void deleteComment(post.id, comment.id)} disabled={contentBusy === comment.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button></>}
+                            </div>
                             {replyingTo === comment.id && <div className="mt-2 flex gap-2">
                               <input value={replyDrafts[comment.id] ?? ''} onChange={(event) => setReplyDrafts((current) => ({ ...current, [comment.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishReply(post.id, comment.id); } }} placeholder={`Reply to ${commentAuthor}…`} maxLength={1000} className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
                               <button type="button" onClick={() => void publishReply(post.id, comment.id)} disabled={!(replyDrafts[comment.id] ?? '').trim() || commentBusy === comment.id} aria-label="Send reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white hover:bg-primary-400 disabled:opacity-40"><Send size={14} /></button>
@@ -475,7 +555,11 @@ export function ExploreSection() {
                             <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[9px] font-bold text-ink-300">{reply.author?.avatar_url ? <img src={reply.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(replyAuthor)}</div>
                             <div className="min-w-0 flex-1 rounded-xl bg-white/[0.025] px-3 py-2">
                               <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(reply.author_id)} className="transition hover:text-primary-300">{replyAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(reply.created_at)}</span></p>
-                              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{reply.body}</p>
+                              {editingCommentId === reply.id ? <div className="mt-2 space-y-2">
+                                <textarea value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value.slice(0, 1000))} rows={2} maxLength={1000} className="w-full rounded-lg border border-primary-400/30 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit reply" />
+                                <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingCommentId(null)} className="rounded-lg px-2 py-1 text-[11px] text-ink-400">Cancel</button><button type="button" onClick={() => void saveCommentEdit(post.id, reply.id)} disabled={!commentEditDraft.trim() || contentBusy === reply.id} className="rounded-lg bg-primary-500 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40">Save</button></div>
+                              </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{reply.body}</p>}
+                              {reply.author_id === userId && <div className="mt-2 flex gap-3"><button type="button" onClick={() => { setEditingCommentId(reply.id); setCommentEditDraft(reply.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button><button type="button" onClick={() => void deleteComment(post.id, reply.id)} disabled={contentBusy === reply.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button></div>}
                             </div>
                           </div>;
                         })}
