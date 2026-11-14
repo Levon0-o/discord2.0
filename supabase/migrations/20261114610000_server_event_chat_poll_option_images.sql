@@ -16,7 +16,10 @@ create policy server_event_poll_option_images_read_members on public.server_even
 
 drop policy if exists server_event_poll_option_images_insert_editors on public.server_event_chat_poll_option_images;
 create policy server_event_poll_option_images_insert_editors on public.server_event_chat_poll_option_images for insert to authenticated with check (
-  uploaded_by = auth.uid() and exists (
+  uploaded_by = auth.uid()
+  and (storage.foldername(image_path))[1] = event_id::text
+  and (storage.foldername(image_path))[2] = auth.uid()::text
+  and exists (
     select 1 from public.server_event_chat_polls p join public.server_events e on e.id = p.event_id join public.server_members sm on sm.server_id = e.server_id
     where p.id = poll_id and p.event_id = event_id and sm.user_id = auth.uid()
       and (p.created_by = auth.uid() or sm.role in ('owner','admin','moderator'))
