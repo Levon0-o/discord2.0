@@ -107,6 +107,7 @@ export function ExploreSection() {
   const [appliedPostSearch, setAppliedPostSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [busyLike, setBusyLike] = useState<string | null>(null);
@@ -211,13 +212,27 @@ export function ExploreSection() {
   }, [posts, tab]);
 
   const publish = async () => {
-    if (!userId || publishing || (!draft.trim() && !videoFile)) return;
+    if (!userId || publishing || (!draft.trim() && !videoFile && !imageFile)) return;
     setPublishing(true);
     setError('');
     let mediaUrl: string | null = null;
-    let mediaType: 'text' | 'video' = 'text';
+    let mediaType: 'text' | 'image' | 'video' = 'text';
 
-    if (videoFile) {
+    if (imageFile) {
+      const extension = imageFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${userId}/${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('explore-images').upload(path, imageFile, {
+        contentType: imageFile.type,
+        upsert: false,
+      });
+      if (uploadError) {
+        setError(uploadError.message);
+        setPublishing(false);
+        return;
+      }
+      mediaUrl = supabase.storage.from('explore-images').getPublicUrl(path).data.publicUrl;
+      mediaType = 'image';
+    } else if (videoFile) {
       const extension = videoFile.name.split('.').pop()?.toLowerCase() || 'mp4';
       const path = `${userId}/${crypto.randomUUID()}.${extension}`;
       const { error: uploadError } = await supabase.storage.from('explore-videos').upload(path, videoFile, {
@@ -242,11 +257,34 @@ export function ExploreSection() {
     else {
       setDraft('');
       setVideoFile(null);
+      setImageFile(null);
+      const imagePicker = document.getElementById('explore-image-picker') as HTMLInputElement | null;
+      if (imagePicker) imagePicker.value = '';
       const picker = document.getElementById('explore-video-picker') as HTMLInputElement | null;
       if (picker) picker.value = '';
       await loadPosts(true, appliedPostSearch, tab === 'trending');
     }
     setPublishing(false);
+  };
+
+  const handleImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      setError('Choose a JPG, PNG, GIF or WEBP image.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setError('Images must be 15 MB or smaller.');
+      event.target.value = '';
+      return;
+    }
+    setError('');
+    setImageFile(file);
+    setVideoFile(null);
+    const videoPicker = document.getElementById('explore-video-picker') as HTMLInputElement | null;
+    if (videoPicker) videoPicker.value = '';
   };
 
   const handleVideo = (event: ChangeEvent<HTMLInputElement>) => {
@@ -264,6 +302,9 @@ export function ExploreSection() {
     }
     setError('');
     setVideoFile(file);
+    setImageFile(null);
+    const imagePicker = document.getElementById('explore-image-picker') as HTMLInputElement | null;
+    if (imagePicker) imagePicker.value = '';
   };
 
   const toggleLike = async (post: ExplorePost) => {
@@ -542,12 +583,15 @@ export function ExploreSection() {
         <section className="rounded-2xl border border-white/[0.07] bg-ink-900/65 p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-500/15 text-primary-300"><Send size={17} /></div><div><h2 className="text-sm font-semibold text-ink-100">Share with the world</h2><p className="text-xs text-ink-500">Post an update or upload a short video.</p></div></div>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value.slice(0, 2000))} rows={3} maxLength={2000} placeholder="What's happening?" className="w-full resize-y rounded-xl border border-white/[0.07] bg-ink-950/70 px-4 py-3 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
-          {videoFile && <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-primary-500/10 px-3 py-2 text-xs text-primary-200"><span className="min-w-0 truncate">{videoFile.name} · {(videoFile.size / 1024 / 1024).toFixed(1)} MB</span><button type="button" onClick={() => setVideoFile(null)} aria-label="Remove video"><X size={15} /></button></div>}
+          {(videoFile || imageFile) && <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-primary-500/10 px-3 py-2 text-xs text-primary-200">{imageFile ? <img src={URL.createObjectURL(imageFile)} alt="Selected image preview" className="h-14 w-14 rounded-lg object-cover" /> : <Video size={18} />}<span className="min-w-0 flex-1 truncate">{(imageFile || videoFile)?.name} · {((imageFile || videoFile)!.size / 1024 / 1024).toFixed(1)} MB</span><button type="button" onClick={() => { setVideoFile(null); setImageFile(null); }} aria-label="Remove media"><X size={15} /></button></div>}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-ink-300 transition hover:bg-white/[0.05]"><Video size={15} /> Add video<input id="explore-video-picker" type="file" accept="video/mp4,video/webm,video/quicktime" onChange={handleVideo} className="hidden" /></label>
-            <div className="flex items-center gap-3"><span className="text-xs text-ink-500">{draft.length}/2000</span><button type="button" onClick={() => void publish()} disabled={publishing || (!draft.trim() && !videoFile)} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}{publishing ? 'Uploading…' : 'Publish'}</button></div>
+            <div className="flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-ink-300 transition hover:bg-white/[0.05]"><ImagePlus size={15} /> Add image<input id="explore-image-picker" type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={handleImage} className="hidden" /></label>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-ink-300 transition hover:bg-white/[0.05]"><Video size={15} /> Add video<input id="explore-video-picker" type="file" accept="video/mp4,video/webm,video/quicktime" onChange={handleVideo} className="hidden" /></label>
+            </div>
+            <div className="flex items-center gap-3"><span className="text-xs text-ink-500">{draft.length}/2000</span><button type="button" onClick={() => void publish()} disabled={publishing || (!draft.trim() && !videoFile && !imageFile)} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}{publishing ? 'Uploading…' : 'Publish'}</button></div>
           </div>
-          <p className="mt-2 text-[11px] text-ink-500">MP4, WebM or MOV · max 100 MB</p>
+          <p className="mt-2 text-[11px] text-ink-500">JPG, PNG, GIF or WEBP · max 15 MB. MP4, WebM or MOV · max 100 MB.</p>
         </section>
       )}
 
