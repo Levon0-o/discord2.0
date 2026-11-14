@@ -432,7 +432,6 @@ export async function fetchServerEventChatPolls(eventId: string): Promise<{ poll
     supabase.from('server_event_chat_poll_option_images').select('poll_id, option_id, image_path').eq('event_id', eventId),
   ]);
   if (voteResult.error) throw voteResult.error;
-  if (imageResult.error) throw imageResult.error;
   const imageUrls = await Promise.all((imageResult.data ?? []).map(async (row) => {
     const { data, error } = await supabase.storage.from(EVENT_POLL_IMAGE_BUCKET).createSignedUrl(row.image_path, 3600);
     return { ...row, image_url: error ? null : data.signedUrl };
