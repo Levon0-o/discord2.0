@@ -192,7 +192,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           if (row.id) setPolls((current) => current.filter((poll) => poll.id !== row.id));
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'server_event_chat_poll_votes' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'server_event_chat_poll_votes' }, () => {
         void fetchServerEventChatPolls(eventId).then((result) => {
           setPollVotes(result.votes);
           setPolls(result.polls);
