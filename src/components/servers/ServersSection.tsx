@@ -32,6 +32,16 @@ export function ServersSection() {
   const [createError, setCreateError] = useState('');
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
+  const activeServerStorageKey = 'afterdark:active-server:' + userId;
+  const storeActiveServer = (serverId: string | null) => {
+    try {
+      if (serverId) window.sessionStorage.setItem(activeServerStorageKey, serverId);
+      else window.sessionStorage.removeItem(activeServerStorageKey);
+    } catch {
+      // Session storage is best-effort; server navigation still works in memory.
+    }
+  };
+
   const refresh = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -43,6 +53,14 @@ export function ServersSection() {
       ]);
       setMyServers(mine);
       setPublicServers(discovery);
+      try {
+        const storedServerId = window.sessionStorage.getItem(activeServerStorageKey);
+        const storedServer = storedServerId ? mine.find((server) => server.id === storedServerId) : undefined;
+        if (storedServer?.my_role) setView({ mode: 'detail', server: storedServer });
+        else if (storedServerId) window.sessionStorage.removeItem(activeServerStorageKey);
+      } catch {
+        // Ignore unavailable session storage.
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load servers.');
     } finally {
@@ -81,6 +99,7 @@ export function ServersSection() {
     setCreateError('');
     try {
       const server = await createServer(input, userId);
+      storeActiveServer(server.id);
       setCreateOpen(false);
       await refresh();
       const withMeta: ServerWithMeta = {
@@ -102,6 +121,7 @@ export function ServersSection() {
     setError('');
     try {
       await joinPublicServer(server.id, userId);
+      storeActiveServer(server.id);
       await refresh();
       setView({
         mode: 'detail',
@@ -116,6 +136,7 @@ export function ServersSection() {
 
   function openServer(server: ServerWithMeta) {
     if (!server.my_role) return;
+    storeActiveServer(server.id);
     setView({ mode: 'detail', server });
   }
 
@@ -125,10 +146,12 @@ export function ServersSection() {
         server={view.server}
         userId={userId}
         onBack={() => {
+          storeActiveServer(null);
           setView({ mode: 'list' });
           void refresh();
         }}
         onLeft={() => {
+          storeActiveServer(null);
           setView({ mode: 'list' });
           void refresh();
         }}
