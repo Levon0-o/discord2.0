@@ -170,8 +170,7 @@ export function ServersSection() {
     }
   }
 
-  async function handleRedeemInvite(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function redeemInvite() {
     if (!inviteCode.trim() || redeemingInvite || !userId) return;
     setRedeemingInvite(true);
     setError('');
@@ -191,6 +190,11 @@ export function ServersSection() {
     } finally {
       setRedeemingInvite(false);
     }
+  }
+
+  function handleRedeemInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void redeemInvite();
   }
 
   function openServer(server: ServerWithMeta) {
@@ -249,7 +253,7 @@ export function ServersSection() {
                 <p className="mt-3 text-sm text-ink-400">{invitePreview.member_count} {invitePreview.member_count === 1 ? 'member' : 'members'} · AFTERDARK community</p>
                 {invitePreview.description && <p className="mx-auto mt-5 max-w-lg text-sm leading-6 text-ink-300">{invitePreview.description}</p>}
                 <div className="mx-auto mt-8 flex max-w-sm flex-col gap-3">
-                  <button type="button" disabled={!invitePreview.valid || redeemingInvite} onClick={() => document.getElementById('server-invite-submit')?.click()} className="w-full rounded-xl bg-primary-500 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-500/25 transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button type="button" disabled={!invitePreview.valid || redeemingInvite} onClick={() => void redeemInvite()} className="w-full rounded-xl bg-primary-500 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-500/25 transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40">
                     {redeemingInvite ? 'Joining…' : 'Accept invitation'}
                   </button>
                   <button type="button" onClick={() => { setInviteCode(''); const url = new URL(window.location.href); url.searchParams.delete('invite'); window.history.replaceState({}, '', url.pathname + url.search + url.hash); }} className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-6 py-3 text-sm font-semibold text-ink-300 transition hover:bg-white/[0.07] hover:text-white">
