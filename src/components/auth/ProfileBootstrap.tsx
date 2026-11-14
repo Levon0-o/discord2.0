@@ -62,7 +62,7 @@ export function ProfileBootstrap({ user, children, onSignOut }: ProfileBootstrap
         if (!cancelled) setStatus('ready');
       } catch (caught) {
         if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : 'Nie udało się przygotować profilu.');
+          setError(caught instanceof Error ? caught.message : 'Could not set up your profile.');
           setStatus('error');
         }
       }
@@ -82,15 +82,15 @@ export function ProfileBootstrap({ user, children, onSignOut }: ProfileBootstrap
         {status === 'loading' ? (
           <>
             <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
-            <h1 className="text-lg font-semibold text-ink-50">Przygotowujemy profil</h1>
-            <p className="mt-2 text-sm text-ink-400">To potrwa tylko chwilę.</p>
+            <h1 className="text-lg font-semibold text-ink-50">Setting up your profile</h1>
+            <p className="mt-2 text-sm text-ink-400">This will only take a moment.</p>
           </>
         ) : (
           <>
-            <h1 className="text-lg font-semibold text-ink-50">Nie udało się przygotować profilu</h1>
+            <h1 className="text-lg font-semibold text-ink-50">Could not set up your profile</h1>
             <p className="mt-2 break-words text-sm text-red-300">{error}</p>
-            <p className="mt-3 text-xs text-ink-500">Sprawdź, czy migracja tabeli profiles została wykonana w Supabase.</p>
-            <button onClick={() => void onSignOut()} className="mt-5 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-400">Wyloguj się</button>
+            <p className="mt-3 text-xs text-ink-500">Make sure the profiles table migration has been run in Supabase.</p>
+            <button onClick={() => void onSignOut()} className="mt-5 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-400">Sign out</button>
           </>
         )}
       </section>
