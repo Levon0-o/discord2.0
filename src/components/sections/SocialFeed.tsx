@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText, Pencil, Trash2, Bookmark, Pin } from 'lucide-react';
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
+import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText, Pencil, Trash2, Bookmark, Pin, ImagePlus, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -56,6 +56,7 @@ export function SocialFeed() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -113,15 +114,38 @@ export function SocialFeed() {
 
   const publishPost = async () => {
     const body = draft.trim();
-    if (!body || !userId || publishing) return;
+    if ((!body && !imageFile) || !userId || publishing) return;
     setPublishing(true);
     setError('');
 
-    const { error: insertError } = await supabase.from('posts').insert({ body });
+    let imageUrl: string | null = null;
+    if (imageFile) {
+      const extension = imageFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${userId}/${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('explore-images').upload(path, imageFile, {
+        contentType: imageFile.type,
+        upsert: false,
+      });
+      if (uploadError) {
+        setError(uploadError.message);
+        setPublishing(false);
+        return;
+      }
+      imageUrl = supabase.storage.from('explore-images').getPublicUrl(path).data.publicUrl;
+    }
+
+    const { error: insertError } = await supabase.from('posts').insert({
+      body,
+      image_url: imageUrl,
+      media_type: imageUrl ? 'image' : 'text',
+    });
     if (insertError) {
       setError(insertError.message);
     } else {
       setDraft('');
+      setImageFile(null);
+      const picker = document.getElementById('social-feed-image-picker') as HTMLInputElement | null;
+      if (picker) picker.value = '';
       await loadPosts(true);
     }
     setPublishing(false);
@@ -281,12 +305,16 @@ export function SocialFeed() {
               maxLength={2000}
               className="w-full resize-y rounded-xl border border-white/[0.07] bg-ink-950/70 px-4 py-3 text-sm text-ink-100 outline-none transition placeholder:text-ink-500 focus:border-primary-400/40"
             />
-            <div className="mt-3 flex items-center justify-between gap-3">
+            {imageFile && <div className="mt-3 flex items-center gap-3 rounded-xl bg-primary-500/10 p-2 text-xs text-primary-200"><img src={URL.createObjectURL(imageFile)} alt="Selected upload preview" className="h-14 w-14 rounded-lg object-cover" /><span className="min-w-0 flex-1 truncate">{imageFile.name} · {(imageFile.size / 1024 / 1024).toFixed(1)} MB</span><button type="button" onClick={() => setImageFile(null)} aria-label="Remove image"><X size={15} /></button></div>}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-ink-300 transition hover:bg-white/[0.05]"><ImagePlus size={15} /> Add image<input id="social-feed-image-picker" type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={(event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0] ?? null; if (!file) return; if (!['image/jpeg','image/png','image/gif','image/webp'].includes(file.type)) { setError('Choose a JPG, PNG, GIF or WEBP image.'); event.target.value = ''; return; } if (file.size > 15 * 1024 * 1024) { setError('Images must be 15 MB or smaller.'); event.target.value = ''; return; } setError(''); setImageFile(file); }} className="hidden" /></label>
+              <div className="flex items-center gap-3">
               <span className="text-xs text-ink-500">{draft.length}/2000</span>
-              <button type="button" onClick={() => void publishPost()} disabled={!draft.trim() || publishing} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40">
+              <button type="button" onClick={() => void publishPost()} disabled={(!draft.trim() && !imageFile) || publishing} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40">
                 {publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={15} />}
                 Publish
               </button>
+              </div>
             </div>
           </div>
         </div>
