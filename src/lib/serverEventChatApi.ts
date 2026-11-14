@@ -15,6 +15,9 @@ const EVENT_CHAT_PAGE_SIZE = 50;
 const EVENT_CHAT_ATTACHMENT_BUCKET = 'event-chat-attachments';
 const EVENT_CHAT_ATTACHMENT_MAX_SIZE = 15 * 1024 * 1024;
 const EVENT_CHAT_ATTACHMENT_TYPES = new Set(['image/jpeg','image/png','image/gif','image/webp','application/pdf','text/plain','text/csv']);
+const EVENT_POLL_IMAGE_BUCKET = 'event-poll-option-images';
+const EVENT_POLL_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+const EVENT_POLL_IMAGE_MAX_SIZE = 5 * 1024 * 1024;
 
 export async function fetchServerEventChatMessages(
   eventId: string,
@@ -388,6 +391,8 @@ export async function setServerEventChatNotificationsMuted(eventId: string, dura
 export interface ServerEventChatPollOption {
   id: string;
   label: string;
+  image_path?: string | null;
+  image_url?: string | null;
 }
 
 export interface ServerEventChatPoll {
@@ -422,9 +427,24 @@ export async function fetchServerEventChatPolls(eventId: string): Promise<{ poll
   if (pollsError) throw pollsError;
   const pollRows = (polls ?? []) as ServerEventChatPoll[];
   if (pollRows.length === 0) return { polls: [], votes: [] };
-  const { data: votes, error: votesError } = await supabase.rpc('fetch_server_event_chat_poll_votes', { p_event_id: eventId });
-  if (votesError) throw votesError;
-  return { polls: pollRows, votes: (votes ?? []) as ServerEventChatPollVote[] };
+  const [voteResult, imageResult] = await Promise.all([
+    supabase.rpc('fetch_server_event_chat_poll_votes', { p_event_id: eventId }),
+    supabase.from('server_event_chat_poll_option_images').select('poll_id, option_id, image_path').eq('event_id', eventId),
+  ]);
+  if (voteResult.error) throw voteResult.error;
+  if (imageResult.error) throw imageResult.error;
+  const imageUrls = await Promise.all((imageResult.data ?? []).map(async (row) => {
+    const { data, error } = await supabase.storage.from(EVENT_POLL_IMAGE_BUCKET).createSignedUrl(row.image_path, 3600);
+    return { ...row, image_url: error ? null : data.signedUrl };
+  }));
+  const enrichedPolls = pollRows.map((poll) => ({
+    ...poll,
+    options: poll.options.map((option) => {
+      const image = imageUrls.find((row) => row.poll_id === poll.id && row.option_id === option.id);
+      return { ...option, image_path: image?.image_path ?? null, image_url: image?.image_url ?? null };
+    }),
+  }));
+  return { polls: enrichedPolls, votes: (voteResult.data ?? []) as ServerEventChatPollVote[] };
 }
 
 export async function createServerEventChatPoll(
@@ -482,4 +502,42 @@ export async function updateServerEventChatPoll(pollId: string, question: string
   const { data, error: fetchError } = await supabase.from('server_event_chat_polls').select('id, event_id, message_id, created_by, question, options, allow_multiple, is_anonymous, expires_at, closed_at, created_at').eq('id', pollId).single();
   if (fetchError) throw fetchError;
   return data as ServerEventChatPoll;
+}
+
+
+export async function uploadServerEventChatPollOptionImage(eventId: string, file: File): Promise<{ path: string; url: string }> {
+  if (!EVENT_POLL_IMAGE_TYPES.has(file.type)) throw new Error('Poll images must be JPG, PNG, GIF or WEBP.');
+  if (file.size <= 0 || file.size > EVENT_POLL_IMAGE_MAX_SIZE) throw new Error('Poll images must be smaller than 5 MB.');
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+  const extension = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1];
+  const path = eventId + '/' + user.id + '/' + crypto.randomUUID() + '.' + extension;
+  const { error } = await supabase.storage.from(EVENT_POLL_IMAGE_BUCKET).upload(path, file, { contentType: file.type, cacheControl: '3600', upsert: false });
+  if (error) throw error;
+  const { data, error: urlError } = await supabase.storage.from(EVENT_POLL_IMAGE_BUCKET).createSignedUrl(path, 3600);
+  if (urlError) throw urlError;
+  return { path, url: data.signedUrl };
+}
+
+export async function saveServerEventChatPollOptionImages(eventId: string, pollId: string, images: Array<{ optionId: string; path: string }>): Promise<void> {
+  const { data: existing, error: fetchError } = await supabase.from('server_event_chat_poll_option_images').select('image_path').eq('poll_id', pollId);
+  if (fetchError) throw fetchError;
+  const { error: deleteError } = await supabase.from('server_event_chat_poll_option_images').delete().eq('poll_id', pollId);
+  if (deleteError) throw deleteError;
+  if (images.length > 0) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) throw authError;
+    if (!user) throw new Error('You must be logged in.');
+    const { error } = await supabase.from('server_event_chat_poll_option_images').insert(images.map((image) => ({
+      event_id: eventId, poll_id: pollId, option_id: image.optionId, image_path: image.path, uploaded_by: user.id,
+    })));
+    if (error) throw error;
+  }
+  const retained = new Set(images.map((image) => image.path));
+  const obsolete = (existing ?? []).map((row) => row.image_path).filter((path) => !retained.has(path));
+  if (obsolete.length > 0) {
+    const { error } = await supabase.storage.from(EVENT_POLL_IMAGE_BUCKET).remove(obsolete);
+    if (error) throw error;
+  }
 }
