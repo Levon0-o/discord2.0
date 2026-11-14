@@ -250,7 +250,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         return [option.label, count, total ? Math.round(count / total * 100) + '%' : '0%'];
       }),
     ];
-    const csv = '\\uFEFF' + rows.map((row) => row.map((cell) => escapeCsv(cell ?? '')).join(',')).join('\\r\\n');
+    const csv = '\uFEFF' + rows.map((row) => row.map((cell) => escapeCsv(cell ?? '')).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
