@@ -195,12 +195,13 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_poll_id uuid := coalesce(new.poll_id, old.poll_id);
+  v_poll_id uuid;
 begin
+  if tg_op = 'DELETE' then v_poll_id := old.poll_id; else v_poll_id := new.poll_id; end if;
   update public.server_event_chat_polls
   set vote_updated_at = now()
   where id = v_poll_id;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then return old; else return new; end if;
 end;
 $$;
 
