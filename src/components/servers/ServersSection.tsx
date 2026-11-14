@@ -218,6 +218,59 @@ export function ServersSection() {
     );
   }
 
+  if (inviteCode.trim()) {
+    return (
+      <div className="flex min-h-[calc(100vh-7rem)] w-full items-center justify-center overflow-hidden rounded-3xl bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.16),transparent_55%),linear-gradient(145deg,rgba(10,14,26,0.96),rgba(5,8,16,0.99))] px-4 py-10 sm:px-8">
+        <section className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-ink-950/90 shadow-2xl shadow-black/50 backdrop-blur-xl" aria-live="polite">
+          {invitePreview?.banner_url ? (
+            <div className="relative h-40 w-full sm:h-52">
+              <img src={invitePreview.banner_url} alt="" className="h-full w-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/20 to-transparent" />
+            </div>
+          ) : (
+            <div className="h-2 w-full bg-gradient-to-r from-primary-600 via-cyan-400 to-primary-500" />
+          )}
+          <div className="px-6 pb-7 pt-7 text-center sm:px-10 sm:pb-10">
+            <p className="mb-5 text-xs font-bold uppercase tracking-[0.22em] text-primary-300">Server invitation</p>
+            {invitePreviewLoading ? (
+              <div className="flex flex-col items-center gap-4 py-12">
+                <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
+                <p className="text-sm text-ink-300">Loading invitation…</p>
+              </div>
+            ) : invitePreview ? (
+              <>
+                {invitePreview.icon_url ? (
+                  <img src={invitePreview.icon_url} alt="" className="mx-auto mb-5 h-24 w-24 rounded-3xl object-cover ring-4 ring-ink-950 shadow-xl shadow-black/30 sm:h-28 sm:w-28" />
+                ) : (
+                  <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-3xl bg-primary-500/20 text-4xl font-bold text-primary-200 ring-4 ring-ink-950 sm:h-28 sm:w-28">{invitePreview.name.slice(0, 1).toUpperCase()}</div>
+                )}
+                <h1 className="text-2xl font-bold tracking-tight text-ink-50 sm:text-3xl">You're invited to join</h1>
+                <h2 className="mt-2 break-words text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{invitePreview.name}</h2>
+                <p className="mt-3 text-sm text-ink-400">{invitePreview.member_count} {invitePreview.member_count === 1 ? 'member' : 'members'} · AFTERDARK community</p>
+                {invitePreview.description && <p className="mx-auto mt-5 max-w-lg text-sm leading-6 text-ink-300">{invitePreview.description}</p>}
+                <div className="mx-auto mt-8 flex max-w-sm flex-col gap-3">
+                  <button type="button" disabled={!invitePreview.valid || redeemingInvite} onClick={() => document.getElementById('server-invite-submit')?.click()} className="w-full rounded-xl bg-primary-500 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-500/25 transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40">
+                    {redeemingInvite ? 'Joining…' : 'Accept invitation'}
+                  </button>
+                  <button type="button" onClick={() => { setInviteCode(''); const url = new URL(window.location.href); url.searchParams.delete('invite'); window.history.replaceState({}, '', url.pathname + url.search + url.hash); }} className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-6 py-3 text-sm font-semibold text-ink-300 transition hover:bg-white/[0.07] hover:text-white">
+                    Maybe later
+                  </button>
+                  {!invitePreview.valid && <p className="text-xs text-rose-300">This invitation is expired, revoked, or unavailable.</p>}
+                </div>
+              </>
+            ) : (
+              <div className="py-10">
+                <h1 className="text-2xl font-bold text-ink-50">Invitation unavailable</h1>
+                <p className="mt-3 text-sm text-rose-300">{invitePreviewError || 'This invitation could not be found.'}</p>
+                <button type="button" onClick={() => { setInviteCode(''); const url = new URL(window.location.href); url.searchParams.delete('invite'); window.history.replaceState({}, '', url.pathname + url.search + url.hash); }} className="mt-7 rounded-xl border border-white/10 px-6 py-3 text-sm font-semibold text-ink-200 transition hover:bg-white/5">Back to servers</button>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
