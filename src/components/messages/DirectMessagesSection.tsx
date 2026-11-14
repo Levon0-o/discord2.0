@@ -20,6 +20,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { FriendsPanel } from '@/components/messages/FriendsPanel';
+import { DirectVoiceCall } from '@/components/messages/DirectVoiceCall';
 import {
   fetchMyConversations,
   fetchConversationMembers,
@@ -1186,6 +1187,14 @@ export function DirectMessagesSection({
                 </p>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
+                {activeMembers.length === 2 && otherMember ? (
+                  <DirectVoiceCall
+                    conversationId={activeId}
+                    currentUserId={userId}
+                    otherUserId={otherMember.user_id}
+                    otherName={displayName}
+                  />
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setShowPinnedMessages((value) => !value)}
