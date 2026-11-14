@@ -265,6 +265,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       callTimeoutRef.current = window.setTimeout(() => {
         if (callIdRef.current === callId && statusRef.current === 'outgoing') {
           setError('No answer. The call timed out.');
+          void send('hangup', { call_id: callId, from: currentUserId, to: otherUserId }).catch(() => undefined);
           stopMedia();
         }
       }, 30000);
