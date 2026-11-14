@@ -57,6 +57,7 @@ import type {
   CreateChannelInput,
   MemberWithProfile,
   ServerWithMeta,
+  ServerPermission,
 } from '@/types/servers';
 
 interface ServerDetailProps {
@@ -146,8 +147,15 @@ export function ServerDetail({
     useState<MemberWithProfile | null>(null);
 
   const isAdminOrOwner = canManageChannels(server.my_role);
-  const canManageInvites = server.my_role === 'owner' || server.my_role === 'admin' || server.my_role === 'moderator';
   const currentMember = members.find((member) => member.user_id === userId);
+  const hasCustomPermission = (permission: ServerPermission) =>
+    Boolean(currentMember?.custom_roles?.some((role) => role.permissions?.[permission] === true));
+  const canManageChannelsPermission = isAdminOrOwner || hasCustomPermission('manage_channels');
+  const canManageInvites =
+    server.my_role === 'owner' ||
+    server.my_role === 'admin' ||
+    server.my_role === 'moderator' ||
+    hasCustomPermission('manage_invites');
   const filteredEvents = useMemo(() => {
     const query = eventSearch.trim().toLocaleLowerCase();
     return events
@@ -177,13 +185,8 @@ export function ServerDetail({
     ? filteredEvents.filter((event) => calendarDateKey(new Date(event.starts_at)) === selectedCalendarDate)
     : filteredEvents, [filteredEvents, eventView, selectedCalendarDate]);
 
-  const canManageRoles =
-    isAdminOrOwner ||
-    Boolean(
-      currentMember?.custom_roles?.some(
-        (role) => role.permissions.manage_roles === true,
-      ),
-    );
+  // Custom-role definitions and assignments remain fixed-admin managed in RLS.
+  const canManageRoles = isAdminOrOwner;
 
   useEffect(() => {
     let cancelled = false;
@@ -618,7 +621,7 @@ export function ServerDetail({
                 Channels
               </h2>
 
-              {isAdminOrOwner && (
+              {canManageChannelsPermission && (
                 <button
                   type="button"
                   onClick={() => {
@@ -640,7 +643,7 @@ export function ServerDetail({
                     No channels yet.
                   </p>
 
-                  {isAdminOrOwner && (
+                  {canManageChannelsPermission && (
                     <button
                       type="button"
                       onClick={() => {
@@ -729,14 +732,14 @@ export function ServerDetail({
                                 >
                                   <Pencil size={11} />
                                 </button>
-                                <button
+                                {isAdminOrOwner && <button
                                   type="button"
                                   title={`Permissions for #${channel.name}`}
                                   onClick={() => setPermissionsChannel(channel)}
                                   className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300"
                                 >
                                   <SlidersHorizontal size={11} />
-                                </button>
+                                </button>}
                                 <button
                                   type="button"
                                   title={`Delete #${channel.name}`}
