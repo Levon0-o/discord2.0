@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Copy, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, Users, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Copy, Download, FileText, Flag, ImagePlus, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, Users, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, deleteServerEventChatPoll, updateServerEventChatPoll, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
+import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, deleteServerEventChatPoll, updateServerEventChatPoll, uploadServerEventChatPollOptionImage, saveServerEventChatPollOptionImages, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventChatProps {
@@ -32,6 +32,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollOptionImages, setPollOptionImages] = useState<Array<{ path: string; url: string } | null>>([null, null]);
+  const [pollImageBusyIndex, setPollImageBusyIndex] = useState<number | null>(null);
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
   const [pollAnonymous, setPollAnonymous] = useState(false);
   const [pollExpiresIn, setPollExpiresIn] = useState('never');
@@ -214,8 +216,10 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       const poll = editingPollId
         ? await updateServerEventChatPoll(editingPollId, pollQuestion.trim(), options, pollAllowMultiple, pollAnonymous)
         : await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt, pollAnonymous);
-      setPolls((current) => [poll, ...current.filter((item) => item.id !== poll.id)]);
-      setPollQuestion(''); setPollOptions(['', '']); setPollAllowMultiple(false); setPollAnonymous(false); setPollExpiresIn('never'); setEditingPollId(null); setPollCreatorOpen(false);
+      await saveServerEventChatPollOptionImages(eventId, poll.id, poll.options.map((option, index) => ({ optionId: option.id, path: pollOptionImages[index]?.path })).filter((image): image is { optionId: string; path: string } => Boolean(image.path)));
+      const refreshed = await fetchServerEventChatPolls(eventId);
+      setPolls(refreshed.polls); setPollVotes(refreshed.votes);
+      setPollQuestion(''); setPollOptions(['', '']); setPollOptionImages([null, null]); setPollAllowMultiple(false); setPollAnonymous(false); setPollExpiresIn('never'); setEditingPollId(null); setPollCreatorOpen(false);
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not create poll.'); }
     finally { setPollBusy(false); }
   }
@@ -234,6 +238,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setEditingPollId(null);
     setPollQuestion(poll.question);
     setPollOptions(poll.options.map((option) => option.label));
+    setPollOptionImages(poll.options.map((option) => option.image_path && option.image_url ? { path: option.image_path, url: option.image_url } : null));
     setPollAllowMultiple(poll.allow_multiple);
     setPollAnonymous(poll.is_anonymous);
     setPollExpiresIn('never');
@@ -785,7 +790,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
               const selected = ownVotes.some((vote) => vote.option_id === option.id);
               return <button key={option.id} type="button" disabled={closed} onClick={() => void handlePollVote(poll, option.id)} className={'relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-md border px-2.5 py-2 text-left text-[10px] transition disabled:cursor-default ' + (selected ? 'border-primary-400/40 bg-primary-500/10 text-primary-100' : 'border-white/[0.07] bg-white/[0.025] text-ink-300 hover:border-primary-400/30')}>
                 <span className="absolute inset-y-0 left-0 bg-primary-500/10" style={{ width: percent + '%' }} />
-                <span className="relative flex min-w-0 items-center gap-1.5"><span className={'h-3 w-3 shrink-0 rounded-full border ' + (selected ? 'border-primary-300 bg-primary-400' : 'border-ink-500')} />{option.label}</span>
+                <span className="relative flex min-w-0 items-center gap-2"><span className={'h-3 w-3 shrink-0 rounded-full border ' + (selected ? 'border-primary-300 bg-primary-400' : 'border-ink-500')} />{option.image_url ? <img src={option.image_url} alt="" className="h-9 w-12 shrink-0 rounded object-cover" /> : null}<span className="min-w-0">{option.label}</span></span>
                 <span className="relative shrink-0 tabular-nums text-ink-500">{count} · {percent}%</span>
               </button>;
             })}</div>
@@ -975,8 +980,12 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <div className="flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold text-ink-100"><BarChart3 size={15} className="text-primary-300" /> {editingPollId ? 'Edit event poll' : 'Create event poll'}</h3><button type="button" onClick={() => { setPollCreatorOpen(false); setEditingPollId(null); }} className="rounded p-1 text-ink-500 hover:bg-white/[0.06]" aria-label="Close poll creator"><X size={14} /></button></div>
           <label className="block text-[10px] text-ink-400">Question<input autoFocus value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} maxLength={200} placeholder="What should we decide?" className="mt-1 w-full rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100 outline-none focus:border-primary-400/50" /></label>
           <div className="space-y-1.5"><div className="flex items-center justify-between"><span className="text-[10px] text-ink-400">Options</span><span className="text-[9px] text-ink-600">{pollOptions.length}/6</span></div>
-            {pollOptions.map((option, index) => <div key={index} className="flex gap-1.5"><input value={option} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={80} placeholder={'Option ' + (index + 1)} className="min-w-0 flex-1 rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100 outline-none focus:border-primary-400/50" />{pollOptions.length > 2 ? <button type="button" onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="rounded px-2 text-ink-500 hover:bg-white/[0.06]"><X size={13} /></button> : null}</div>)}
-            {pollOptions.length < 6 ? <button type="button" onClick={() => setPollOptions((current) => [...current, ''])} className="inline-flex items-center gap-1 px-1 py-1 text-[10px] text-primary-300 hover:text-primary-200"><Plus size={11} /> Add option</button> : null}
+            {pollOptions.map((option, index) => <div key={index} className="space-y-1.5 rounded-md border border-white/[0.06] bg-white/[0.015] p-2">
+               <div className="flex gap-1.5"><input value={option} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={80} placeholder={'Option ' + (index + 1)} className="min-w-0 flex-1 rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100 outline-none focus:border-primary-400/50" />{pollOptions.length > 2 ? <button type="button" onClick={() => { setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index)); setPollOptionImages((current) => current.filter((_, itemIndex) => itemIndex !== index)); }} className="rounded px-2 text-ink-500 hover:bg-white/[0.06]"><X size={13} /></button> : null}</div>
+               <div className="flex items-center gap-2">{pollOptionImages[index]?.url ? <img src={pollOptionImages[index]?.url ?? ''} alt={'Image for option ' + (index + 1)} className="h-12 w-16 rounded-md border border-white/10 object-cover" /> : null}<label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-white/10 px-2 py-1.5 text-[9px] text-ink-400 hover:border-primary-400/40 hover:text-primary-200"><ImagePlus size={12} /> {pollImageBusyIndex === index ? 'Uploading…' : pollOptionImages[index] ? 'Change image' : 'Add image'}<input type="file" accept="image/jpeg,image/png,image/gif,image/webp" disabled={pollImageBusyIndex !== null || pollBusy} className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; setPollImageBusyIndex(index); void uploadServerEventChatPollOptionImage(eventId, file).then((image) => setPollOptionImages((current) => current.map((item, itemIndex) => itemIndex === index ? image : item))).catch((err) => setError(err instanceof Error ? err.message : 'Could not upload poll image.')).finally(() => { setPollImageBusyIndex(null); event.target.value = ''; }); }} /></label>{pollOptionImages[index] ? <button type="button" onClick={() => setPollOptionImages((current) => current.map((item, itemIndex) => itemIndex === index ? null : item))} className="text-[9px] text-ink-500 hover:text-red-300">Remove image</button> : null}</div>
+             </div>)}
+             {pollOptions.length < 6 ? <button type="button" onClick={() => { setPollOptions((current) => [...current, '']); setPollOptionImages((current) => [...current, null]); }} className="inline-flex items-center gap-1 px-1 py-1 text-[10px] text-primary-300 hover:text-primary-200"><Plus size={11} /> Add option</button> : null}
+             <p className="text-[9px] text-ink-600">Optional JPG, PNG, GIF or WEBP · max 5 MB per image</p>
           </div>
           <label className="flex items-center gap-2 text-[10px] text-ink-300"><input type="checkbox" checked={pollAllowMultiple} onChange={(event) => setPollAllowMultiple(event.target.checked)} className="accent-primary-400" /> Allow multiple choices</label>
           <label className="flex items-center gap-2 text-[10px] text-ink-300"><input type="checkbox" checked={pollAnonymous} onChange={(event) => setPollAnonymous(event.target.checked)} className="accent-primary-400" /> Anonymous voting <span className="text-ink-600">(identities hidden from everyone)</span></label>
