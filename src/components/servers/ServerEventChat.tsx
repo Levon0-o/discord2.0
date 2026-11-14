@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from 'react';
-import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Copy, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, BellOff, Bookmark, Check, Copy, Download, FileText, Flag, MessageCircle, Paperclip, Pencil, Pin, Plus, Reply, Search, Send, Smile, Trash2, Users, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
 import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, deleteServerEventChatPoll, updateServerEventChatPoll, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
@@ -27,6 +27,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [pollVotes, setPollVotes] = useState<ServerEventChatPollVote[]>([]);
   const [pollFilter, setPollFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [pollSort, setPollSort] = useState<'newest' | 'oldest' | 'votes'>('newest');
+  const [expandedPollResults, setExpandedPollResults] = useState<string[]>([]);
   const [pollCreatorOpen, setPollCreatorOpen] = useState(false);
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [pollQuestion, setPollQuestion] = useState('');
@@ -786,6 +787,30 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
               </button>;
             })}</div>
             <p className="mt-2 text-[9px] text-ink-600">{closed ? 'Voting is closed.' : 'Select an option to vote'}</p>
+            {canClose ? <div className="mt-2 border-t border-white/[0.06] pt-2">
+              <button type="button" onClick={() => setExpandedPollResults((current) => current.includes(poll.id) ? current.filter((id) => id !== poll.id) : [...current, poll.id])} aria-expanded={expandedPollResults.includes(poll.id)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[9px] text-ink-400 transition hover:bg-white/[0.05] hover:text-primary-200">
+                <Users size={11} /> {expandedPollResults.includes(poll.id) ? 'Hide voter details' : 'View voter details'}
+              </button>
+              {expandedPollResults.includes(poll.id) ? <div className="mt-2 space-y-2">
+                {poll.options.map((option) => {
+                  const optionVotes = votes.filter((vote) => vote.option_id === option.id);
+                  return <div key={option.id} className="rounded-md bg-white/[0.025] px-2.5 py-2">
+                    <div className="mb-1 flex items-center justify-between gap-2"><span className="text-[10px] font-medium text-ink-300">{option.label}</span><span className="text-[9px] tabular-nums text-ink-500">{optionVotes.length}</span></div>
+                    {optionVotes.length === 0 ? <p className="text-[9px] text-ink-600">No votes yet.</p> : <div className="flex flex-wrap gap-1.5">
+                      {optionVotes.map((vote) => {
+                        const voter = members.find((entry) => entry.user_id === vote.user_id);
+                        const voterName = voter?.profile?.display_name || voter?.profile?.username || 'Server member';
+                        return <span key={vote.id} className="inline-flex items-center gap-1 rounded-full border border-white/[0.07] bg-ink-900 px-2 py-1 text-[9px] text-ink-300">
+                          {voter?.profile?.avatar_url ? <img src={voter.profile.avatar_url} alt="" className="h-4 w-4 rounded-full object-cover" /> : <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/[0.08] text-[8px]">{voterName.slice(0, 1).toUpperCase()}</span>}
+                          {voterName}
+                        </span>;
+                      })}
+                    </div>}
+                  </div>;
+                })}
+                <p className="text-[9px] text-ink-600">Only the poll creator and server moderators can see voter identities.</p>
+              </div> : null}
+            </div> : null}
           </div>;
         })}
           {polls.filter((poll) => {
