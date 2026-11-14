@@ -206,7 +206,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   async function handleCreatePoll(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pollBusy) return;
-    const options = pollOptions.map((option) => option.trim()).filter(Boolean);
+    const selectedOptions = pollOptions.map((label, index) => ({ label: label.trim(), image: pollOptionImages[index] })).filter((option) => option.label);
+    const options = selectedOptions.map((option) => option.label);
     if (!pollQuestion.trim() || options.length < 2) return;
     setPollBusy(true);
     setError('');
@@ -216,7 +217,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       const poll = editingPollId
         ? await updateServerEventChatPoll(editingPollId, pollQuestion.trim(), options, pollAllowMultiple, pollAnonymous)
         : await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt, pollAnonymous);
-      await saveServerEventChatPollOptionImages(eventId, poll.id, poll.options.map((option, index) => ({ optionId: option.id, path: pollOptionImages[index]?.path })).filter((image): image is { optionId: string; path: string } => Boolean(image.path)));
+      await saveServerEventChatPollOptionImages(eventId, poll.id, poll.options.map((option, index) => ({ optionId: option.id, path: selectedOptions[index]?.image?.path })).filter((image): image is { optionId: string; path: string } => Boolean(image.path)));
       const refreshed = await fetchServerEventChatPolls(eventId);
       setPolls(refreshed.polls); setPollVotes(refreshed.votes);
       setPollQuestion(''); setPollOptions(['', '']); setPollOptionImages([null, null]); setPollAllowMultiple(false); setPollAnonymous(false); setPollExpiresIn('never'); setEditingPollId(null); setPollCreatorOpen(false);
@@ -238,7 +239,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setEditingPollId(null);
     setPollQuestion(poll.question);
     setPollOptions(poll.options.map((option) => option.label));
-    setPollOptionImages(poll.options.map((option) => option.image_path && option.image_url ? { path: option.image_path, url: option.image_url } : null));
+    setPollOptionImages([null, null]);
     setPollAllowMultiple(poll.allow_multiple);
     setPollAnonymous(poll.is_anonymous);
     setPollExpiresIn('never');
@@ -276,6 +277,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setEditingPollId(poll.id);
     setPollQuestion(poll.question);
     setPollOptions(poll.options.map((option) => option.label));
+    setPollOptionImages(poll.options.map((option) => option.image_path && option.image_url ? { path: option.image_path, url: option.image_url } : null));
     setPollAllowMultiple(poll.allow_multiple);
     setPollAnonymous(poll.is_anonymous);
     setPollExpiresIn('never');
@@ -739,7 +741,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <button type="button" onClick={() => { setSavedOpen((value) => !value); setPinnedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (savedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={savedOpen}><Bookmark size={12} /> Saved {savedMessages.length}</button>
           <button type="button" onClick={() => { setPinnedOpen((value) => !value); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (pinnedOpen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={pinnedOpen}><Pin size={12} /> Pinned {pins.length}</button>
           {canModerate ? <button type="button" onClick={() => { setReportsOpen((value) => !value); setPinnedOpen(false); setSavedOpen(false); setSearchOpen(false); }} className={'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] transition ' + (reportsOpen ? 'bg-amber-500/15 text-amber-200' : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100')} aria-expanded={reportsOpen}><Flag size={12} /> Reports {reports.filter((report) => report.status === 'open').length}</button> : null}
-          <button type="button" onClick={() => setPollCreatorOpen(true)} className="inline-flex items-center gap-1 rounded-md bg-primary-500/15 px-2 py-1.5 text-[10px] font-semibold text-primary-200 transition hover:bg-primary-500/25" title="Create event poll"><Plus size={11} /> Poll</button>
+          <button type="button" onClick={() => { setEditingPollId(null); setPollQuestion(''); setPollOptions(['', '']); setPollOptionImages([null, null]); setPollAllowMultiple(false); setPollAnonymous(false); setPollExpiresIn('never'); setPollCreatorOpen(true); }} className="inline-flex items-center gap-1 rounded-md bg-primary-500/15 px-2 py-1.5 text-[10px] font-semibold text-primary-200 transition hover:bg-primary-500/25" title="Create event poll"><Plus size={11} /> Poll</button>
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
         </div>
       </div>
