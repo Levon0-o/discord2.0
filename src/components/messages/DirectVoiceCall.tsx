@@ -26,8 +26,11 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState('');
   const [elapsed, setElapsed] = useState(0);
+  const [channelReady, setChannelReady] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
+  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
+  const incomingCallRef = useRef<CallSignal | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const callIdRef = useRef('');
   const statusRef = useRef<CallStatus>('idle');
@@ -46,6 +49,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     startedAtRef.current = null;
     peerRef.current?.close();
     peerRef.current = null;
+    pendingIceRef.current = [];
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (audioRef.current) audioRef.current.srcObject = null;
@@ -127,11 +131,12 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       .on('broadcast', { event: 'invite' }, ({ payload }) => {
         const signal = payload as CallSignal;
         if (!active || signal.to !== currentUserId || signal.from !== otherUserId) return;
-        if (statusRef.current !== 'idle' || incomingCall) {
+        if (statusRef.current !== 'idle' || incomingCallRef.current) {
           void send('busy', { ...signal, from: currentUserId, to: signal.from });
           return;
         }
         callIdRef.current = signal.call_id;
+        incomingCallRef.current = signal;
         setIncomingCall(signal);
       })
       .on('broadcast', { event: 'accept' }, async ({ payload }) => {
@@ -174,6 +179,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
           setCallStatus('connecting');
           const peer = createPeer(signal.call_id, signal.from);
           await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          for (const candidate of pendingIceRef.current) await peer.addIceCandidate(new RTCIceCandidate(candidate));
+          pendingIceRef.current = [];
           const answer = await peer.createAnswer();
           await peer.setLocalDescription(answer);
           await send('answer', {
@@ -191,7 +198,11 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         const signal = payload as CallSignal;
         if (!active || signal.to !== currentUserId || signal.call_id !== callIdRef.current || !signal.sdp) return;
         try {
-          await peerRef.current?.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          const peer = peerRef.current;
+          if (!peer) return;
+          await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          for (const candidate of pendingIceRef.current) await peer.addIceCandidate(new RTCIceCandidate(candidate));
+          pendingIceRef.current = [];
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not connect the call.');
           stopMedia();
@@ -203,6 +214,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         try {
           const peer = peerRef.current;
           if (peer?.remoteDescription) await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          else pendingIceRef.current.push(signal.candidate);
         } catch {
           // Ignore candidates that arrive after a call has already ended.
         }
@@ -211,11 +223,13 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         const signal = payload as CallSignal;
         if (signal.to === currentUserId && signal.call_id === callIdRef.current) {
           stopMedia();
+          incomingCallRef.current = null;
           setIncomingCall(null);
         }
       })
       .subscribe((channelStatus) => {
-        if (channelStatus === 'CHANNEL_ERROR' || channelStatus === 'TIMED_OUT') {
+        if (channelStatus === 'SUBSCRIBED') setChannelReady(true);
+      if (channelStatus === 'CHANNEL_ERROR' || channelStatus === 'TIMED_OUT') {
           setError('Could not connect to voice signaling. Apply the latest DM voice migration in Supabase.');
         }
       });
@@ -223,7 +237,9 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     return () => {
       active = false;
       stopMedia();
+      incomingCallRef.current = null;
       setIncomingCall(null);
+      setChannelReady(false);
       channelRef.current = null;
       void supabase.removeChannel(channel);
     };
@@ -232,7 +248,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   }, [conversationId, currentUserId, otherUserId]);
 
   async function startCall() {
-    if (statusRef.current !== 'idle' || !channelRef.current) return;
+    if (statusRef.current !== 'idle' || !channelRef.current || !channelReady) return;
     setError('');
     const callId = crypto.randomUUID();
     callIdRef.current = callId;
@@ -247,11 +263,12 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   }
 
   async function acceptCall() {
-    const invite = incomingCall;
+    const invite = incomingCallRef.current;
     if (!invite) return;
     setError('');
     try {
       streamRef.current = await getMicrophone();
+      incomingCallRef.current = null;
       setIncomingCall(null);
       setCallStatus('connecting');
       await send('accept', { call_id: invite.call_id, from: currentUserId, to: invite.from });
@@ -262,7 +279,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   }
 
   async function rejectCall() {
-    const invite = incomingCall;
+    const invite = incomingCallRef.current;
+    incomingCallRef.current = null;
     setIncomingCall(null);
     if (invite) {
       try {
@@ -282,6 +300,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         // Local cleanup must still happen if the other client disconnected.
       }
     }
+    incomingCallRef.current = null;
     setIncomingCall(null);
     stopMedia();
   }
@@ -300,7 +319,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       <button
         type="button"
         onClick={() => void startCall()}
-        disabled={status !== 'idle' || Boolean(incomingCall)}
+        disabled={!channelReady || status !== 'idle' || Boolean(incomingCall)}
         aria-label={`Call ${otherName}`}
         title={`Voice call ${otherName}`}
         className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-300 transition hover:bg-emerald-400/[0.14] disabled:cursor-not-allowed disabled:opacity-40"
