@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
-  Compass, Flame, Globe2, Heart, Loader2, Search, Send, Sparkles, MessageCircle,
+  Compass, Flame, Globe2, Heart, ImagePlus, Loader2, Search, Send, Sparkles, MessageCircle,
   Users, Video, X, UserPlus, Check, RefreshCw, ArrowLeft, CalendarDays, Pencil, Trash2, Bookmark, Pin, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
