@@ -183,3 +183,30 @@ revoke all on function public.fetch_server_event_chat_poll_votes(uuid) from publ
 grant execute on function public.create_server_event_chat_poll(uuid, text, jsonb, boolean, timestamptz, boolean) to authenticated;
 grant execute on function public.update_server_event_chat_poll(uuid, text, jsonb, boolean, boolean) to authenticated;
 grant execute on function public.fetch_server_event_chat_poll_votes(uuid) to authenticated;
+
+
+alter table public.server_event_chat_polls
+  add column if not exists vote_updated_at timestamptz not null default now();
+
+create or replace function public.touch_server_event_chat_poll_votes()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_poll_id uuid := coalesce(new.poll_id, old.poll_id);
+begin
+  update public.server_event_chat_polls
+  set vote_updated_at = now()
+  where id = v_poll_id;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists server_event_chat_poll_votes_touch on public.server_event_chat_poll_votes;
+create trigger server_event_chat_poll_votes_touch
+after insert or delete on public.server_event_chat_poll_votes
+for each row execute function public.touch_server_event_chat_poll_votes();
+
+revoke all on function public.touch_server_event_chat_poll_votes() from public, anon, authenticated;
