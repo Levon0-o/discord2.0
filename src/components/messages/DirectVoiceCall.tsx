@@ -36,6 +36,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const statusRef = useRef<CallStatus>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
+  const callTimeoutRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
 
   function setCallStatus(next: CallStatus) {
@@ -45,7 +46,9 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
 
   function stopMedia() {
     if (timerRef.current !== null) window.clearInterval(timerRef.current);
+    if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
     timerRef.current = null;
+    callTimeoutRef.current = null;
     startedAtRef.current = null;
     peerRef.current?.close();
     peerRef.current = null;
@@ -114,6 +117,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
           }, 1000);
         }
       } else if (peer.connectionState === 'failed' || peer.connectionState === 'closed') {
+        if (peer.connectionState === 'failed') setError('The network connection failed. Try calling again.');
         stopMedia();
       }
     };
@@ -143,6 +147,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         const signal = payload as CallSignal;
         if (!active || signal.to !== currentUserId || signal.call_id !== callIdRef.current) return;
         try {
+          if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
+          callTimeoutRef.current = null;
           setCallStatus('connecting');
           const peer = createPeer(signal.call_id, signal.from);
           const offer = await peer.createOffer();
@@ -243,7 +249,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       channelRef.current = null;
       void supabase.removeChannel(channel);
     };
-    // incomingCall is intentionally read from state to reject a second simultaneous invitation.
+    // The channel owns one subscription for the active conversation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, currentUserId, otherUserId]);
 
@@ -256,6 +262,12 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       streamRef.current = await getMicrophone();
       setCallStatus('outgoing');
       await send('invite', { call_id: callId, from: currentUserId, to: otherUserId });
+      callTimeoutRef.current = window.setTimeout(() => {
+        if (callIdRef.current === callId && statusRef.current === 'outgoing') {
+          setError('No answer. The call timed out.');
+          stopMedia();
+        }
+      }, 30000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the call.');
       stopMedia();
