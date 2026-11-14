@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Plus, Search, Server, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CreateServerModal } from '@/components/servers/CreateServerModal';
 import { ServerCard } from '@/components/servers/ServerCard';
 import { ServerDetail } from '@/components/servers/ServerDetail';
+import { redeemServerInvitation } from '@/lib/serverInvitationsApi';
 import {
   createServer,
   fetchMyServers,
   fetchPublicServers,
   joinPublicServer,
+  fetchServerById,
 } from '@/lib/serversApi';
 import type { CreateServerInput, ServerWithMeta } from '@/types/servers';
 
@@ -31,6 +33,8 @@ export function ServersSection() {
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState('');
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState('');
+  const [redeemingInvite, setRedeemingInvite] = useState(false);
 
   const activeServerStorageKey = 'afterdark:active-server:' + userId;
   const storeActiveServer = (serverId: string | null) => {
@@ -134,6 +138,26 @@ export function ServersSection() {
     }
   }
 
+  async function handleRedeemInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!inviteCode.trim() || redeemingInvite || !userId) return;
+    setRedeemingInvite(true);
+    setError('');
+    try {
+      const serverId = await redeemServerInvitation(inviteCode);
+      const joinedServer = await fetchServerById(serverId, userId);
+      if (!joinedServer?.my_role) throw new Error('You joined the server, but it could not be opened. Refresh the page.');
+      setInviteCode('');
+      storeActiveServer(serverId);
+      await refresh();
+      setView({ mode: 'detail', server: joinedServer });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not use this invitation.');
+    } finally {
+      setRedeemingInvite(false);
+    }
+  }
+
   function openServer(server: ServerWithMeta) {
     if (!server.my_role) return;
     storeActiveServer(server.id);
@@ -183,6 +207,23 @@ export function ServersSection() {
           Create server
         </button>
       </header>
+
+      <form onSubmit={(event) => void handleRedeemInvite(event)} className="flex flex-col gap-2 rounded-xl border border-white/[0.07] bg-ink-900/50 p-3 sm:flex-row">
+        <div className="min-w-0 flex-1">
+          <label htmlFor="server-invite-code" className="mb-1.5 block text-xs font-semibold text-ink-300">Have an invite code?</label>
+          <input
+            id="server-invite-code"
+            value={inviteCode}
+            onChange={(event) => setInviteCode(event.target.value)}
+            maxLength={100}
+            placeholder="Paste a server invite code"
+            className="w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/60"
+          />
+        </div>
+        <button type="submit" disabled={!inviteCode.trim() || redeemingInvite} className="inline-flex items-center justify-center gap-2 self-stretch rounded-lg bg-primary-500 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40 sm:self-end">
+          {redeemingInvite ? 'Joining…' : 'Join server'} <ArrowRight size={14} />
+        </button>
+      </form>
 
       <div className="relative">
         <Search
