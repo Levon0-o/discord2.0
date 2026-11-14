@@ -2,7 +2,7 @@ create table if not exists public.server_event_chat_poll_option_images (
   event_id uuid not null references public.server_events(id) on delete cascade,
   poll_id uuid not null references public.server_event_chat_polls(id) on delete cascade,
   option_id text not null,
-  image_path text not null unique,
+  image_path text not null,
   uploaded_by uuid not null references auth.users(id) on delete cascade,
   created_at timestamptz not null default now(),
   primary key (poll_id, option_id)
@@ -21,7 +21,7 @@ create policy server_event_poll_option_images_insert_editors on public.server_ev
     where p.id = poll_id and p.event_id = event_id and sm.user_id = auth.uid()
       and (p.created_by = auth.uid() or sm.role in ('owner','admin','moderator'))
       and not exists (select 1 from public.server_event_chat_poll_votes v where v.poll_id = p.id)
-      and exists (select 1 from jsonb_array_elements(p.options) option_row where option_row->>'id' = option_id)
+      and exists (select 1 from jsonb_array_elements(p.options) as option_row(value) where value->>'id' = option_id)
   )
 );
 
@@ -62,3 +62,14 @@ create policy event_poll_option_images_delete_own_member_folder on storage.objec
     where e.id::text = (storage.foldername(name))[1] and sm.user_id = auth.uid()
   )
 );
+
+grant select, insert, delete on public.server_event_chat_poll_option_images to authenticated;
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'server_event_chat_poll_option_images') then
+    alter publication supabase_realtime add table public.server_event_chat_poll_option_images;
+  end if;
+end;
+$$;
