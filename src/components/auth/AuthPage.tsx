@@ -119,8 +119,8 @@ export function AuthPage({ configurationMissing = false }: AuthPageProps) {
         }
       }
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'An unknown error occurred.';
-      setError(message);
+      console.error(`AFTERDARK ${mode} failed:`, caught);
+      setError(getErrorMessage(caught, `Could not ${mode === 'login' ? 'sign in' : 'create your account'}. Please try again.`));
     } finally {
       setBusy(false);
     }
