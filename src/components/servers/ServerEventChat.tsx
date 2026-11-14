@@ -26,6 +26,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [polls, setPolls] = useState<ServerEventChatPoll[]>([]);
   const [pollVotes, setPollVotes] = useState<ServerEventChatPollVote[]>([]);
   const [pollFilter, setPollFilter] = useState<'all' | 'open' | 'closed'>('all');
+  const [pollSort, setPollSort] = useState<'newest' | 'oldest' | 'votes'>('newest');
   const [pollCreatorOpen, setPollCreatorOpen] = useState(false);
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [pollQuestion, setPollQuestion] = useState('');
@@ -747,9 +748,23 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
             })}
           </div>
         </div>
-        <div className="space-y-3">{polls.filter((poll) => {
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <label htmlFor="event-poll-sort" className="text-[9px] text-ink-500">Sort</label>
+          <select id="event-poll-sort" value={pollSort} onChange={(event) => setPollSort(event.target.value as 'newest' | 'oldest' | 'votes')} className="rounded-md border border-white/[0.08] bg-ink-950 px-2 py-1 text-[9px] text-ink-300 outline-none focus:border-primary-400/40">
+            <option value="newest">Newest</option><option value="oldest">Oldest</option><option value="votes">Most votes</option>
+          </select>
+        </div>
+        <div className="space-y-3">{[...polls].filter((poll) => {
           const isClosed = Boolean(poll.closed_at) || Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
           return pollFilter === 'all' || (pollFilter === 'closed' ? isClosed : !isClosed);
+        }).sort((a, b) => {
+          if (pollSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          if (pollSort === 'votes') {
+            const aVotes = new Set(pollVotes.filter((vote) => vote.poll_id === a.id).map((vote) => vote.user_id)).size;
+            const bVotes = new Set(pollVotes.filter((vote) => vote.poll_id === b.id).map((vote) => vote.user_id)).size;
+            return bVotes - aVotes || new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         }).map((poll) => {
           const votes = pollVotes.filter((vote) => vote.poll_id === poll.id);
           const total = new Set(votes.map((vote) => vote.user_id)).size;
