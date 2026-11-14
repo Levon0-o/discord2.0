@@ -33,6 +33,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
+  const [pollAnonymous, setPollAnonymous] = useState(false);
   const [pollExpiresIn, setPollExpiresIn] = useState('never');
   const [pollBusy, setPollBusy] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
@@ -211,10 +212,10 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       const duration = pollExpiresIn === '1h' ? 3600000 : pollExpiresIn === '24h' ? 86400000 : 604800000;
       const expiresAt = pollExpiresIn === 'never' ? null : new Date(Date.now() + duration).toISOString();
       const poll = editingPollId
-        ? await updateServerEventChatPoll(editingPollId, pollQuestion.trim(), options, pollAllowMultiple)
-        : await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt);
+        ? await updateServerEventChatPoll(editingPollId, pollQuestion.trim(), options, pollAllowMultiple, pollAnonymous)
+        : await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt, pollAnonymous);
       setPolls((current) => [poll, ...current.filter((item) => item.id !== poll.id)]);
-      setPollQuestion(''); setPollOptions(['', '']); setPollAllowMultiple(false); setPollExpiresIn('never'); setEditingPollId(null); setPollCreatorOpen(false);
+      setPollQuestion(''); setPollOptions(['', '']); setPollAllowMultiple(false); setPollAnonymous(false); setPollExpiresIn('never'); setEditingPollId(null); setPollCreatorOpen(false);
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not create poll.'); }
     finally { setPollBusy(false); }
   }
@@ -234,6 +235,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setPollQuestion(poll.question);
     setPollOptions(poll.options.map((option) => option.label));
     setPollAllowMultiple(poll.allow_multiple);
+    setPollAnonymous(poll.is_anonymous);
     setPollExpiresIn('never');
     setPollCreatorOpen(true);
   }
@@ -270,6 +272,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setPollQuestion(poll.question);
     setPollOptions(poll.options.map((option) => option.label));
     setPollAllowMultiple(poll.allow_multiple);
+    setPollAnonymous(poll.is_anonymous);
     setPollExpiresIn('never');
     setPollCreatorOpen(true);
   }
@@ -761,19 +764,19 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         }).sort((a, b) => {
           if (pollSort === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           if (pollSort === 'votes') {
-            const aVotes = new Set(pollVotes.filter((vote) => vote.poll_id === a.id).map((vote) => vote.user_id)).size;
-            const bVotes = new Set(pollVotes.filter((vote) => vote.poll_id === b.id).map((vote) => vote.user_id)).size;
+            const aVotes = pollVotes.find((vote) => vote.poll_id === a.id)?.voter_count ?? 0;
+            const bVotes = pollVotes.find((vote) => vote.poll_id === b.id)?.voter_count ?? 0;
             return bVotes - aVotes || new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
           }
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         }).map((poll) => {
           const votes = pollVotes.filter((vote) => vote.poll_id === poll.id);
-          const total = new Set(votes.map((vote) => vote.user_id)).size;
+          const total = votes[0]?.voter_count ?? new Set(votes.map((vote) => vote.user_id).filter(Boolean)).size;
           const closed = Boolean(poll.closed_at) || Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
           const ownVotes = votes.filter((vote) => vote.user_id === userId);
           const canClose = poll.created_by === userId || canModerate;
           return <div key={poll.id} className="rounded-lg border border-white/[0.08] bg-ink-950/70 p-3">
-            <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-ink-100">{poll.question}</p><p className="mt-1 text-[9px] text-ink-500">{total} {total === 1 ? 'vote' : 'votes'} · {closed ? 'Closed' : poll.allow_multiple ? 'Multiple choices' : 'Choose one'}</p></div>
+            <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-ink-100">{poll.question}</p><p className="mt-1 text-[9px] text-ink-500">{total} {total === 1 ? 'vote' : 'votes'} · {poll.is_anonymous ? 'Anonymous' : 'Public'} · {closed ? 'Closed' : poll.allow_multiple ? 'Multiple choices' : 'Choose one'}</p></div>
               <div className="flex shrink-0 items-center gap-1"><button type="button" onClick={() => exportPollResults(poll, votes, total, closed)} className="rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-primary-200" title="Export poll results as CSV" aria-label="Export poll results as CSV"><Download size={12} /></button><button type="button" onClick={() => startDuplicatingPoll(poll)} className="rounded p-1 text-ink-500 hover:bg-white/[0.06] hover:text-primary-200" title="Duplicate poll" aria-label="Duplicate poll"><Copy size={12} /></button>{canClose && !closed && votes.length === 0 ? <button type="button" onClick={() => startEditingPoll(poll)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-primary-200">Edit</button> : null}{canClose && !closed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded px-2 py-1 text-[9px] text-ink-500 hover:bg-white/[0.06] hover:text-ink-200">Close</button> : null}{canClose ? <button type="button" onClick={() => void handleDeletePoll(poll)} className="rounded p-1 text-ink-500 hover:bg-red-500/10 hover:text-red-300" title="Delete poll" aria-label="Delete poll"><Trash2 size={12} /></button> : null}</div>
             </div>
             <div className="mt-2 space-y-1.5">{poll.options.map((option) => {
@@ -787,7 +790,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
               </button>;
             })}</div>
             <p className="mt-2 text-[9px] text-ink-600">{closed ? 'Voting is closed.' : 'Select an option to vote'}</p>
-            {canClose ? <div className="mt-2 border-t border-white/[0.06] pt-2">
+            {canClose && !poll.is_anonymous ? <div className="mt-2 border-t border-white/[0.06] pt-2">
               <button type="button" onClick={() => setExpandedPollResults((current) => current.includes(poll.id) ? current.filter((id) => id !== poll.id) : [...current, poll.id])} aria-expanded={expandedPollResults.includes(poll.id)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[9px] text-ink-400 transition hover:bg-white/[0.05] hover:text-primary-200">
                 <Users size={11} /> {expandedPollResults.includes(poll.id) ? 'Hide voter details' : 'View voter details'}
               </button>
@@ -976,6 +979,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
             {pollOptions.length < 6 ? <button type="button" onClick={() => setPollOptions((current) => [...current, ''])} className="inline-flex items-center gap-1 px-1 py-1 text-[10px] text-primary-300 hover:text-primary-200"><Plus size={11} /> Add option</button> : null}
           </div>
           <label className="flex items-center gap-2 text-[10px] text-ink-300"><input type="checkbox" checked={pollAllowMultiple} onChange={(event) => setPollAllowMultiple(event.target.checked)} className="accent-primary-400" /> Allow multiple choices</label>
+          <label className="flex items-center gap-2 text-[10px] text-ink-300"><input type="checkbox" checked={pollAnonymous} onChange={(event) => setPollAnonymous(event.target.checked)} className="accent-primary-400" /> Anonymous voting <span className="text-ink-600">(identities hidden from everyone)</span></label>
           {!editingPollId ? <label className="block text-[10px] text-ink-400">Close after<select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-100"><option value="never">Never</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label> : <p className="text-[9px] text-ink-500">Expiration time stays unchanged when editing.</p>}
           <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3"><button type="button" onClick={() => { setPollCreatorOpen(false); setEditingPollId(null); }} className="rounded-md px-3 py-2 text-[10px] text-ink-400 hover:bg-white/[0.06]">Cancel</button><button type="submit" disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="rounded-md bg-primary-500 px-3 py-2 text-[10px] font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{pollBusy ? (editingPollId ? 'Saving…' : 'Creating…') : (editingPollId ? 'Save changes' : 'Create poll')}</button></div>
         </form>
