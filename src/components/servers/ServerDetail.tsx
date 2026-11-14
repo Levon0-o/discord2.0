@@ -704,7 +704,7 @@ export function ServerDetail({
                                 />
                               )}
                             </button>
-                            {isAdminOrOwner && (
+                            {canManageChannelsPermission && (
                               <div className="ml-1 flex shrink-0 items-center">
                                 <button
                                   type="button"
@@ -1150,7 +1150,7 @@ export function ServerDetail({
 
       {inviteOpen ? <InviteManager serverId={server.id} serverName={server.name} onClose={() => setInviteOpen(false)} /> : null}
 
-      {isAdminOrOwner && (
+      {canManageChannelsPermission && (
         <CreateChannelModal
           open={createOpen}
           busy={createBusy}
