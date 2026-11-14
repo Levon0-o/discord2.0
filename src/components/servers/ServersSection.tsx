@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { CreateServerModal } from '@/components/servers/CreateServerModal';
 import { ServerCard } from '@/components/servers/ServerCard';
 import { ServerDetail } from '@/components/servers/ServerDetail';
-import { redeemServerInvitation } from '@/lib/serverInvitationsApi';
+import { previewServerInvitation, redeemServerInvitation, type ServerInvitationPreview } from '@/lib/serverInvitationsApi';
 import {
   createServer,
   fetchMyServers,
@@ -35,6 +35,9 @@ export function ServersSection() {
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState('');
   const [redeemingInvite, setRedeemingInvite] = useState(false);
+  const [invitePreview, setInvitePreview] = useState<ServerInvitationPreview | null>(null);
+  const [invitePreviewLoading, setInvitePreviewLoading] = useState(false);
+  const [invitePreviewError, setInvitePreviewError] = useState('');
 
   const activeServerStorageKey = 'afterdark:active-server:' + userId;
   const storeActiveServer = (serverId: string | null) => {
@@ -81,6 +84,29 @@ export function ServersSection() {
     const code = params.get('invite');
     if (code) setInviteCode(code);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const code = inviteCode.trim();
+    if (!code) {
+      setInvitePreview(null);
+      setInvitePreviewError('');
+      return;
+    }
+    setInvitePreviewLoading(true);
+    setInvitePreviewError('');
+    void previewServerInvitation(code)
+      .then((preview) => {
+        if (active) setInvitePreview(preview);
+      })
+      .catch((err) => {
+        if (active) setInvitePreviewError(err instanceof Error ? err.message : 'Could not load this invitation.');
+      })
+      .finally(() => {
+        if (active) setInvitePreviewLoading(false);
+      });
+    return () => { active = false; };
+  }, [inviteCode]);
 
   const query = search.trim().toLowerCase();
 
@@ -217,6 +243,43 @@ export function ServersSection() {
         </button>
       </header>
 
+      {inviteCode.trim() && (
+        <section className="overflow-hidden rounded-2xl border border-primary-400/25 bg-gradient-to-br from-primary-500/15 via-ink-900 to-ink-950 shadow-xl shadow-black/20" aria-live="polite">
+          <div className="p-5 sm:p-6">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-primary-300">Server invitation</p>
+            {invitePreviewLoading ? (
+              <p className="text-sm text-ink-300">Loading invitation…</p>
+            ) : invitePreview ? (
+              <>
+                <div className="flex items-center gap-4">
+                  {invitePreview.icon_url ? (
+                    <img src={invitePreview.icon_url} alt="" className="h-16 w-16 rounded-2xl object-cover ring-1 ring-white/10" />
+                  ) : (
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-500/20 text-2xl font-bold text-primary-200">{invitePreview.name.slice(0, 1).toUpperCase()}</div>
+                  )}
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-bold text-ink-50">Want to join {invitePreview.name}?</h2>
+                    <p className="mt-1 text-sm text-ink-300">{invitePreview.member_count} {invitePreview.member_count === 1 ? 'member' : 'members'}</p>
+                  </div>
+                </div>
+                {invitePreview.description && <p className="mt-4 max-w-2xl text-sm text-ink-300">{invitePreview.description}</p>}
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <button type="button" disabled={!invitePreview.valid || redeemingInvite} onClick={() => document.getElementById('server-invite-submit')?.click()} className="rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40">
+                    {redeemingInvite ? 'Joining…' : 'Yes, join server'}
+                  </button>
+                  <button type="button" onClick={() => { setInviteCode(''); const url = new URL(window.location.href); url.searchParams.delete('invite'); window.history.replaceState({}, '', url.pathname + url.search + url.hash); }} className="rounded-xl border border-white/10 px-5 py-2.5 text-sm font-medium text-ink-300 transition hover:bg-white/5">
+                    Not now
+                  </button>
+                  {!invitePreview.valid && <span className="text-xs text-rose-300">This invitation is expired, revoked, or unavailable.</span>}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-rose-300">{invitePreviewError || 'This invitation could not be found.'}</p>
+            )}
+          </div>
+        </section>
+      )}
+
       <form onSubmit={(event) => void handleRedeemInvite(event)} className="flex flex-col gap-2 rounded-xl border border-white/[0.07] bg-ink-900/50 p-3 sm:flex-row">
         <div className="min-w-0 flex-1">
           <label htmlFor="server-invite-code" className="mb-1.5 block text-xs font-semibold text-ink-300">Have an invite code?</label>
@@ -229,7 +292,7 @@ export function ServersSection() {
             className="w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/60"
           />
         </div>
-        <button type="submit" disabled={!inviteCode.trim() || redeemingInvite} className="inline-flex items-center justify-center gap-2 self-stretch rounded-lg bg-primary-500 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40 sm:self-end">
+        <button id="server-invite-submit" type="submit" disabled={!inviteCode.trim() || redeemingInvite} className="inline-flex items-center justify-center gap-2 self-stretch rounded-lg bg-primary-500 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-40 sm:self-end">
           {redeemingInvite ? 'Joining…' : 'Join server'} <ArrowRight size={14} />
         </button>
       </form>
