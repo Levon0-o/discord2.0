@@ -398,6 +398,7 @@ export interface ServerEventChatPoll {
   question: string;
   options: ServerEventChatPollOption[];
   allow_multiple: boolean;
+  is_anonymous: boolean;
   expires_at: string | null;
   closed_at: string | null;
   created_at: string;
@@ -407,23 +408,21 @@ export interface ServerEventChatPollVote {
   id: string;
   poll_id: string;
   option_id: string;
-  user_id: string;
+  user_id: string | null;
   created_at: string;
+  voter_count: number;
 }
 
 export async function fetchServerEventChatPolls(eventId: string): Promise<{ polls: ServerEventChatPoll[]; votes: ServerEventChatPollVote[] }> {
   const { data: polls, error: pollsError } = await supabase
     .from('server_event_chat_polls')
-    .select('id, event_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at')
+    .select('id, event_id, message_id, created_by, question, options, allow_multiple, is_anonymous, expires_at, closed_at, created_at')
     .eq('event_id', eventId)
     .order('created_at', { ascending: false });
   if (pollsError) throw pollsError;
   const pollRows = (polls ?? []) as ServerEventChatPoll[];
   if (pollRows.length === 0) return { polls: [], votes: [] };
-  const { data: votes, error: votesError } = await supabase
-    .from('server_event_chat_poll_votes')
-    .select('id, poll_id, option_id, user_id, created_at')
-    .in('poll_id', pollRows.map((poll) => poll.id));
+  const { data: votes, error: votesError } = await supabase.rpc('fetch_server_event_chat_poll_votes', { p_event_id: eventId });
   if (votesError) throw votesError;
   return { polls: pollRows, votes: (votes ?? []) as ServerEventChatPollVote[] };
 }
@@ -434,6 +433,7 @@ export async function createServerEventChatPoll(
   options: string[],
   allowMultiple: boolean,
   expiresAt: string | null,
+  isAnonymous: boolean,
 ): Promise<ServerEventChatPoll> {
   const { data, error } = await supabase.rpc('create_server_event_chat_poll', {
     p_event_id: eventId,
@@ -441,13 +441,14 @@ export async function createServerEventChatPoll(
     p_options: options,
     p_allow_multiple: allowMultiple,
     p_expires_at: expiresAt,
+    p_is_anonymous: isAnonymous,
   });
   if (error) throw error;
   const result = (data as { poll_id: string; message_id: string }[] | null)?.[0];
   if (!result?.poll_id) throw new Error('Poll was created but could not be loaded.');
   const { data: poll, error: pollError } = await supabase
     .from('server_event_chat_polls')
-    .select('id, event_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at')
+    .select('id, event_id, message_id, created_by, question, options, allow_multiple, is_anonymous, expires_at, closed_at, created_at')
     .eq('id', result.poll_id)
     .single();
   if (pollError) throw pollError;
@@ -475,10 +476,10 @@ export async function deleteServerEventChatPoll(pollId: string): Promise<void> {
 }
 
 
-export async function updateServerEventChatPoll(pollId: string, question: string, options: string[], allowMultiple: boolean): Promise<ServerEventChatPoll> {
-  const { error } = await supabase.rpc('update_server_event_chat_poll', { p_poll_id: pollId, p_question: question, p_options: options, p_allow_multiple: allowMultiple });
+export async function updateServerEventChatPoll(pollId: string, question: string, options: string[], allowMultiple: boolean, isAnonymous: boolean): Promise<ServerEventChatPoll> {
+  const { error } = await supabase.rpc('update_server_event_chat_poll', { p_poll_id: pollId, p_question: question, p_options: options, p_allow_multiple: allowMultiple, p_is_anonymous: isAnonymous });
   if (error) throw error;
-  const { data, error: fetchError } = await supabase.from('server_event_chat_polls').select('id, event_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at').eq('id', pollId).single();
+  const { data, error: fetchError } = await supabase.from('server_event_chat_polls').select('id, event_id, message_id, created_by, question, options, allow_multiple, is_anonymous, expires_at, closed_at, created_at').eq('id', pollId).single();
   if (fetchError) throw fetchError;
   return data as ServerEventChatPoll;
 }
