@@ -199,6 +199,12 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           setPollVotes(result.votes);
           setPolls(result.polls);
         }).catch((err) => setError(err instanceof Error ? err.message : 'Could not refresh poll results.'));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'server_event_chat_poll_option_images', filter: 'event_id=eq.' + eventId }, () => {
+        void fetchServerEventChatPolls(eventId).then((result) => {
+          setPollVotes(result.votes);
+          setPolls(result.polls);
+        }).catch((err) => setError(err instanceof Error ? err.message : 'Could not refresh poll images.'));
       }).subscribe();
     return () => { active = false; void supabase.removeChannel(channel); };
   }, [eventId]);
