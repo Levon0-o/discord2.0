@@ -4,6 +4,8 @@ import { isSectionId, type SectionId } from '@/config/navigation';
 const DEFAULT_SECTION: SectionId = 'feed';
 
 function readSectionFromHash(): SectionId {
+  // Shared server invitation links should open the Servers section directly.
+  if (new URLSearchParams(window.location.search).has('invite')) return 'servers';
   const value = window.location.hash.replace('#', '');
   return isSectionId(value) ? value : DEFAULT_SECTION;
 }
