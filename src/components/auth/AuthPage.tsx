@@ -8,22 +8,44 @@ interface AuthPageProps {
 }
 
 function getErrorMessage(caught: unknown, fallback: string) {
-  if (caught instanceof Error && caught.message && caught.message !== '{}') {
-    return caught.message;
+  const details = caught && typeof caught === 'object'
+    ? caught as Record<string, unknown>
+    : null;
+
+  const message = caught instanceof Error ? caught.message : undefined;
+  if (message?.trim() && message.trim() !== '{}' && message.trim() !== '[object Object]') {
+    return message;
   }
 
-  if (caught && typeof caught === 'object') {
-    const details = caught as Record<string, unknown>;
+  if (details) {
     for (const key of ['message', 'msg', 'error_description', 'error', 'details', 'hint']) {
       const value = details[key];
-      if (typeof value === 'string' && value.trim() && value !== '[object Object]') {
+      if (typeof value === 'string' && value.trim() && value.trim() !== '{}' && value !== '[object Object]') {
         return value;
       }
     }
 
-    const serialized = JSON.stringify(caught);
-    if (serialized && serialized !== '{}' && serialized !== '[]') {
-      return serialized;
+    const status = details.status;
+    const code = details.code;
+    const name = details.name;
+    const diagnostic = [
+      typeof name === 'string' ? name : undefined,
+      typeof status === 'number' ? `HTTP ${status}` : undefined,
+      typeof code === 'string' ? `code: ${code}` : undefined,
+    ].filter(Boolean).join(' · ');
+    if (diagnostic) return `Registration request failed (${diagnostic}).`;
+
+    const cause = details.cause;
+    if (cause && cause !== caught) {
+      const causeMessage = getErrorMessage(cause, '');
+      if (causeMessage) return causeMessage;
+    }
+
+    try {
+      const serialized = JSON.stringify(caught);
+      if (serialized && serialized !== '{}' && serialized !== '[]') return serialized;
+    } catch {
+      // Ignore non-serializable error objects and use the fallback below.
     }
   }
 
