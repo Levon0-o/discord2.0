@@ -7,7 +7,7 @@ interface AuthPageProps {
   configurationMissing?: boolean;
 }
 
-function getErrorMessage(caught: unknown, fallback: string) {
+function getErrorMessage(caught: unknown, fallback: string): string {
   const details = caught && typeof caught === 'object'
     ? caught as Record<string, unknown>
     : null;
@@ -37,7 +37,7 @@ function getErrorMessage(caught: unknown, fallback: string) {
 
     const cause = details.cause;
     if (cause && cause !== caught) {
-      const causeMessage = getErrorMessage(cause, '');
+      const causeMessage: string = getErrorMessage(cause, '');
       if (causeMessage) return causeMessage;
     }
 
