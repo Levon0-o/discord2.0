@@ -30,11 +30,8 @@ interface RoleManagerProps {
 const PERMISSIONS: { key: ServerPermission; label: string; description: string }[] = [
   { key: 'manage_server', label: 'Manage server', description: 'Manage server settings.' },
   { key: 'manage_channels', label: 'Manage channels', description: 'Create and manage channels.' },
-  { key: 'manage_members', label: 'Manage members', description: 'Manage server members.' },
   { key: 'manage_invites', label: 'Manage invitations', description: 'Create and manage invitations.' },
-  { key: 'manage_roles', label: 'Manage roles', description: 'Create and manage custom roles.' },
   { key: 'moderate_messages', label: 'Moderate messages', description: 'Moderate messages and members.' },
-  { key: 'manage_messages', label: 'Manage messages', description: 'Manage other members’ messages.' },
   { key: 'view_restricted_channels', label: 'View restricted channels', description: 'Access restricted channels.' },
 ];
 
