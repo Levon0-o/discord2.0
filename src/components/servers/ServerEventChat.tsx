@@ -223,7 +223,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       const poll = editingPollId
         ? await updateServerEventChatPoll(editingPollId, pollQuestion.trim(), options, pollAllowMultiple, pollAnonymous)
         : await createServerEventChatPoll(eventId, pollQuestion.trim(), options, pollAllowMultiple, expiresAt, pollAnonymous);
-      await saveServerEventChatPollOptionImages(eventId, poll.id, poll.options.map((option, index) => ({ optionId: option.id, path: selectedOptions[index]?.image?.path })).filter((image): image is { optionId: string; path: string } => Boolean(image.path)));
+      const imageEntries = poll.options.map((option, index) => ({ optionId: option.id, path: selectedOptions[index]?.image?.path })).filter((image): image is { optionId: string; path: string } => Boolean(image.path));
+      if (editingPollId || imageEntries.length > 0) await saveServerEventChatPollOptionImages(eventId, poll.id, imageEntries);
       const refreshed = await fetchServerEventChatPolls(eventId);
       setPolls(refreshed.polls); setPollVotes(refreshed.votes);
       setPollQuestion(''); setPollOptions(['', '']); setPollOptionImages([null, null]); setPollAllowMultiple(false); setPollAnonymous(false); setPollExpiresIn('never'); setEditingPollId(null); setPollCreatorOpen(false);
