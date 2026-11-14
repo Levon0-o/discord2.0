@@ -66,3 +66,24 @@ export async function redeemServerInvitation(code: string): Promise<string> {
 
   return data;
 }
+
+
+export interface ServerInvitationPreview {
+  server_id: string;
+  name: string;
+  description: string;
+  icon_url: string | null;
+  banner_url: string | null;
+  theme_color: string;
+  member_count: number;
+  valid: boolean;
+}
+
+export async function previewServerInvitation(code: string): Promise<ServerInvitationPreview | null> {
+  const { data, error } = await supabase.rpc('preview_server_invitation', {
+    p_code: code.trim(),
+  });
+
+  if (error) throw error;
+  return (data ?? null) as ServerInvitationPreview | null;
+}
