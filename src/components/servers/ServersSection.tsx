@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Plus, Search, Server, Users } from 'lucide-react';
+import { ArrowRight, Plus, Search, Server, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CreateServerModal } from '@/components/servers/CreateServerModal';
