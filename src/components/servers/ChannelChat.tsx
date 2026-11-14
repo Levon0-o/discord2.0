@@ -24,6 +24,7 @@ interface ChannelChatProps {
   slowmodeSeconds?: number;
   members: MemberWithProfile[];
   availableChannels: Channel[];
+  canModerateMessages?: boolean;
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉'] as const;
@@ -32,7 +33,7 @@ function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeconds = 0, members, availableChannels }: ChannelChatProps) {
+export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeconds = 0, members, availableChannels, canModerateMessages = false }: ChannelChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [draftRestored, setDraftRestored] = useState(false);
@@ -880,8 +881,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                         <button type="button" title="Pin / unpin" disabled={busyMessageId === message.id} onClick={() => void handlePin(message.id)} className={`rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 ${isPinned ? 'text-primary-200' : 'text-ink-400 hover:text-primary-200'}`}><Pin size={13} /></button>
                         {isMine ? <>
                           <button type="button" title="Edit" onClick={() => { setEditingId(message.id); setEditingText(message.body); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Pencil size={13} /></button>
-                          <button type="button" title="Delete" disabled={busyMessageId === message.id} onClick={() => void handleDelete(message.id)} className="rounded-md border border-red-400/15 bg-ink-950/95 p-1.5 text-red-300/80 hover:text-red-200"><Trash2 size={13} /></button>
                         </> : null}
+                        {(isMine || canModerateMessages) ? <button type="button" title={isMine ? "Delete your message" : "Delete message as moderator"} disabled={busyMessageId === message.id} onClick={() => void handleDelete(message.id)} className="rounded-md border border-red-400/15 bg-ink-950/95 p-1.5 text-red-300/80 hover:text-red-200"><Trash2 size={13} /></button> : null}
                         <button type="button" title="Copy message" onClick={() => void navigator.clipboard?.writeText(message.body)} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-ink-200"><Copy size={13} /></button>
                         {QUICK_REACTIONS.map((emoji) => <button key={emoji} type="button" title={`React ${emoji}`} onClick={() => void handleReaction(message.id, emoji)} className="rounded-md border border-white/[0.08] bg-ink-950/95 px-1.5 py-1 text-xs hover:border-primary-400/40">{emoji}</button>)}
                       </div>
