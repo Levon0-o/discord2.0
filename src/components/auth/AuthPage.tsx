@@ -7,6 +7,29 @@ interface AuthPageProps {
   configurationMissing?: boolean;
 }
 
+function getErrorMessage(caught: unknown, fallback: string) {
+  if (caught instanceof Error && caught.message && caught.message !== '{}') {
+    return caught.message;
+  }
+
+  if (caught && typeof caught === 'object') {
+    const details = caught as Record<string, unknown>;
+    for (const key of ['message', 'msg', 'error_description', 'error', 'details', 'hint']) {
+      const value = details[key];
+      if (typeof value === 'string' && value.trim() && value !== '[object Object]') {
+        return value;
+      }
+    }
+
+    const serialized = JSON.stringify(caught);
+    if (serialized && serialized !== '{}' && serialized !== '[]') {
+      return serialized;
+    }
+  }
+
+  return fallback;
+}
+
 export function AuthPage({ configurationMissing = false }: AuthPageProps) {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<'login' | 'register' | 'recovery'>('login');
@@ -52,7 +75,8 @@ export function AuthPage({ configurationMissing = false }: AuthPageProps) {
         if (recoveryError) throw recoveryError;
         setNotice('If an account exists for that email, a password reset link has been sent. Open the link, then go to Settings to choose a new password.');
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'Could not send the password reset email.');
+        console.error('AFTERDARK password recovery failed:', caught);
+        setError(getErrorMessage(caught, 'Could not send the password reset email.'));
       } finally {
         setBusy(false);
       }
