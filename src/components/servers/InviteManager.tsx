@@ -71,7 +71,9 @@ export function InviteManager({ serverId, serverName, onClose }: InviteManagerPr
 
   async function handleCopy(invitation: ServerInvitation) {
     try {
-      await navigator.clipboard.writeText(invitation.code);
+      const inviteUrl = new URL(window.location.origin);
+      inviteUrl.searchParams.set('invite', invitation.code);
+      await navigator.clipboard.writeText(inviteUrl.toString());
       setCopiedId(invitation.id);
     } catch {
       setError('Clipboard access was blocked. Select and copy the invitation code manually.');
@@ -164,7 +166,7 @@ export function InviteManager({ serverId, serverName, onClose }: InviteManagerPr
                   <div className="mt-3 flex gap-2">
                     <button type="button" onClick={() => void handleCopy(invitation)} disabled={inactive} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-2 text-[10px] font-semibold text-ink-300 hover:border-primary-400/30 hover:text-primary-200 disabled:opacity-40">
                       {copiedId === invitation.id ? <Check size={12} /> : <Copy size={12} />}
-                      {copiedId === invitation.id ? 'Copied' : 'Copy code'}
+                      {copiedId === invitation.id ? 'Copied' : 'Copy invite link'}
                     </button>
                     {!inactive ? <button type="button" onClick={() => void handleRevoke(invitation)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/15 px-3 py-2 text-[10px] font-semibold text-red-300 hover:bg-red-400/10 disabled:opacity-40"><Trash2 size={12} /> Revoke</button> : null}
                   </div>
@@ -172,7 +174,7 @@ export function InviteManager({ serverId, serverName, onClose }: InviteManagerPr
               );
             }) : null}
           </div>
-          <p className="flex items-start gap-2 text-[10px] leading-relaxed text-ink-600"><Shield size={12} className="mt-0.5 shrink-0" /> Anyone with an active code can join this server. Share codes only with people you trust.</p>
+          <p className="flex items-start gap-2 text-[10px] leading-relaxed text-ink-600"><Shield size={12} className="mt-0.5 shrink-0" /> Anyone with an active invite link can join this server. After opening the link, they can use the prefilled code under Servers.</p>
         </div>
       </section>
     </div>
