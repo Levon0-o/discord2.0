@@ -150,6 +150,7 @@ export function ServerDetail({
   const currentMember = members.find((member) => member.user_id === userId);
   const hasCustomPermission = (permission: ServerPermission) =>
     Boolean(currentMember?.custom_roles?.some((role) => role.permissions?.[permission] === true));
+  const canModerateMessages = ['owner', 'admin', 'moderator'].includes(server.my_role ?? '') || hasCustomPermission('moderate_messages');
   const canManageChannelsPermission = isAdminOrOwner || hasCustomPermission('manage_channels');
   const canManageInvites =
     server.my_role === 'owner' ||
@@ -790,6 +791,7 @@ export function ServerDetail({
                 slowmodeSeconds={activeChannel.slowmode_seconds ?? 0}
                 members={members}
                 availableChannels={channels}
+                canModerateMessages={canModerateMessages}
               />
             ) : (
               <section className="panel flex h-full min-h-[320px] flex-col items-center justify-center overflow-hidden px-6 text-center">
