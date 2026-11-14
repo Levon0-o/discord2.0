@@ -24,6 +24,7 @@ import {
   Clock,
   CheckCircle2,
   Star,
+  Link2,
 } from 'lucide-react';
 
 import { ServerIcon } from '@/components/servers/ServerIcon';
@@ -34,6 +35,7 @@ import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
 import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
+import { InviteManager } from '@/components/servers/InviteManager';
 
 import { cn } from '@/lib/cn';
 
@@ -139,10 +141,12 @@ export function ServerDetail({
   });
 
   const [rolesOpen, setRolesOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
     useState<MemberWithProfile | null>(null);
 
   const isAdminOrOwner = canManageChannels(server.my_role);
+  const canManageInvites = server.my_role === 'owner' || server.my_role === 'admin' || server.my_role === 'moderator';
   const currentMember = members.find((member) => member.user_id === userId);
   const filteredEvents = useMemo(() => {
     const query = eventSearch.trim().toLocaleLowerCase();
@@ -582,6 +586,17 @@ export function ServerDetail({
                 <CalendarDays size={14} />
                 Server events
               </button>
+
+              {canManageInvites && (
+                <button
+                  type="button"
+                  onClick={() => setInviteOpen(true)}
+                  className="mt-2 flex w-full items-center gap-2 rounded-lg border border-white/[0.07] px-2.5 py-2 text-left text-xs text-ink-300 transition hover:border-primary-400/30 hover:bg-primary-500/[0.07] hover:text-primary-200"
+                >
+                  <Link2 size={14} />
+                  Invite people
+                </button>
+              )}
 
               {canManageRoles && (
                 <button
@@ -1129,6 +1144,8 @@ export function ServerDetail({
           </form>
         </div>
       )}
+
+      {inviteOpen ? <InviteManager serverId={server.id} serverName={server.name} onClose={() => setInviteOpen(false)} /> : null}
 
       {isAdminOrOwner && (
         <CreateChannelModal
