@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 interface AuthPageProps {
   configurationMissing?: boolean;
@@ -8,7 +9,7 @@ interface AuthPageProps {
 
 export function AuthPage({ configurationMissing = false }: AuthPageProps) {
   const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'recovery'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -18,7 +19,7 @@ export function AuthPage({ configurationMissing = false }: AuthPageProps) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  function switchMode(nextMode: 'login' | 'register') {
+  function switchMode(nextMode: 'login' | 'register' | 'recovery') {
     setMode(nextMode);
     setError('');
     setNotice('');
@@ -36,6 +37,27 @@ export function AuthPage({ configurationMissing = false }: AuthPageProps) {
 
     const cleanEmail = email.trim();
     const cleanUsername = username.trim().toLowerCase();
+
+    if (mode === 'recovery') {
+      if (!cleanEmail) {
+        setError('Enter the email address linked to your account.');
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: window.location.origin,
+        });
+        if (recoveryError) throw recoveryError;
+        setNotice('If an account exists for that email, a password reset link has been sent. Open the link, then go to Settings to choose a new password.');
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Could not send the password reset email.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
 
     if (mode === 'register') {
       if (!/^[a-z0-9_]{3,30}$/.test(cleanUsername)) {
@@ -89,22 +111,22 @@ export function AuthPage({ configurationMissing = false }: AuthPageProps) {
           </div>
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-primary-300">AFTERDARK</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-50">
-            {mode === 'login' ? 'Welcome back' : 'Join AFTERDARK'}
+            {mode === 'login' ? 'Welcome back' : mode === 'register' ? 'Join AFTERDARK' : 'Reset your password'}
           </h1>
           <p className="mt-2 text-sm text-ink-400">
-            {mode === 'login' ? 'Sign in and get back to your community.' : 'Create an account and start building your space.'}
+            {mode === 'login' ? 'Sign in and get back to your community.' : mode === 'register' ? 'Create an account and start building your space.' : 'Enter your email address and we will send you a reset link.'}
           </p>
         </div>
 
         <section className="rounded-3xl border border-white/[0.08] bg-ink-900/90 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-8">
-          <div className="mb-6 grid grid-cols-2 rounded-xl border border-white/[0.06] bg-ink-950/70 p-1">
+          {mode !== 'recovery' && <div className="mb-6 grid grid-cols-2 rounded-xl border border-white/[0.06] bg-ink-950/70 p-1">
             <button type="button" onClick={() => switchMode('login')} className={`rounded-lg px-3 py-2.5 text-sm font-medium transition ${mode === 'login' ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20' : 'text-ink-400 hover:text-ink-100'}`}>
               Sign in
             </button>
             <button type="button" onClick={() => switchMode('register')} className={`rounded-lg px-3 py-2.5 text-sm font-medium transition ${mode === 'register' ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20' : 'text-ink-400 hover:text-ink-100'}`}>
               Sign up
             </button>
-          </div>
+          </div>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
@@ -131,7 +153,7 @@ export function AuthPage({ configurationMissing = false }: AuthPageProps) {
               </span>
             </label>
 
-            <label className="block">
+            {mode !== 'recovery' && <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink-200">Password</span>
               <span className="relative block">
                 <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-500" size={17} />
@@ -140,16 +162,19 @@ export function AuthPage({ configurationMissing = false }: AuthPageProps) {
                   {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </span>
-            </label>
+            </label>}
 
+            {mode === 'login' && <button type="button" onClick={() => switchMode('recovery')} className="-mt-1 text-sm font-medium text-primary-300 transition hover:text-primary-200">Forgot password?</button>}
             {error && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/10 px-3.5 py-3 text-sm text-red-300">{error}</p>}
             {notice && <p role="status" className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-3 text-sm text-emerald-300">{notice}</p>}
 
             <button type="submit" disabled={busy || configurationMissing} className="group flex w-full items-center justify-center gap-2 rounded-xl bg-primary-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-primary-500/20 transition hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50">
-              {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+              {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : mode === 'register' ? 'Create account' : 'Send reset link'}
               {!busy && <ArrowRight size={17} className="transition group-hover:translate-x-1" />}
             </button>
           </form>
+
+          {mode === 'recovery' && <button type="button" onClick={() => switchMode('login')} className="mt-4 w-full text-center text-sm text-ink-400 transition hover:text-ink-100">Back to sign in</button>}
 
           {configurationMissing ? (
             <p className="mt-5 text-center text-xs leading-5 text-amber-300">Supabase is not configured. Add the required environment variables as described in the README.</p>
