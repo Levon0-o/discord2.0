@@ -76,6 +76,12 @@ export function ServersSection() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('invite');
+    if (code) setInviteCode(code);
+  }, []);
+
   const query = search.trim().toLowerCase();
 
   const filteredMine = useMemo(() => {
@@ -148,6 +154,9 @@ export function ServersSection() {
       const joinedServer = await fetchServerById(serverId, userId);
       if (!joinedServer?.my_role) throw new Error('You joined the server, but it could not be opened. Refresh the page.');
       setInviteCode('');
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.delete('invite');
+      window.history.replaceState({}, '', currentUrl.pathname + currentUrl.search + currentUrl.hash);
       storeActiveServer(serverId);
       await refresh();
       setView({ mode: 'detail', server: joinedServer });
