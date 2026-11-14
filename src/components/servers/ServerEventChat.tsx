@@ -25,6 +25,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   const [notificationPreference, setNotificationPreference] = useState<ServerEventChatNotificationPreference | null>(null);
   const [polls, setPolls] = useState<ServerEventChatPoll[]>([]);
   const [pollVotes, setPollVotes] = useState<ServerEventChatPollVote[]>([]);
+  const [pollFilter, setPollFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [pollCreatorOpen, setPollCreatorOpen] = useState(false);
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [pollQuestion, setPollQuestion] = useState('');
@@ -734,8 +735,22 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
       </div>
 
       {polls.length > 0 ? <div className="border-b border-white/[0.07] bg-primary-500/[0.035] p-3">
-        <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary-200"><BarChart3 size={12} /> Event polls</p>
-        <div className="space-y-3">{polls.map((poll) => {
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary-200"><BarChart3 size={12} /> Event polls</p>
+          <div className="flex items-center gap-1" role="group" aria-label="Filter event polls">
+            {(['all', 'open', 'closed'] as const).map((filter) => {
+              const count = filter === 'all' ? polls.length : polls.filter((poll) => {
+                const isClosed = Boolean(poll.closed_at) || Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
+                return filter === 'closed' ? isClosed : !isClosed;
+              }).length;
+              return <button key={filter} type="button" onClick={() => setPollFilter(filter)} aria-pressed={pollFilter === filter} className={'rounded-md px-2 py-1 text-[9px] capitalize transition ' + (pollFilter === filter ? 'bg-primary-500/20 text-primary-100' : 'text-ink-500 hover:bg-white/[0.06] hover:text-ink-200')}>{filter} {count}</button>;
+            })}
+          </div>
+        </div>
+        <div className="space-y-3">{polls.filter((poll) => {
+          const isClosed = Boolean(poll.closed_at) || Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
+          return pollFilter === 'all' || (pollFilter === 'closed' ? isClosed : !isClosed);
+        }).map((poll) => {
           const votes = pollVotes.filter((vote) => vote.poll_id === poll.id);
           const total = new Set(votes.map((vote) => vote.user_id)).size;
           const closed = Boolean(poll.closed_at) || Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
@@ -757,7 +772,12 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
             })}</div>
             <p className="mt-2 text-[9px] text-ink-600">{closed ? 'Voting is closed.' : 'Select an option to vote'}</p>
           </div>;
-        })}</div>
+        })}
+          {polls.filter((poll) => {
+            const isClosed = Boolean(poll.closed_at) || Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
+            return pollFilter === 'all' || (pollFilter === 'closed' ? isClosed : !isClosed);
+          }).length === 0 ? <p className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-4 text-center text-[10px] text-ink-500">No {pollFilter === 'all' ? '' : pollFilter + ' '}polls to show.</p> : null}
+        </div>
       </div> : null}
       {searchOpen ? (
         <div className="border-b border-white/[0.07] bg-white/[0.02] p-3">
