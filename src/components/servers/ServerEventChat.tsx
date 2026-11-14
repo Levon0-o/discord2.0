@@ -184,6 +184,9 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           const row = payload.new as ServerEventChatPoll;
           setPolls((current) => [...current.filter((poll) => poll.id !== row.id), row].sort((a, b) => b.created_at.localeCompare(a.created_at)));
+          if (payload.eventType === 'UPDATE') {
+            void fetchServerEventChatPolls(eventId).then((result) => setPollVotes(result.votes)).catch((err) => setError(err instanceof Error ? err.message : 'Could not refresh poll results.'));
+          }
         } else if (payload.eventType === 'DELETE') {
           const row = payload.old as { id?: string };
           if (row.id) setPolls((current) => current.filter((poll) => poll.id !== row.id));
