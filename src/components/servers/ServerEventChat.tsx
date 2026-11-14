@@ -283,6 +283,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
   }
 
   async function handleClosePoll(pollId: string) {
+    if (!window.confirm('Close this poll? Members will no longer be able to vote.')) return;
     try {
       await closeServerEventChatPoll(pollId);
       setPolls((current) => current.map((poll) => poll.id === pollId ? { ...poll, closed_at: new Date().toISOString() } : poll));
