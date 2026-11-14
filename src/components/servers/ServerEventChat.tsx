@@ -245,7 +245,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
     setEditingPollId(null);
     setPollQuestion(poll.question);
     setPollOptions(poll.options.map((option) => option.label));
-    setPollOptionImages([null, null]);
+    setPollOptionImages(poll.options.map(() => null));
     setPollAllowMultiple(poll.allow_multiple);
     setPollAnonymous(poll.is_anonymous);
     setPollExpiresIn('never');
