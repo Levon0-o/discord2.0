@@ -3,7 +3,6 @@ import { KeyRound, LogOut, Mail, ShieldCheck, UserRound, Loader2, CheckCircle2, 
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import {
-  VISIBLE_NOTIFICATION_TYPES,
   fetchNotificationPreferences,
   saveNotificationPreference,
   type NotificationType,
