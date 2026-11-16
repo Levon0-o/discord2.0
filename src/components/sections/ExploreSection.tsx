@@ -6,6 +6,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { MentionTextarea } from '@/components/shared/MentionTextarea';
+import { MentionText } from '@/components/shared/MentionText';
 import { searchUsers, sendFriendRequest } from '@/lib/friendsApi';
 import type { ProfileLite } from '@/types/servers';
 
@@ -637,7 +638,7 @@ export function ExploreSection() {
                   <button type="button" onClick={() => setEditingPostId(null)} className="rounded-lg px-3 py-2 text-xs text-ink-300 hover:bg-white/[0.06]">Cancel</button>
                   <button type="button" onClick={() => void savePostEdit(post.id)} disabled={!postEditDraft.trim() || contentBusy === post.id} className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Save</button>
                 </div></div>
-              </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-ink-200">{post.body}</p>}
+              </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-ink-200"><MentionText>{post.body}</MentionText></p>}
               <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2">
                 <button type="button" onClick={() => void toggleLike(post)} disabled={busyLike === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}><Heart size={16} className={liked ? 'fill-current' : ''} />{post.likes.length} likes</button>
                 <button type="button" onClick={() => void toggleComments(post.id)} aria-expanded={expandedPost === post.id} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-ink-400 transition hover:bg-white/[0.05] hover:text-ink-100"><MessageCircle size={16} />{post.comments.length} comments</button>
@@ -656,7 +657,7 @@ export function ExploreSection() {
                             {editingCommentId === comment.id ? <div className="mt-2 space-y-2">
                               <textarea value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value.slice(0, 1000))} rows={2} maxLength={1000} className="w-full rounded-lg border border-primary-400/30 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit comment" />
                               <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingCommentId(null)} className="rounded-lg px-2 py-1 text-[11px] text-ink-400">Cancel</button><button type="button" onClick={() => void saveCommentEdit(post.id, comment.id)} disabled={!commentEditDraft.trim() || contentBusy === comment.id} className="rounded-lg bg-primary-500 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40">Save</button></div>
-                            </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>}
+                            </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300"><MentionText>{comment.body}</MentionText></p>}
                             <div className="mt-2 flex flex-wrap items-center gap-3">
                               <button type="button" onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)} className="text-[11px] font-semibold text-primary-300 hover:text-primary-200">Reply{replies.length ? ` · ${replies.length}` : ''}</button>
                               {comment.author_id === userId && <><button type="button" onClick={() => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button><button type="button" onClick={() => void deleteComment(post.id, comment.id)} disabled={contentBusy === comment.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button></>}
@@ -676,7 +677,7 @@ export function ExploreSection() {
                               {editingCommentId === reply.id ? <div className="mt-2 space-y-2">
                                 <textarea value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value.slice(0, 1000))} rows={2} maxLength={1000} className="w-full rounded-lg border border-primary-400/30 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit reply" />
                                 <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingCommentId(null)} className="rounded-lg px-2 py-1 text-[11px] text-ink-400">Cancel</button><button type="button" onClick={() => void saveCommentEdit(post.id, reply.id)} disabled={!commentEditDraft.trim() || contentBusy === reply.id} className="rounded-lg bg-primary-500 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40">Save</button></div>
-                              </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{reply.body}</p>}
+                              </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300"><MentionText>{reply.body}</MentionText></p>}
                               {reply.author_id === userId && <div className="mt-2 flex gap-3"><button type="button" onClick={() => { setEditingCommentId(reply.id); setCommentEditDraft(reply.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button><button type="button" onClick={() => void deleteComment(post.id, reply.id)} disabled={contentBusy === reply.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button></div>}
                             </div>
                           </div>;
