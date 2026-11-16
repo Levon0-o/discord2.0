@@ -41,6 +41,8 @@ export interface ProfileLite {
   username: string;
   display_name: string | null;
   avatar_url: string | null;
+  user_status?: 'online' | 'away' | 'busy' | 'dnd' | null;
+  status_message?: string | null;
 }
 
 export interface ServerWithMeta extends Server {
