@@ -147,7 +147,7 @@ export function DirectMessagesSection({
   initialConversationId = null,
   onInitialConversationHandled,
 }: DirectMessagesSectionProps) {
-  const { session } = useAuth();
+  const { session, presence } = useAuth();
   const userId = session?.user?.id ?? '';
 
   const [conversations, setConversations] = useState<DirectConversation[]>([]);
@@ -1792,6 +1792,12 @@ Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
             {otherProfile?.username && (
               <p className="mt-1 text-sm text-ink-500">
                 @{otherProfile.username}
+              </p>
+            )}
+            {otherProfile && (
+              <p className={`mt-2 inline-flex items-center gap-2 text-xs ${presence[otherProfile.id] === 'online' ? 'text-emerald-300' : presence[otherProfile.id] === 'idle' ? 'text-amber-300' : 'text-ink-500'}`}>
+                <span className={`h-2 w-2 rounded-full ${presence[otherProfile.id] === 'online' ? 'bg-emerald-400' : presence[otherProfile.id] === 'idle' ? 'bg-amber-400' : 'bg-ink-600'}`} />
+                {presence[otherProfile.id] === 'online' ? 'Online' : presence[otherProfile.id] === 'idle' ? 'Idle' : 'Offline'}
               </p>
             )}
 
