@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CalendarDays, ExternalLink, Loader2, MessageSquare, UserRound, Heart, MessageCircle, Send } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ExternalLink, Loader2, MessageSquare, UserRound, Heart, MessageCircle, Send, Pencil, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -61,6 +61,13 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [likeBusy, setLikeBusy] = useState<string | null>(null);
   const [commentBusy, setCommentBusy] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [commentEditDraft, setCommentEditDraft] = useState('');
+  const [commentActionBusy, setCommentActionBusy] = useState<string | null>(null);
+  const [likesForPost, setLikesForPost] = useState<string | null>(null);
+  const [likingProfiles, setLikingProfiles] = useState<Array<{ id: string; username: string; display_name: string | null; avatar_url: string | null }>>([]);
+  const [likesLoading, setLikesLoading] = useState(false);
+  const [selectedCommentProfileId, setSelectedCommentProfileId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'likes' | 'about'>('posts');
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
@@ -208,6 +215,44 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
     setCommentBusy(null);
   };
 
+
+  const openPostLikes = async (postId: string) => {
+    setLikesForPost(postId); setLikesLoading(true); setLikingProfiles([]);
+    const { data: rows, error: likesError } = await supabase.from('likes').select('user_id').eq('post_id', postId);
+    if (likesError) setError(likesError.message);
+    else if (rows?.length) {
+      const ids = rows.map((row) => row.user_id);
+      const { data, error: profilesError } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', ids);
+      if (profilesError) setError(profilesError.message);
+      else { const byId = new Map((data ?? []).map((person) => [person.id, person])); setLikingProfiles(ids.flatMap((id) => { const person = byId.get(id); return person ? [person] : []; })); }
+    }
+    setLikesLoading(false);
+  };
+
+  const saveCommentEdit = async (postId: string, commentId: string) => {
+    const body = commentEditDraft.trim();
+    if (!body || body.length > 1000 || !currentUserId || commentActionBusy) return;
+    setCommentActionBusy(commentId);
+    const { error: updateError } = await supabase.from('comments').update({ body }).eq('id', commentId).eq('author_id', currentUserId);
+    if (updateError) setError(updateError.message);
+    else { setEditingCommentId(null); setCommentEditDraft(''); await loadPostComments(postId); }
+    setCommentActionBusy(null);
+  };
+
+  const deletePostComment = async (postId: string, commentId: string) => {
+    if (!currentUserId || commentActionBusy) return;
+    if (!window.confirm('Delete this comment?')) return;
+    setCommentActionBusy(commentId);
+    const { error: deleteError } = await supabase.from('comments').delete().eq('id', commentId).eq('author_id', currentUserId);
+    if (deleteError) setError(deleteError.message);
+    else {
+      await loadPostComments(postId);
+      const update = (items: PublicPost[]) => items.map((item) => item.id === postId ? { ...item, comments: item.comments.filter((comment) => comment.id !== commentId) } : item);
+      setPosts(update); setLikedPosts(update);
+    }
+    setCommentActionBusy(null);
+  };
+
   const links = profile ? [
     ['Website', profile.website_url],
     ['Instagram', profile.instagram_url],
@@ -260,7 +305,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
                 <p className="text-xs text-ink-500">Member since {new Date(profile.created_at).toLocaleDateString()}</p>
               </div> : <div className="mt-5 border-t border-white/[0.07] pt-5">
                 <h3 className="mb-4 text-sm font-semibold text-white">{activeTab === 'posts' ? 'Public posts' : 'Liked posts'}</h3>
-                {(activeTab === 'posts' ? posts : likedPosts).length ? <div className="grid gap-3 sm:grid-cols-2">{(activeTab === 'posts' ? posts : likedPosts).map((post) => { const liked = Boolean(currentUserId && post.likes.some((like) => like.user_id === currentUserId)); return <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-2 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p><div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2"><button type="button" onClick={() => void togglePostLike(post)} disabled={!currentUserId || likeBusy === post.id} aria-pressed={liked} className={'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/[0.05] ' + (liked ? 'text-rose-300' : 'text-ink-400')}><Heart size={15} className={liked ? 'fill-current' : ''} />{post.likes.length} likes</button><button type="button" onClick={() => void togglePostComments(post.id)} aria-expanded={expandedPost === post.id} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-ink-400 hover:bg-white/[0.05]"><MessageCircle size={15} />{post.comments.length} comments</button></div>{expandedPost === post.id && <div className="space-y-3 border-t border-white/[0.06] bg-ink-950/40 px-3 py-3"><div className="max-h-56 space-y-2 overflow-y-auto">{(postComments[post.id] ?? []).length ? (postComments[post.id] ?? []).map((comment) => <div key={comment.id} className="rounded-lg bg-white/[0.035] px-3 py-2"><p className="text-[11px] font-semibold text-ink-300">{comment.author?.display_name || comment.author?.username || 'Member'} <span className="font-normal text-ink-500">· {new Date(comment.created_at).toLocaleString()}</span></p><p className="mt-1 whitespace-pre-wrap break-words text-xs text-ink-200">{comment.body}</p></div>) : <p className="text-xs text-ink-500">No comments yet. Start the discussion.</p>}</div><div className="flex gap-2"><input value={commentDrafts[post.id] ?? ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishPostComment(post.id); } }} maxLength={1000} placeholder="Write a comment…" className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500" /><button type="button" onClick={() => void publishPostComment(post.id)} disabled={!(commentDrafts[post.id] ?? '').trim() || commentBusy === post.id} aria-label="Send comment" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white disabled:opacity-40"><Send size={14} /></button></div></div>}</article>; })}</div>
+                {(activeTab === 'posts' ? posts : likedPosts).length ? <div className="grid gap-3 sm:grid-cols-2">{(activeTab === 'posts' ? posts : likedPosts).map((post) => { const liked = Boolean(currentUserId && post.likes.some((like) => like.user_id === currentUserId)); return <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-2 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p><div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2"><button type="button" onClick={() => void togglePostLike(post)} disabled={!currentUserId || likeBusy === post.id} aria-pressed={liked} className={'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/[0.05] ' + (liked ? 'text-rose-300' : 'text-ink-400')}><Heart size={15} className={liked ? 'fill-current' : ''} />{post.likes.length} likes</button><button type="button" onClick={() => void openPostLikes(post.id)} className="rounded-lg px-2 py-2 text-xs text-ink-500 hover:bg-white/[0.05] hover:text-primary-300">Who liked?</button><button type="button" onClick={() => void togglePostComments(post.id)} aria-expanded={expandedPost === post.id} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-ink-400 hover:bg-white/[0.05]"><MessageCircle size={15} />{post.comments.length} comments</button></div>{expandedPost === post.id && <div className="space-y-3 border-t border-white/[0.06] bg-ink-950/40 px-3 py-3"><div className="max-h-56 space-y-2 overflow-y-auto">{(postComments[post.id] ?? []).length ? (postComments[post.id] ?? []).map((comment) => <div key={comment.id} className="rounded-lg bg-white/[0.035] px-3 py-2"><p className="text-[11px] font-semibold text-ink-300"><button type="button" onClick={() => comment.author_id !== currentUserId && setSelectedCommentProfileId(comment.author_id)} className="hover:text-primary-300">{comment.author?.display_name || comment.author?.username || 'Member'}</button> <span className="font-normal text-ink-500">· {new Date(comment.created_at).toLocaleString()}</span></p>{editingCommentId === comment.id ? <div className="mt-2 space-y-2"><textarea value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value.slice(0, 1000))} rows={2} maxLength={1000} className="w-full rounded-lg border border-primary-400/30 bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none" /><div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingCommentId(null)} className="text-[11px] text-ink-400">Cancel</button><button type="button" onClick={() => void saveCommentEdit(post.id, comment.id)} disabled={!commentEditDraft.trim() || commentActionBusy === comment.id} className="text-[11px] font-semibold text-primary-300">Save</button></div></div> : <p className="mt-1 whitespace-pre-wrap break-words text-xs text-ink-200">{comment.body}</p>}{comment.author_id === currentUserId && editingCommentId !== comment.id && <div className="mt-2 flex gap-3"><button type="button" onClick={() => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); }} className="inline-flex items-center gap-1 text-[10px] text-ink-500 hover:text-primary-300"><Pencil size={11} /> Edit</button><button type="button" onClick={() => void deletePostComment(post.id, comment.id)} disabled={commentActionBusy === comment.id} className="inline-flex items-center gap-1 text-[10px] text-ink-500 hover:text-red-300"><Trash2 size={11} /> Delete</button></div>}</div>) : <p className="text-xs text-ink-500">No comments yet. Start the discussion.</p>}</div><div className="flex gap-2"><input value={commentDrafts[post.id] ?? ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishPostComment(post.id); } }} maxLength={1000} placeholder="Write a comment…" className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500" /><button type="button" onClick={() => void publishPostComment(post.id)} disabled={!(commentDrafts[post.id] ?? '').trim() || commentBusy === post.id} aria-label="Send comment" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white disabled:opacity-40"><Send size={14} /></button></div></div>}</article>; })}</div>
                   : <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-sm text-ink-500"><UserRound size={22} className="mx-auto mb-2" />{activeTab === 'posts' ? 'No public posts yet.' : 'No public liked posts yet.'}</div>}
               </div>}
             </div>
@@ -286,6 +331,8 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
           </section>
         </div>
       )}
+      {likesForPost && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setLikesForPost(null)}><section role="dialog" aria-modal="true" aria-label="People who liked this post" onClick={(event) => event.stopPropagation()} className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl"><header className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3"><h3 className="text-sm font-semibold text-white">People who liked this post</h3><button type="button" onClick={() => setLikesForPost(null)} aria-label="Close" className="rounded-lg p-1.5 text-ink-400 hover:bg-white/10"><X size={16} /></button></header><div className="max-h-[55vh] overflow-y-auto p-3">{likesLoading ? <div className="py-8 text-center text-sm text-ink-400"><Loader2 size={17} className="mx-auto mb-2 animate-spin" />Loading…</div> : likingProfiles.length ? <div className="space-y-1">{likingProfiles.map((person) => <button key={person.id} type="button" onClick={() => { setLikesForPost(null); setSelectedCommentProfileId(person.id); }} className="flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-white/[0.06]"><div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-xs font-semibold text-primary-200">{person.avatar_url ? <img src={person.avatar_url} alt="" className="h-full w-full object-cover" /> : (person.display_name || person.username).slice(0,1).toUpperCase()}</div><div><p className="text-sm font-semibold text-ink-100">{person.display_name || person.username}</p><p className="text-xs text-ink-500">@{person.username}</p></div></button>)}</div> : <p className="py-8 text-center text-sm text-ink-500">No likes yet.</p>}</div></section></div>}
+      {selectedCommentProfileId && <PublicProfileModal userId={selectedCommentProfileId} onClose={() => setSelectedCommentProfileId(null)} />}
       {selectedRelatedProfileId && <PublicProfileModal userId={selectedRelatedProfileId} onClose={() => setSelectedRelatedProfileId(null)} />}
     </div>
   );
