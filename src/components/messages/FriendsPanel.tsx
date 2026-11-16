@@ -74,7 +74,7 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
       if (profileIds.length) {
         const { data, error: profileError } = await supabase
           .from('profiles')
-          .select('id, username, display_name, avatar_url')
+          .select('id, username, display_name, avatar_url, user_status, status_message')
           .in('id', profileIds);
 
         if (profileError) throw profileError;
@@ -290,6 +290,11 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
                         <p className="text-xs text-ink-500">
                           @{profile.username} · {presence[profile.id] === 'online' ? 'Online' : presence[profile.id] === 'idle' ? 'Idle' : 'Offline'}
                         </p>
+                        {profile.status_message?.trim() && (
+                          <p className="mt-1 truncate text-xs text-ink-400" title={profile.status_message}>
+                            {profile.status_message}
+                          </p>
+                        )}
                       </div>
 
                       <button
@@ -365,6 +370,7 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
                           <p className="text-xs text-ink-500">
                             @{profile.username}
                           </p>
+                          {profile.status_message?.trim() && <p className="mt-1 truncate text-xs text-ink-400">{profile.status_message}</p>}
                         </div>
                         <button
                           onClick={() => void handleAdd(profile.id)}
