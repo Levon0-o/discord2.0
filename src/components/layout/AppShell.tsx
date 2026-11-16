@@ -50,7 +50,8 @@ export function AppShell({
               .from('notifications')
               .select('id', { count: 'exact', head: true })
               .eq('recipient_id', user.id)
-              .is('read_at', null);
+              .is('read_at', null)
+              .in('type', [...VISIBLE_NOTIFICATION_TYPES]);
             if (isActive && !countError) setUnreadNotificationCount(nextCount ?? 0);
           }
         )
