@@ -45,7 +45,7 @@ export function SettingsSection() {
     { type: 'like', title: 'Likes', description: 'When someone likes one of your posts.', Icon: Heart },
     { type: 'comment', title: 'Comments', description: 'When someone comments on your posts.', Icon: MessageCircle },
     { type: 'follow', title: 'New followers', description: 'When someone starts following you.', Icon: UserPlus },
-    { type: 'mention', title: 'Mentions', description: 'When someone mentions you in a server.', Icon: AtSign },
+    { type: 'mention', title: 'Mentions', description: 'When someone tags you in a post or comment.', Icon: AtSign },
     { type: 'reply', title: 'Replies', description: 'When someone replies to your server message.', Icon: MessageCircle },
     { type: 'event_rsvp', title: 'Event responses', description: 'When someone responds to your server event.', Icon: CalendarDays },
     { type: 'event_update', title: 'Event updates', description: 'Updates to events you are attending or interested in.', Icon: CalendarDays },
