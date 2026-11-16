@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Heart, MessageCircle, UserPlus, CheckCheck, Loader2, AtSign, CalendarDays } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -28,6 +29,7 @@ export function NotificationsSection() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -81,7 +83,8 @@ export function NotificationsSection() {
     }
   };
 
-  const handleMarkOne = async (item: NotificationItem) => {
+  const handleNotificationClick = async (item: NotificationItem) => {
+    if (item.type === 'follow' && item.actor_id) setViewingProfileId(item.actor_id);
     if (item.read_at) return;
     try {
       await markNotificationRead(item.id);
@@ -146,7 +149,7 @@ export function NotificationsSection() {
                 <li key={item.id}>
                   <button
                     type="button"
-                    onClick={() => void handleMarkOne(item)}
+                    onClick={() => void handleNotificationClick(item)}
                     className={`flex w-full items-center gap-4 px-4 py-4 text-left transition hover:bg-white/[0.035] sm:px-5 ${item.read_at ? '' : 'bg-primary-500/[0.055]'}`}
                   >
                     <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 ring-1 ring-white/10">
@@ -176,6 +179,7 @@ export function NotificationsSection() {
           </ul>
         )}
       </div>
+      {viewingProfileId && <PublicProfileModal userId={viewingProfileId} onClose={() => setViewingProfileId(null)} />}
     </section>
   );
 }
