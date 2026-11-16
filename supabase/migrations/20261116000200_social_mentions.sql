@@ -8,7 +8,7 @@ alter table public.notifications
 
 alter table public.notifications
   add constraint notifications_type_check
-  check (type in ('follow', 'like', 'comment', 'mention'));
+  check (type in ('follow', 'like', 'comment', 'mention', 'reply', 'event_rsvp', 'event_update', 'event_reminder_24h', 'event_reminder_1h', 'event_reminder_15m'));
 
 create or replace function public.create_social_mention_notifications(
   p_body text,
