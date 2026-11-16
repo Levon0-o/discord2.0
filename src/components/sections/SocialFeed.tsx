@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText, Pencil, Trash2, Bookmark, Pin, ImagePlus, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { MentionTextarea } from '@/components/shared/MentionTextarea';
 
 interface FeedAuthor {
   username: string;
@@ -297,10 +298,10 @@ export function SocialFeed() {
         <div className="flex gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-500/15 text-xs font-bold text-primary-200">YOU</div>
           <div className="min-w-0 flex-1">
-            <textarea
+            <MentionTextarea
               value={draft}
-              onChange={(event) => setDraft(event.target.value.slice(0, 2000))}
-              placeholder="What's happening?"
+              onChange={setDraft}
+              placeholder="What's happening? Type @ to tag someone"
               rows={3}
               maxLength={2000}
               className="w-full resize-y rounded-xl border border-white/[0.07] bg-ink-950/70 px-4 py-3 text-sm text-ink-100 outline-none transition placeholder:text-ink-500 focus:border-primary-400/40"
@@ -394,7 +395,7 @@ export function SocialFeed() {
                       ))}
                     </div>
                     <div className="flex gap-2">
-                      <input value={commentDrafts[post.id] ?? ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void publishComment(post.id); } }} placeholder="Write a comment…" className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+                      <MentionTextarea value={commentDrafts[post.id] ?? ''} onChange={(value) => setCommentDrafts((current) => ({ ...current, [post.id]: value }))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void publishComment(post.id); } }} placeholder="Write a comment… Type @ to tag" rows={1} maxLength={1000} className="min-w-0 w-full resize-none rounded-xl border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
                       <button type="button" onClick={() => void publishComment(post.id)} disabled={!(commentDrafts[post.id] ?? '').trim() || commentBusy === post.id} aria-label="Send comment" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40"><Send size={16} /></button>
                     </div>
                   </div>
