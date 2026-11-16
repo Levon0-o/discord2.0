@@ -57,7 +57,7 @@ export function MentionTextarea({
   const handleChange = (next: string, nextCursor: number) => {
     onChange(next.slice(0, maxLength));
     const before = next.slice(0, nextCursor);
-    const match = before.match(/(?:^|\\s)@([a-zA-Z0-9_]{1,30})$/);
+    const match = before.match(/(?:^|\s)@([a-zA-Z0-9_]{1,30})$/);
     if (match) {
       setQuery(match[1]);
       setCursor(nextCursor);
