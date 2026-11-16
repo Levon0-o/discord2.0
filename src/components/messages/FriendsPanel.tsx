@@ -13,6 +13,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   searchUsers,
   fetchFriends,
@@ -34,6 +35,7 @@ interface FriendsPanelProps {
 }
 
 export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
+  const { presence } = useAuth();
   const [tab, setTab] = useState<'friends' | 'add' | 'requests'>('friends');
   const [friends, setFriends] = useState<FriendWithProfile[]>([]);
   const [incoming, setIncoming] = useState<FriendRequest[]>([]);
@@ -178,7 +180,7 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
     const name = profile.display_name || profile.username;
 
     return (
-      <div className={`${size} flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 font-semibold text-primary-200`}>
+      <div className={`${size} relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 font-semibold text-primary-200`}>
         {profile.avatar_url ? (
           <img
             src={profile.avatar_url}
@@ -188,6 +190,7 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
         ) : (
           name.slice(0, 1).toUpperCase()
         )}
+        <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-ink-950 ${presence[profile.id] === 'online' ? 'bg-emerald-400' : presence[profile.id] === 'idle' ? 'bg-amber-400' : 'bg-ink-600'}`} title={presence[profile.id] === 'online' ? 'Online' : presence[profile.id] === 'idle' ? 'Idle' : 'Offline'} />
       </div>
     );
   }
@@ -285,7 +288,7 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
                           {profileName(profile)}
                         </p>
                         <p className="text-xs text-ink-500">
-                          @{profile.username}
+                          @{profile.username} · {presence[profile.id] === 'online' ? 'Online' : presence[profile.id] === 'idle' ? 'Idle' : 'Offline'}
                         </p>
                       </div>
 
