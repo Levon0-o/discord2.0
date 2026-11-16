@@ -312,9 +312,9 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     setError('');
     const callId = crypto.randomUUID();
     callIdRef.current = callId;
+    setCallStatus('outgoing');
     try {
       streamRef.current = await getMicrophone();
-      setCallStatus('outgoing');
       await send('invite', { call_id: callId, from: currentUserId, to: otherUserId });
       callTimeoutRef.current = window.setTimeout(() => {
         if (callIdRef.current === callId && statusRef.current === 'outgoing') {
@@ -335,15 +335,22 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
     callTimeoutRef.current = null;
     setError('');
+    setCallStatus('connecting');
     try {
       streamRef.current = await getMicrophone();
       incomingCallRef.current = null;
       setIncomingCall(null);
-      setCallStatus('connecting');
       await send('accept', { call_id: invite.call_id, from: currentUserId, to: invite.from });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not access the microphone.');
+      const message = err instanceof Error ? err.message : 'Could not access the microphone.';
+      setError(message);
+      try {
+        await send('reject', { call_id: invite.call_id, from: currentUserId, to: invite.from, reason: message });
+      } catch {
+        // The caller's unanswered-call timeout remains the fallback.
+      }
       stopMedia();
+      setError(message);
     }
   }
 
