@@ -27,6 +27,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const [error, setError] = useState('');
   const [elapsed, setElapsed] = useState(0);
   const [channelReady, setChannelReady] = useState(false);
+  const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
@@ -59,6 +60,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (audioRef.current) audioRef.current.srcObject = null;
+    setAudioPlaybackBlocked(false);
     setMuted(false);
     setElapsed(0);
     setCallStatus('idle');
@@ -76,10 +78,23 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
       throw new Error('Your browser does not support voice calls.');
     }
-    return navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: false,
-    });
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      });
+    } catch (err) {
+      if (err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
+        throw new Error('Microphone access was blocked. Allow microphone access in your browser settings.');
+      }
+      if (err instanceof DOMException && err.name === 'NotFoundError') {
+        throw new Error('No microphone was found on this device.');
+      }
+      if (err instanceof DOMException && err.name === 'NotReadableError') {
+        throw new Error('The microphone is already being used by another app.');
+      }
+      throw err;
+    }
   }
 
   function createPeer(callId: string, remoteUserId: string) {
@@ -109,7 +124,12 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       const remoteStream = event.streams[0] ?? new MediaStream([event.track]);
       audioRef.current.srcObject = remoteStream;
       audioRef.current.volume = 1;
-      void audioRef.current.play().catch(() => setError('Your browser blocked call audio. Click the page, then try again.'));
+      void audioRef.current.play().then(() => {
+        setAudioPlaybackBlocked(false);
+      }).catch(() => {
+        setAudioPlaybackBlocked(true);
+        setError('Your browser blocked incoming audio. Use Enable audio below.');
+      });
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
@@ -400,6 +420,22 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
             <h2 className="mt-4 text-xl font-bold text-ink-50">{otherName}</h2>
             <p className="mt-1 text-sm text-ink-400">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : timeLabel}</p>
             {error ? <p role="alert" className="mt-3 rounded-lg bg-red-400/10 p-2 text-xs text-red-300">{error}</p> : null}
+            {audioPlaybackBlocked ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const audio = audioRef.current;
+                  if (!audio) return;
+                  void audio.play().then(() => {
+                    setAudioPlaybackBlocked(false);
+                    setError('');
+                  }).catch(() => setError('Audio is still blocked. Check your browser sound permissions.'));
+                }}
+                className="mt-3 rounded-lg border border-primary-400/30 bg-primary-500/10 px-3 py-2 text-xs font-semibold text-primary-200 hover:bg-primary-500/20"
+              >
+                Enable audio
+              </button>
+            ) : null}
             <div className="mt-6 flex justify-center gap-3">
               <button type="button" onClick={toggleMute} disabled={!streamRef.current} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{muted ? <MicOff size={16} /> : <Mic size={16} />}{muted ? 'Unmute' : 'Mute'}</button>
               <button type="button" onClick={() => void hangUp()} className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-400"><PhoneOff size={16} /> End call</button>
