@@ -46,7 +46,6 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
   const [posts, setPosts] = useState<PublicPost[]>([]);
   const [likedPosts, setLikedPosts] = useState<PublicPost[]>([]);
   const [activeTab, setActiveTab] = useState<'posts' | 'likes' | 'about'>('posts');
-  const [likesLoading, setLikesLoading] = useState(false);
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -196,8 +195,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
                 <p className="text-xs text-ink-500">Member since {new Date(profile.created_at).toLocaleDateString()}</p>
               </div> : <div className="mt-5 border-t border-white/[0.07] pt-5">
                 <h3 className="mb-4 text-sm font-semibold text-white">{activeTab === 'posts' ? 'Public posts' : 'Liked posts'}</h3>
-                {activeTab === 'likes' && likesLoading ? <div className="py-8 text-center text-sm text-ink-400"><Loader2 size={17} className="mx-auto mb-2 animate-spin" />Loading likes…</div>
-                  : (activeTab === 'posts' ? posts : likedPosts).length ? <div className="grid gap-3 sm:grid-cols-2">{(activeTab === 'posts' ? posts : likedPosts).map((post) => <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-3 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p></article>)}</div>
+                {(activeTab === 'posts' ? posts : likedPosts).length ? <div className="grid gap-3 sm:grid-cols-2">{(activeTab === 'posts' ? posts : likedPosts).map((post) => <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-3 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p></article>)}</div>
                   : <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-sm text-ink-500"><UserRound size={22} className="mx-auto mb-2" />{activeTab === 'posts' ? 'No public posts yet.' : 'No public liked posts yet.'}</div>}
               </div>}
             </div>
