@@ -28,6 +28,7 @@ import type {
   FriendWithProfile,
 } from '@/lib/friendsApi';
 import type { ProfileLite } from '@/types/servers';
+import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
 
 interface FriendsPanelProps {
   onClose: () => void;
@@ -48,6 +49,7 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -284,9 +286,9 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
                     >
                       {avatar(profile)}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink-100">
+                        <button onClick={() => setViewingProfileId(profile.id)} className="block max-w-full truncate text-left text-sm font-semibold text-ink-100 hover:text-primary-200">
                           {profileName(profile)}
-                        </p>
+                        </button>
                         <p className="text-xs text-ink-500">
                           @{profile.username} · {presence[profile.id] === 'online' ? 'Online' : presence[profile.id] === 'idle' ? 'Idle' : 'Offline'}
                         </p>
@@ -504,6 +506,7 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
           <span className="text-[10px] text-ink-600">AFTERDARK</span>
         </footer>
       </section>
+      {viewingProfileId && <PublicProfileModal userId={viewingProfileId} onClose={() => setViewingProfileId(null)} onMessage={(id) => { setViewingProfileId(null); onMessage(id); }} />}
     </div>
   );
 }
