@@ -84,7 +84,7 @@ export function NotificationsSection() {
   };
 
   const handleNotificationClick = async (item: NotificationItem) => {
-    if (item.type === 'follow' && item.actor_id) setViewingProfileId(item.actor_id);
+    if ((item.type === 'follow' || item.type === 'mention') && item.actor_id) setViewingProfileId(item.actor_id);
     if (item.read_at) return;
     try {
       await markNotificationRead(item.id);
