@@ -21,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { FriendsPanel } from '@/components/messages/FriendsPanel';
 import { DirectVoiceCall } from '@/components/messages/DirectVoiceCall';
+import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
 import {
   fetchMyConversations,
   fetchConversationMembers,
@@ -1094,9 +1095,9 @@ export function DirectMessagesSection({
 
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">
+                    <button type="button" onClick={(event) => { event.stopPropagation(); if (profile) setViewingProfileId(profile.id); }} className="block max-w-full truncate text-left text-sm font-semibold hover:text-primary-200">
                       {name}
-                    </p>
+                    </button>
                     <p className="mt-1 truncate text-xs text-ink-500">
                       {preview}
                     </p>
@@ -1785,15 +1786,14 @@ Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
               )}
             </div>
 
-            <h3 className="mt-5 text-base font-bold text-ink-100">
-              {displayName}
-            </h3>
-
-            {otherProfile?.username && (
-              <p className="mt-1 text-sm text-ink-500">
+            {otherProfile ? <>
+              <button type="button" onClick={() => setViewingProfileId(otherProfile.id)} className="mt-5 text-base font-bold text-ink-100 hover:text-primary-200">
+                {displayName}
+              </button>
+              {otherProfile.username && <button type="button" onClick={() => setViewingProfileId(otherProfile.id)} className="mt-1 block w-full text-sm text-ink-500 hover:text-primary-300">
                 @{otherProfile.username}
-              </p>
-            )}
+              </button>}
+            </> : <h3 className="mt-5 text-base font-bold text-ink-100">{displayName}</h3>}
             {otherProfile && (
               <p className={`mt-2 inline-flex items-center gap-2 text-xs ${presence[otherProfile.id] === 'online' ? 'text-emerald-300' : presence[otherProfile.id] === 'idle' ? 'text-amber-300' : 'text-ink-500'}`}>
                 <span className={`h-2 w-2 rounded-full ${presence[otherProfile.id] === 'online' ? 'bg-emerald-400' : presence[otherProfile.id] === 'idle' ? 'bg-amber-400' : 'bg-ink-600'}`} />
@@ -1820,5 +1820,6 @@ Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
         />
       )}
     </div>
+      {viewingProfileId && <PublicProfileModal userId={viewingProfileId} onClose={() => setViewingProfileId(null)} onMessage={(id) => { setViewingProfileId(null); void openConversationWithUser(id); }} />}
   );
 }
