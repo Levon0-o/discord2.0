@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Send, Loader2, RefreshCw, MessageSquareText, Penc
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { MentionTextarea } from '@/components/shared/MentionTextarea';
+import { MentionText } from '@/components/shared/MentionText';
 
 interface FeedAuthor {
   username: string;
@@ -363,7 +364,7 @@ export function SocialFeed() {
                     <button type="button" onClick={() => setEditingPostId(null)} className="rounded-lg px-3 py-2 text-xs text-ink-300 hover:bg-white/[0.06]">Cancel</button>
                     <button type="button" onClick={() => void savePostEdit(post.id)} disabled={!postEditDraft.trim() || contentBusy === post.id} className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Save</button>
                   </div></div>
-                </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5">{post.body}</p>}
+                </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5"><MentionText>{post.body}</MentionText></p>}
                 <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2 sm:px-4">
                   <button type="button" onClick={() => void toggleLike(post)} disabled={likeBusy === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}>
                     <Heart size={16} className={liked ? 'fill-current' : ''} /> {post.likes.length} {post.likes.length === 1 ? 'like' : 'likes'}
@@ -385,7 +386,7 @@ export function SocialFeed() {
                             {editingCommentId === comment.id ? <div className="mt-2 space-y-2">
                               <textarea value={commentEditDraft} onChange={(event) => setCommentEditDraft(event.target.value.slice(0, 1000))} rows={2} maxLength={1000} className="w-full rounded-lg border border-primary-400/30 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none" aria-label="Edit comment" />
                               <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditingCommentId(null)} className="rounded-lg px-2 py-1 text-[11px] text-ink-400">Cancel</button><button type="button" onClick={() => void saveCommentEdit(post.id, comment.id)} disabled={!commentEditDraft.trim() || contentBusy === comment.id} className="rounded-lg bg-primary-500 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40">Save</button></div>
-                            </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300">{comment.body}</p>}
+                            </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300"><MentionText>{comment.body}</MentionText></p>}
                             {comment.author_id === userId && <div className="mt-2 flex gap-3">
                               <button type="button" onClick={() => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button>
                               <button type="button" onClick={() => void deleteComment(post.id, comment.id)} disabled={contentBusy === comment.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button>
