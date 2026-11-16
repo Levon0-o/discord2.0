@@ -183,7 +183,7 @@ export async function fetchFriends(): Promise<FriendWithProfile[]> {
 
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, username, display_name, avatar_url')
+    .select('id, username, display_name, avatar_url, user_status, status_message')
     .in('id', friendIds);
 
   if (profilesError) throw profilesError;
