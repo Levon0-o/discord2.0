@@ -12,6 +12,7 @@ function notificationCopy(item: NotificationItem) {
   const actor = item.actor?.display_name || item.actor?.username || 'Someone';
   if (item.type === 'follow') return { title: actor, detail: 'started following you', Icon: UserPlus };
   if (item.type === 'like') return { title: actor, detail: 'liked your post', Icon: Heart };
+  if (item.type === 'comment') return { title: actor, detail: 'commented on your post', Icon: MessageCircle };
   if (item.type === 'mention') return { title: actor, detail: 'mentioned you in a server channel', Icon: AtSign };
   if (item.type === 'reply') return { title: actor, detail: 'replied to your message in a server channel', Icon: MessageCircle };
   if (item.type === 'event_rsvp') return { title: actor, detail: 'responded to your server event', Icon: CalendarDays };
@@ -19,7 +20,7 @@ function notificationCopy(item: NotificationItem) {
   if (item.type === 'event_reminder_24h') return { title: actor, detail: 'reminded you that a server event starts in 24 hours', Icon: CalendarDays };
   if (item.type === 'event_reminder_1h') return { title: actor, detail: 'reminded you that a server event starts in 1 hour', Icon: CalendarDays };
   if (item.type === 'event_reminder_15m') return { title: actor, detail: 'reminded you that a server event starts in 15 minutes', Icon: CalendarDays };
-  return { title: actor, detail: 'commented on your post', Icon: MessageCircle };
+  return { title: actor, detail: 'sent you an account update', Icon: Bell };
 }
 
 export function NotificationsSection() {
