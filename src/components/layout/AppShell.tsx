@@ -7,6 +7,7 @@ import { RightPanel } from '@/components/layout/RightPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { NAV_SECTIONS, type SectionId } from '@/config/navigation';
 import { supabase } from '@/lib/supabase';
+import { VISIBLE_NOTIFICATION_TYPES } from '@/lib/notificationsApi';
 
 interface AppShellProps {
   activeSection: SectionId;
@@ -34,7 +35,8 @@ export function AppShell({
         .from('notifications')
         .select('id', { count: 'exact', head: true })
         .eq('recipient_id', user.id)
-        .is('read_at', null);
+        .is('read_at', null)
+        .in('type', [...VISIBLE_NOTIFICATION_TYPES]);
 
       if (isActive && !error) setUnreadNotificationCount(count ?? 0);
 
