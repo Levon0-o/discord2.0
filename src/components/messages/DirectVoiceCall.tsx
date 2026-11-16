@@ -39,18 +39,6 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const callTimeoutRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
 
-  function debugVoice(event: string, details: Record<string, unknown> = {}) {
-    console.info('[AFTERDARK voice]', event, {
-      conversationId,
-      currentUserId,
-      otherUserId,
-      status: statusRef.current,
-      hasIncomingCall: Boolean(incomingCallRef.current),
-      callId: callIdRef.current || null,
-      ...details,
-    });
-  }
-
   function setCallStatus(next: CallStatus) {
     statusRef.current = next;
     setStatus(next);
@@ -146,14 +134,18 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     channel
       .on('broadcast', { event: 'invite' }, ({ payload }) => {
         const signal = payload as CallSignal;
-        debugVoice('invite-received', { signal, active, acceptedForThisUser: signal.to === currentUserId, fromExpectedUser: signal.from === otherUserId });
         if (!active || signal.to !== currentUserId || signal.from !== otherUserId) return;
-        if (statusRef.current !== 'idle' || incomingCallRef.current) {
-          debugVoice('invite-rejected-as-busy', { signal, statusRef: statusRef.current, existingIncomingCall: incomingCallRef.current });
+        if (!signal.call_id) return;
+        if (statusRef.current !== 'idle') {
           void send('busy', { ...signal, from: currentUserId, to: signal.from });
           return;
         }
-        debugVoice('invite-accepted-for-display', { signal });
+        // Realtime may deliver a repeated invite. Treat the same call as a
+        // duplicate, not as a second call that should receive a "busy" reply.
+        if (incomingCallRef.current) {
+          if (incomingCallRef.current.call_id === signal.call_id) return;
+          return;
+        }
         callIdRef.current = signal.call_id;
         incomingCallRef.current = signal;
         setIncomingCall(signal);
@@ -189,7 +181,6 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       .on('broadcast', { event: 'busy' }, ({ payload }) => {
         const signal = payload as CallSignal;
         if (signal.to === currentUserId && signal.call_id === callIdRef.current) {
-          debugVoice('busy-signal-received', { signal });
           setError('This person is already in another call.');
           stopMedia();
         }
@@ -250,7 +241,6 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         }
       })
       .subscribe((channelStatus) => {
-        debugVoice('channel-status', { channelStatus });
         if (channelStatus === 'SUBSCRIBED') setChannelReady(true);
       if (channelStatus === 'CHANNEL_ERROR' || channelStatus === 'TIMED_OUT') {
           setError('Could not connect to voice signaling. Apply the latest DM voice migration in Supabase.');
@@ -274,7 +264,6 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     if (statusRef.current !== 'idle' || !channelRef.current || !channelReady) return;
     setError('');
     const callId = crypto.randomUUID();
-    debugVoice('start-call', { generatedCallId: callId });
     callIdRef.current = callId;
     try {
       streamRef.current = await getMicrophone();
