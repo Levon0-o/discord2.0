@@ -31,6 +31,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const incomingCallRef = useRef<CallSignal | null>(null);
+  const handledInviteCallIdRef = useRef('');
   const streamRef = useRef<MediaStream | null>(null);
   const callIdRef = useRef('');
   const statusRef = useRef<CallStatus>('idle');
@@ -50,6 +51,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     timerRef.current = null;
     callTimeoutRef.current = null;
     startedAtRef.current = null;
+    incomingCallRef.current = null;
+    setIncomingCall(null);
     peerRef.current?.close();
     peerRef.current = null;
     pendingIceRef.current = [];
@@ -102,10 +105,11 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       }
     };
     peer.ontrack = (event) => {
-      if (audioRef.current && event.streams[0]) {
-        audioRef.current.srcObject = event.streams[0];
-        void audioRef.current.play().catch(() => setError('Click the page once to enable call audio.'));
-      }
+      if (!audioRef.current) return;
+      const remoteStream = event.streams[0] ?? new MediaStream([event.track]);
+      audioRef.current.srcObject = remoteStream;
+      audioRef.current.volume = 1;
+      void audioRef.current.play().catch(() => setError('Your browser blocked call audio. Click the page, then try again.'));
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
@@ -136,7 +140,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         const signal = payload as CallSignal;
         if (!active || signal.to !== currentUserId || signal.from !== otherUserId) return;
         if (!signal.call_id) return;
-        // Ignore duplicate delivery of the invitation already shown to this user.
+        // Ignore duplicate delivery even after the user accepted the invitation.
+        if (handledInviteCallIdRef.current === signal.call_id) return;
         if (incomingCallRef.current?.call_id === signal.call_id) return;
         if (incomingCallRef.current) {
           void send('busy', { ...signal, from: currentUserId, to: signal.from });
@@ -160,8 +165,14 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         setError('');
         setIncomingCall(null);
         callIdRef.current = signal.call_id;
+        handledInviteCallIdRef.current = signal.call_id;
         incomingCallRef.current = signal;
         setIncomingCall(signal);
+        callTimeoutRef.current = window.setTimeout(() => {
+          if (incomingCallRef.current?.call_id !== signal.call_id) return;
+          stopMedia();
+          setError('Missed call. The invitation expired.');
+        }, 30000);
       })
       .on('broadcast', { event: 'accept' }, async ({ payload }) => {
         const signal = payload as CallSignal;
@@ -255,7 +266,10 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       })
       .subscribe((channelStatus) => {
         if (channelStatus === 'SUBSCRIBED') setChannelReady(true);
-      if (channelStatus === 'CHANNEL_ERROR' || channelStatus === 'TIMED_OUT') {
+        if (channelStatus === 'CHANNEL_ERROR' || channelStatus === 'TIMED_OUT' || channelStatus === 'CLOSED') {
+          setChannelReady(false);
+        }
+        if (channelStatus === 'CHANNEL_ERROR' || channelStatus === 'TIMED_OUT') {
           setError('Could not connect to voice signaling. Apply the latest DM voice migration in Supabase.');
         }
       });
@@ -298,6 +312,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   async function acceptCall() {
     const invite = incomingCallRef.current;
     if (!invite) return;
+    if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
+    callTimeoutRef.current = null;
     setError('');
     try {
       streamRef.current = await getMicrophone();
@@ -313,6 +329,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
 
   async function rejectCall() {
     const invite = incomingCallRef.current;
+    if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
+    callTimeoutRef.current = null;
     incomingCallRef.current = null;
     setIncomingCall(null);
     if (invite) {
