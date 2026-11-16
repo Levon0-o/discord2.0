@@ -14,7 +14,7 @@ function notificationCopy(item: NotificationItem) {
   if (item.type === 'follow') return { title: actor, detail: 'started following you', Icon: UserPlus };
   if (item.type === 'like') return { title: actor, detail: 'liked your post', Icon: Heart };
   if (item.type === 'comment') return { title: actor, detail: 'commented on your post', Icon: MessageCircle };
-  if (item.type === 'mention') return { title: actor, detail: 'mentioned you in a server channel', Icon: AtSign };
+  if (item.type === 'mention') return { title: actor, detail: 'mentioned you in a post or comment', Icon: AtSign };
   if (item.type === 'reply') return { title: actor, detail: 'replied to your message in a server channel', Icon: MessageCircle };
   if (item.type === 'event_rsvp') return { title: actor, detail: 'responded to your server event', Icon: CalendarDays };
   if (item.type === 'event_update') return { title: actor, detail: 'updated an event you are attending or interested in', Icon: CalendarDays };
