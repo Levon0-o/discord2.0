@@ -76,6 +76,17 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     if (result !== 'ok') throw new Error('Could not send the call signal.');
   }
 
+  function startConnectionTimeout(callId: string) {
+    if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
+    callTimeoutRef.current = window.setTimeout(() => {
+      if (callIdRef.current !== callId || statusRef.current !== 'connecting') return;
+      setError('The call could not connect. Check the network and try again.');
+      void send('hangup', { call_id: callId, from: currentUserId, to: otherUserId }).catch(() => undefined);
+      stopMedia();
+      setError('The call could not connect. Check the network and try again.');
+    }, 25000);
+  }
+
   async function getMicrophone() {
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
       throw new Error('Your browser does not support voice calls.');
@@ -135,6 +146,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
+        if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
+        callTimeoutRef.current = null;
         setCallStatus('connected');
         if (startedAtRef.current === null) {
           startedAtRef.current = Date.now();
@@ -203,6 +216,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
           if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
           callTimeoutRef.current = null;
           setCallStatus('connecting');
+          startConnectionTimeout(signal.call_id);
           const peer = createPeer(signal.call_id, signal.from);
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
@@ -355,6 +369,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       incomingCallRef.current = null;
       setIncomingCall(null);
       await send('accept', { call_id: invite.call_id, from: currentUserId, to: invite.from });
+      startConnectionTimeout(invite.call_id);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not access the microphone.';
       setError(message);
