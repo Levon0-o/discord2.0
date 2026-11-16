@@ -31,14 +31,9 @@ export function AppShell({
       const { data: { user } } = await supabase.auth.getUser();
       if (!isActive || !user) return;
 
-      const { count, error } = await supabase
-        .from('notifications')
-        .select('id', { count: 'exact', head: true })
-        .eq('recipient_id', user.id)
-        .is('read_at', null)
-        .in('type', [...VISIBLE_NOTIFICATION_TYPES]);
+      const { data: count, error } = await supabase.rpc('get_my_unread_notification_count');
 
-      if (isActive && !error) setUnreadNotificationCount(count ?? 0);
+      if (isActive && !error) setUnreadNotificationCount(Number(count ?? 0));
 
       channel = supabase
         .channel(`notification-badge:${user.id}`)
@@ -46,13 +41,8 @@ export function AppShell({
           'postgres_changes',
           { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
           async () => {
-            const { count: nextCount, error: countError } = await supabase
-              .from('notifications')
-              .select('id', { count: 'exact', head: true })
-              .eq('recipient_id', user.id)
-              .is('read_at', null)
-              .in('type', [...VISIBLE_NOTIFICATION_TYPES]);
-            if (isActive && !countError) setUnreadNotificationCount(nextCount ?? 0);
+            const { data: nextCount, error: countError } = await supabase.rpc('get_my_unread_notification_count');
+            if (isActive && !countError) setUnreadNotificationCount(Number(nextCount ?? 0));
           }
         )
         .subscribe();
