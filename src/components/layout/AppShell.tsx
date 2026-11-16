@@ -7,7 +7,6 @@ import { RightPanel } from '@/components/layout/RightPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { NAV_SECTIONS, type SectionId } from '@/config/navigation';
 import { supabase } from '@/lib/supabase';
-import { VISIBLE_NOTIFICATION_TYPES } from '@/lib/notificationsApi';
 
 interface AppShellProps {
   activeSection: SectionId;
