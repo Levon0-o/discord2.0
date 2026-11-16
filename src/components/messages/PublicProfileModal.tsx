@@ -94,7 +94,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
     const column = type === 'followers' ? 'follower_id' : 'following_id';
     const { data: relationRows, error: relationQueryError } = await supabase
       .from('follows')
-      .select(column)
+      .select('follower_id, following_id')
       .eq(type === 'followers' ? 'following_id' : 'follower_id', userId)
       .order('created_at', { ascending: false });
     if (relationQueryError) {
@@ -102,7 +102,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
       setRelationLoading(false);
       return;
     }
-    const ids = (relationRows ?? []).map((row) => row[column] as string);
+    const ids = (relationRows ?? []).map((row) => type === 'followers' ? row.follower_id : row.following_id);
     if (ids.length) {
       const { data, error: profilesError } = await supabase
         .from('profiles')
@@ -111,7 +111,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
       if (profilesError) setRelationError(profilesError.message);
       else {
         const byId = new Map((data ?? []).map((person) => [person.id, person]));
-        setRelationProfiles(ids.map((id) => byId.get(id)).filter((person): person is NonNullable<typeof person> => Boolean(person)));
+        setRelationProfiles(ids.flatMap((id) => { const person = byId.get(id); return person ? [person] : []; }));
       }
     }
     setRelationLoading(false);
