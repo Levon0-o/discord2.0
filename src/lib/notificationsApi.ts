@@ -87,9 +87,15 @@ export async function markNotificationRead(notificationId: string): Promise<void
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
+  const preferences = await fetchNotificationPreferences();
+  const disabled = new Set(preferences.filter((item) => !item.enabled).map((item) => item.notification_type));
+  const enabledTypes = VISIBLE_NOTIFICATION_TYPES.filter((type) => !disabled.has(type));
+  if (enabledTypes.length === 0) return;
+
   const { error } = await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
+    .in('type', [...enabledTypes])
     .is('read_at', null);
 
   if (error) throw error;
