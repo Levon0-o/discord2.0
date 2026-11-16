@@ -136,16 +136,28 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         const signal = payload as CallSignal;
         if (!active || signal.to !== currentUserId || signal.from !== otherUserId) return;
         if (!signal.call_id) return;
-        if (statusRef.current !== 'idle') {
+        // Ignore duplicate delivery of the invitation already shown to this user.
+        if (incomingCallRef.current?.call_id === signal.call_id) return;
+        if (incomingCallRef.current) {
           void send('busy', { ...signal, from: currentUserId, to: signal.from });
           return;
         }
-        // Realtime may deliver a repeated invite. Treat the same call as a
-        // duplicate, not as a second call that should receive a "busy" reply.
-        if (incomingCallRef.current) {
-          if (incomingCallRef.current.call_id === signal.call_id) return;
+
+        // Resource state is authoritative. A stale React status without an
+        // active microphone/peer must not make this user appear busy forever.
+        const hasLiveMicrophone = Boolean(
+          streamRef.current?.getAudioTracks().some((track) => track.readyState === 'live')
+        );
+        const hasLivePeer = Boolean(
+          peerRef.current && peerRef.current.connectionState !== 'closed'
+        );
+        if (hasLiveMicrophone || hasLivePeer) {
+          void send('busy', { ...signal, from: currentUserId, to: signal.from });
           return;
         }
+        if (statusRef.current !== 'idle') stopMedia();
+
+        setError('');
         callIdRef.current = signal.call_id;
         incomingCallRef.current = signal;
         setIncomingCall(signal);
