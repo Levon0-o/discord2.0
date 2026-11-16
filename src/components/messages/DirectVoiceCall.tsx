@@ -316,7 +316,12 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     callIdRef.current = callId;
     setCallStatus('outgoing');
     try {
-      streamRef.current = await getMicrophone();
+      const stream = await getMicrophone();
+      if (callIdRef.current !== callId) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current = stream;
       setMicrophoneReady(true);
       await send('invite', { call_id: callId, from: currentUserId, to: otherUserId });
       callTimeoutRef.current = window.setTimeout(() => {
@@ -340,7 +345,12 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     setError('');
     setCallStatus('connecting');
     try {
-      streamRef.current = await getMicrophone();
+      const stream = await getMicrophone();
+      if (callIdRef.current !== invite.call_id) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current = stream;
       setMicrophoneReady(true);
       incomingCallRef.current = null;
       setIncomingCall(null);
@@ -364,6 +374,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     callTimeoutRef.current = null;
     incomingCallRef.current = null;
     setIncomingCall(null);
+    callIdRef.current = '';
     if (invite) {
       try {
         await send('reject', { call_id: invite.call_id, from: currentUserId, to: invite.from });
