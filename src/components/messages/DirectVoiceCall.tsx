@@ -28,6 +28,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const [elapsed, setElapsed] = useState(0);
   const [channelReady, setChannelReady] = useState(false);
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
+  const [microphoneReady, setMicrophoneReady] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
@@ -59,6 +60,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     pendingIceRef.current = [];
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    setMicrophoneReady(false);
     if (audioRef.current) audioRef.current.srcObject = null;
     setAudioPlaybackBlocked(false);
     setMuted(false);
@@ -315,6 +317,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     setCallStatus('outgoing');
     try {
       streamRef.current = await getMicrophone();
+      setMicrophoneReady(true);
       await send('invite', { call_id: callId, from: currentUserId, to: otherUserId });
       callTimeoutRef.current = window.setTimeout(() => {
         if (callIdRef.current === callId && statusRef.current === 'outgoing') {
@@ -338,6 +341,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     setCallStatus('connecting');
     try {
       streamRef.current = await getMicrophone();
+      setMicrophoneReady(true);
       incomingCallRef.current = null;
       setIncomingCall(null);
       await send('accept', { call_id: invite.call_id, from: currentUserId, to: invite.from });
@@ -444,7 +448,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
               </button>
             ) : null}
             <div className="mt-6 flex justify-center gap-3">
-              <button type="button" onClick={toggleMute} disabled={!streamRef.current} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{muted ? <MicOff size={16} /> : <Mic size={16} />}{muted ? 'Unmute' : 'Mute'}</button>
+              <button type="button" onClick={toggleMute} disabled={!microphoneReady} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{muted ? <MicOff size={16} /> : <Mic size={16} />}{muted ? 'Unmute' : 'Mute'}</button>
               <button type="button" onClick={() => void hangUp()} className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-400"><PhoneOff size={16} /> End call</button>
             </div>
           </section>
