@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { MentionTextarea } from '@/components/shared/MentionTextarea';
 import { searchUsers, sendFriendRequest } from '@/lib/friendsApi';
 import type { ProfileLite } from '@/types/servers';
 
@@ -582,7 +583,7 @@ export function ExploreSection() {
       {tab !== 'people' && (
         <section className="rounded-2xl border border-white/[0.07] bg-ink-900/65 p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-500/15 text-primary-300"><Send size={17} /></div><div><h2 className="text-sm font-semibold text-ink-100">Share with the world</h2><p className="text-xs text-ink-500">Post an update or upload a short video.</p></div></div>
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value.slice(0, 2000))} rows={3} maxLength={2000} placeholder="What's happening?" className="w-full resize-y rounded-xl border border-white/[0.07] bg-ink-950/70 px-4 py-3 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+          <MentionTextarea value={draft} onChange={setDraft} rows={3} maxLength={2000} placeholder="What's happening? Type @ to tag someone" className="w-full resize-y rounded-xl border border-white/[0.07] bg-ink-950/70 px-4 py-3 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
           {(videoFile || imageFile) && <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-primary-500/10 px-3 py-2 text-xs text-primary-200">{imageFile ? <img src={URL.createObjectURL(imageFile)} alt="Selected image preview" className="h-14 w-14 rounded-lg object-cover" /> : <Video size={18} />}<span className="min-w-0 flex-1 truncate">{(imageFile || videoFile)?.name} · {((imageFile || videoFile)!.size / 1024 / 1024).toFixed(1)} MB</span><button type="button" onClick={() => { setVideoFile(null); setImageFile(null); }} aria-label="Remove media"><X size={15} /></button></div>}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
@@ -661,7 +662,7 @@ export function ExploreSection() {
                               {comment.author_id === userId && <><button type="button" onClick={() => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button><button type="button" onClick={() => void deleteComment(post.id, comment.id)} disabled={contentBusy === comment.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button></>}
                             </div>
                             {replyingTo === comment.id && <div className="mt-2 flex gap-2">
-                              <input value={replyDrafts[comment.id] ?? ''} onChange={(event) => setReplyDrafts((current) => ({ ...current, [comment.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishReply(post.id, comment.id); } }} placeholder={`Reply to ${commentAuthor}…`} maxLength={1000} className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+                              <MentionTextarea value={replyDrafts[comment.id] ?? ''} onChange={(value) => setReplyDrafts((current) => ({ ...current, [comment.id]: value }))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void publishReply(post.id, comment.id); } }} placeholder={`Reply to ${commentAuthor}… Type @ to tag`} rows={1} maxLength={1000} className="min-w-0 w-full resize-none rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
                               <button type="button" onClick={() => void publishReply(post.id, comment.id)} disabled={!(replyDrafts[comment.id] ?? '').trim() || commentBusy === comment.id} aria-label="Send reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white hover:bg-primary-400 disabled:opacity-40"><Send size={14} /></button>
                             </div>}
                           </div>
@@ -684,7 +685,7 @@ export function ExploreSection() {
                     })}
                   </div>
                   <div className="flex gap-2">
-                    <input value={commentDrafts[post.id] ?? ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishComment(post.id); } }} placeholder="Write a comment…" maxLength={1000} className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+                    <MentionTextarea value={commentDrafts[post.id] ?? ''} onChange={(value) => setCommentDrafts((current) => ({ ...current, [post.id]: value }))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void publishComment(post.id); } }} placeholder="Write a comment… Type @ to tag" rows={1} maxLength={1000} className="min-w-0 w-full resize-none rounded-xl border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
                     <button type="button" onClick={() => void publishComment(post.id)} disabled={!(commentDrafts[post.id] ?? '').trim() || commentBusy === post.id} aria-label="Send comment" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white transition hover:bg-primary-400 disabled:opacity-40"><Send size={16} /></button>
                   </div>
                 </div>
