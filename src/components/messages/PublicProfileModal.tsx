@@ -44,6 +44,9 @@ const themes: Record<string, string> = {
 export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [posts, setPosts] = useState<PublicPost[]>([]);
+  const [likedPosts, setLikedPosts] = useState<PublicPost[]>([]);
+  const [activeTab, setActiveTab] = useState<'posts' | 'likes' | 'about'>('posts');
+  const [likesLoading, setLikesLoading] = useState(false);
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,7 +64,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
     let active = true;
     async function load() {
       setLoading(true);
-      const [profileResult, postsResult, postCount, followers, following, followResult] = await Promise.all([
+      const [profileResult, postsResult, postCount, followers, following, followResult, likesResult] = await Promise.all([
         supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, status_message, created_at').eq('id', userId).maybeSingle(),
         supabase.from('posts').select('id, body, image_url, media_type, created_at').eq('author_id', userId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
         supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).is('server_id', null),
@@ -70,6 +73,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
         currentUserId && currentUserId !== userId
           ? supabase.from('follows').select('follower_id').eq('follower_id', currentUserId).eq('following_id', userId).maybeSingle()
           : Promise.resolve({ data: null, error: null }),
+        supabase.from('likes').select('post_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
       ]);
       if (!active) return;
       if (profileResult.error) setError(profileResult.error.message);
@@ -79,6 +83,14 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
       else setPosts((postsResult.data ?? []) as PublicPost[]);
       setStats({ posts: postCount.count ?? 0, followers: followers.count ?? 0, following: following.count ?? 0 });
       setIsFollowing(Boolean(followResult.data));
+      if (!likesResult.error && likesResult.data?.length) {
+        const likedIds = likesResult.data.map((like) => like.post_id);
+        const { data: likedPostRows } = await supabase.from('posts').select('id, body, image_url, media_type, created_at').in('id', likedIds).is('server_id', null);
+        if (active) {
+          const byId = new Map((likedPostRows ?? []).map((post) => [post.id, post as PublicPost]));
+          setLikedPosts(likedIds.flatMap((id) => { const post = byId.get(id); return post ? [post] : []; }));
+        }
+      }
       setLoading(false);
     }
     void load();
@@ -166,18 +178,28 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
                 {onMessage && <button onClick={() => onMessage(userId)} className="mb-1 inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-400"><MessageSquare size={16} /> Message</button>}
               </div>
               {profile.status_message && <p className="mt-4 inline-flex rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-ink-300">{profile.status_message}</p>}
-              {profile.bio && <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-ink-200">{profile.bio}</p>}
               <div className="mt-5 grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-center"><p className="text-lg font-bold text-white">{stats.posts}</p><p className="text-xs text-ink-500">Posts</p></div>
                 <button type="button" onClick={() => void openRelationList('followers')} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-center transition hover:border-primary-400/30 hover:bg-primary-500/[0.07]"><p className="text-lg font-bold text-white">{stats.followers}</p><p className="text-xs text-ink-400">Followers</p></button>
                 <button type="button" onClick={() => void openRelationList('following')} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-center transition hover:border-primary-400/30 hover:bg-primary-500/[0.07]"><p className="text-lg font-bold text-white">{stats.following}</p><p className="text-xs text-ink-400">Following</p></button>
               </div>
               <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-ink-500"><span className="inline-flex items-center gap-1"><CalendarDays size={14} /> Joined {new Date(profile.created_at).toLocaleDateString()}</span></div>
-              {links.length > 0 && <div className="mt-5 flex flex-wrap gap-2">{links.map(([label, url]) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-ink-200 hover:bg-white/[0.06]">{label}<ExternalLink size={12} /></a>)}</div>}
-              <div className="mt-7 border-t border-white/[0.07] pt-5">
-                <h3 className="mb-4 text-sm font-semibold text-white">Recent posts</h3>
-                {posts.length ? <div className="grid gap-3 sm:grid-cols-2">{posts.map((post) => <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-3 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p></article>)}</div> : <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-sm text-ink-500"><UserRound size={22} className="mx-auto mb-2" />No public posts yet.</div>}
+              <div className="mt-6 border-b border-white/[0.08]">
+                <div className="flex gap-2">
+                  {(['posts', 'likes', 'about'] as const).map((tab) => <button key={tab} type="button" onClick={() => setActiveTab(tab)} className={`border-b-2 px-4 py-3 text-sm font-semibold capitalize transition ${activeTab === tab ? 'border-primary-400 text-primary-200' : 'border-transparent text-ink-500 hover:text-ink-200'}`}>{tab === 'likes' ? 'Liked posts' : tab}</button>)}
+                </div>
               </div>
+              {activeTab === 'about' ? <div className="space-y-4 py-5">
+                <h3 className="text-sm font-semibold text-white">About {name}</h3>
+                {profile.bio ? <p className="whitespace-pre-wrap text-sm leading-6 text-ink-200">{profile.bio}</p> : <p className="text-sm text-ink-500">No bio added yet.</p>}
+                {links.length > 0 && <div className="flex flex-wrap gap-2">{links.map(([label, url]) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-ink-200 hover:bg-white/[0.06]">{label}<ExternalLink size={12} /></a>)}</div>}
+                <p className="text-xs text-ink-500">Member since {new Date(profile.created_at).toLocaleDateString()}</p>
+              </div> : <div className="mt-5 border-t border-white/[0.07] pt-5">
+                <h3 className="mb-4 text-sm font-semibold text-white">{activeTab === 'posts' ? 'Public posts' : 'Liked posts'}</h3>
+                {activeTab === 'likes' && likesLoading ? <div className="py-8 text-center text-sm text-ink-400"><Loader2 size={17} className="mx-auto mb-2 animate-spin" />Loading likes…</div>
+                  : (activeTab === 'posts' ? posts : likedPosts).length ? <div className="grid gap-3 sm:grid-cols-2">{(activeTab === 'posts' ? posts : likedPosts).map((post) => <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-3 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p></article>)}</div>
+                  : <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-sm text-ink-500"><UserRound size={22} className="mx-auto mb-2" />{activeTab === 'posts' ? 'No public posts yet.' : 'No public liked posts yet.'}</div>}
+              </div>}
             </div>
           </>}
         </div>
