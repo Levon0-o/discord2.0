@@ -289,9 +289,9 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
                         <button onClick={() => setViewingProfileId(profile.id)} className="block max-w-full truncate text-left text-sm font-semibold text-ink-100 hover:text-primary-200">
                           {profileName(profile)}
                         </button>
-                        <p className="text-xs text-ink-500">
+                        <button type="button" onClick={() => setViewingProfileId(profile.id)} className="block max-w-full truncate text-left text-xs text-ink-500 hover:text-primary-300">
                           @{profile.username} · {presence[profile.id] === 'online' ? 'Online' : presence[profile.id] === 'idle' ? 'Idle' : 'Offline'}
-                        </p>
+                        </button>
                         {profile.status_message?.trim() && (
                           <p className="mt-1 truncate text-xs text-ink-400" title={profile.status_message}>
                             {profile.status_message}
@@ -366,12 +366,12 @@ export function FriendsPanel({ onClose, onMessage }: FriendsPanelProps) {
                       >
                         {avatar(profile)}
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-ink-100">
+                          <button type="button" onClick={() => setViewingProfileId(profile.id)} className="block max-w-full truncate text-left text-sm font-semibold text-ink-100 hover:text-primary-200">
                             {profileName(profile)}
-                          </p>
-                          <p className="text-xs text-ink-500">
+                          </button>
+                          <button type="button" onClick={() => setViewingProfileId(profile.id)} className="block max-w-full truncate text-left text-xs text-ink-500 hover:text-primary-300">
                             @{profile.username}
-                          </p>
+                          </button>
                           {profile.status_message?.trim() && <p className="mt-1 truncate text-xs text-ink-400">{profile.status_message}</p>}
                         </div>
                         <button
