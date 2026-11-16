@@ -13,6 +13,40 @@ export const VISIBLE_NOTIFICATION_TYPES = [
   'event_reminder_15m',
 ] as const;
 
+export type NotificationType = (typeof VISIBLE_NOTIFICATION_TYPES)[number];
+
+export interface NotificationPreference {
+  notification_type: NotificationType;
+  enabled: boolean;
+}
+
+export async function fetchNotificationPreferences(): Promise<NotificationPreference[]> {
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .select('notification_type, enabled');
+  if (error) throw error;
+  return (data ?? []) as NotificationPreference[];
+}
+
+export async function saveNotificationPreference(
+  notificationType: NotificationType,
+  enabled: boolean,
+): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in.');
+
+  const { error } = await supabase
+    .from('notification_preferences')
+    .upsert({
+      user_id: user.id,
+      notification_type: notificationType,
+      enabled,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,notification_type' });
+  if (error) throw error;
+}
+
 export interface NotificationItem {
   id: string;
   recipient_id: string;
@@ -37,7 +71,9 @@ export async function fetchNotifications(): Promise<NotificationItem[]> {
     .limit(50);
 
   if (error) throw error;
-  return (data ?? []) as unknown as NotificationItem[];
+  const preferences = await fetchNotificationPreferences();
+  const disabled = new Set(preferences.filter((item) => !item.enabled).map((item) => item.notification_type));
+  return ((data ?? []) as unknown as NotificationItem[]).filter((item) => !disabled.has(item.type));
 }
 
 export async function markNotificationRead(notificationId: string): Promise<void> {
