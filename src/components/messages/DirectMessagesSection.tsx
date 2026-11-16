@@ -184,6 +184,7 @@ export function DirectMessagesSection({
   const [error, setError] = useState('');
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -1813,6 +1814,8 @@ Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
         )}
       </aside>
 
+      {viewingProfileId && <PublicProfileModal userId={viewingProfileId} onClose={() => setViewingProfileId(null)} onMessage={(id) => { setViewingProfileId(null); handleMessageFriend(id); }} />}
+
       {friendsOpen && (
         <FriendsPanel
           onClose={() => setFriendsOpen(false)}
@@ -1820,6 +1823,5 @@ Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
         />
       )}
     </div>
-      {viewingProfileId && <PublicProfileModal userId={viewingProfileId} onClose={() => setViewingProfileId(null)} onMessage={(id) => { setViewingProfileId(null); void openConversationWithUser(id); }} />}
   );
 }
