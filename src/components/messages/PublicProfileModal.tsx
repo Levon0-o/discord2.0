@@ -219,7 +219,8 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
         ? { ...item, likes: liked ? item.likes.filter((like) => like.user_id !== currentUserId) : [...item.likes, { user_id: currentUserId }] }
         : item);
       setPosts(update);
-      setLikedPosts(update);
+      if (userId === currentUserId && liked) setLikedPosts((items) => items.filter((item) => item.id !== post.id));
+      else setLikedPosts(update);
     }
     setLikeBusy(null);
   };
@@ -239,7 +240,8 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
     else {
       setCommentDrafts((current) => ({ ...current, [postId]: '' }));
       await loadPostComments(postId);
-      const update = (items: PublicPost[]) => items.map((item) => item.id === postId ? { ...item, comments: [...item.comments, { id: 'new-' + Date.now() }] } : item);
+      const { count } = await supabase.from('comments').select('id', { count: 'exact', head: true }).eq('post_id', postId);
+      const update = (items: PublicPost[]) => items.map((item) => item.id === postId ? { ...item, comments: Array.from({ length: count ?? item.comments.length + 1 }, (_, index) => ({ id: 'count-' + index })) } : item);
       setPosts(update);
       setLikedPosts(update);
     }
