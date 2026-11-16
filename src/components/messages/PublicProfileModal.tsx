@@ -302,14 +302,14 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
           <button onClick={onClose} className="inline-flex items-center gap-2 text-sm text-ink-300 hover:text-white"><ArrowLeft size={17} /> Back</button>
           <span className="text-xs font-semibold uppercase tracking-widest text-ink-500">AFTERDARK profile</span>
         </header>
-        <div className="overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {loading ? <div className="flex items-center justify-center gap-3 py-24 text-sm text-ink-400"><Loader2 size={18} className="animate-spin" /> Loading profile…</div> : error ? <p role="alert" className="m-5 rounded-xl bg-red-400/10 p-4 text-sm text-red-200">{error}</p> : profile && <>
             <div className={`relative h-36 bg-gradient-to-br ${themes[profile.profile_theme ?? 'blue'] ?? themes.blue} via-ink-900 to-ink-950 sm:h-48`}>
               {profile.banner_url && <img src={profile.banner_url} alt="" className="h-full w-full object-cover" />}
             </div>
             <div className="px-5 pb-6">
               <div className="-mt-12 flex flex-wrap items-end gap-4">
-                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border-4 border-ink-950 bg-ink-800 text-2xl font-bold text-white">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border-4 border-ink-950 bg-ink-800 text-2xl font-bold text-white">
                   {profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : name.slice(0, 2).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1 pb-1">
