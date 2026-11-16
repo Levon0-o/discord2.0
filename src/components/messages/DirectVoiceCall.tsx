@@ -386,6 +386,9 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
 
   async function hangUp() {
     const callId = callIdRef.current;
+    // Cancel locally before awaiting the network so a pending microphone
+    // permission request cannot revive a call after the user hangs up.
+    stopMedia();
     if (callId) {
       try {
         await send('hangup', { call_id: callId, from: currentUserId, to: otherUserId });
@@ -393,9 +396,6 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         // Local cleanup must still happen if the other client disconnected.
       }
     }
-    incomingCallRef.current = null;
-    setIncomingCall(null);
-    stopMedia();
   }
 
   function toggleMute() {
