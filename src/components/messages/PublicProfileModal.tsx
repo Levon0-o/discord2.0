@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, CalendarDays, ExternalLink, Loader2, MessageSquare, UserRound } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface PublicProfile {
   id: string;
@@ -46,17 +47,24 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const { session } = useAuth();
+  const currentUserId = session?.user.id;
 
   useEffect(() => {
     let active = true;
     async function load() {
       setLoading(true);
-      const [profileResult, postsResult, postCount, followers, following] = await Promise.all([
+      const [profileResult, postsResult, postCount, followers, following, followResult] = await Promise.all([
         supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, status_message, created_at').eq('id', userId).maybeSingle(),
         supabase.from('posts').select('id, body, image_url, media_type, created_at').eq('author_id', userId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
         supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).is('server_id', null),
         supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', userId),
         supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', userId),
+        currentUserId && currentUserId !== userId
+          ? supabase.from('follows').select('follower_id').eq('follower_id', currentUserId).eq('following_id', userId).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
       if (!active) return;
       if (profileResult.error) setError(profileResult.error.message);
@@ -65,11 +73,28 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
       if (postsResult.error) setError(postsResult.error.message);
       else setPosts((postsResult.data ?? []) as PublicPost[]);
       setStats({ posts: postCount.count ?? 0, followers: followers.count ?? 0, following: following.count ?? 0 });
+      setIsFollowing(Boolean(followResult.data));
       setLoading(false);
     }
     void load();
     return () => { active = false; };
-  }, [userId]);
+  }, [userId, currentUserId]);
+
+
+  const toggleFollow = async () => {
+    if (!profile || !currentUserId || currentUserId === userId || followBusy) return;
+    setFollowBusy(true);
+    setError('');
+    const result = isFollowing
+      ? await supabase.from('follows').delete().eq('follower_id', currentUserId).eq('following_id', userId)
+      : await supabase.from('follows').insert({ follower_id: currentUserId, following_id: userId });
+    if (result.error) setError(result.error.message);
+    else {
+      setIsFollowing(!isFollowing);
+      setStats((current) => ({ ...current, followers: Math.max(0, current.followers + (isFollowing ? -1 : 1)) }));
+    }
+    setFollowBusy(false);
+  };
 
   const links = profile ? [
     ['Website', profile.website_url],
@@ -101,6 +126,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
                   <h2 className="truncate text-2xl font-bold text-white">{name}</h2>
                   <p className="text-sm text-ink-400">@{profile.username}</p>
                 </div>
+                {currentUserId && currentUserId !== userId && <button onClick={() => void toggleFollow()} disabled={followBusy} className={`mb-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${isFollowing ? 'border-white/10 bg-white/[0.06] text-ink-200 hover:bg-red-500/10 hover:text-red-200' : 'border-primary-400/30 bg-primary-500/15 text-primary-200 hover:bg-primary-500/25'}`}>{followBusy ? 'Please wait…' : isFollowing ? 'Following' : 'Follow'}</button>}
                 {onMessage && <button onClick={() => onMessage(userId)} className="mb-1 inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-400"><MessageSquare size={16} /> Message</button>}
               </div>
               {profile.status_message && <p className="mt-4 inline-flex rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-ink-300">{profile.status_message}</p>}
