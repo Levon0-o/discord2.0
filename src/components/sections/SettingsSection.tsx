@@ -1,7 +1,13 @@
-import { useState, type FormEvent } from 'react';
-import { KeyRound, LogOut, Mail, ShieldCheck, UserRound, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { KeyRound, LogOut, Mail, ShieldCheck, UserRound, Loader2, CheckCircle2, AlertCircle, Bell, Heart, MessageCircle, UserPlus, AtSign, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import {
+  VISIBLE_NOTIFICATION_TYPES,
+  fetchNotificationPreferences,
+  saveNotificationPreference,
+  type NotificationType,
+} from '@/lib/notificationsApi';
 
 export function SettingsSection() {
   const { session, signOut } = useAuth();
@@ -11,6 +17,58 @@ export function SettingsSection() {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [notificationPreferences, setNotificationPreferences] = useState<Partial<Record<NotificationType, boolean>>>({});
+  const [loadingNotificationPreferences, setLoadingNotificationPreferences] = useState(true);
+  const [savingNotificationType, setSavingNotificationType] = useState<NotificationType | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void fetchNotificationPreferences()
+      .then((rows) => {
+        if (!active) return;
+        setNotificationPreferences(Object.fromEntries(rows.map((row) => [row.notification_type, row.enabled])));
+      })
+      .catch((err: unknown) => {
+        if (active) setError(err instanceof Error ? err.message : 'Could not load notification preferences.');
+      })
+      .finally(() => {
+        if (active) setLoadingNotificationPreferences(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const notificationOptions: {
+    type: NotificationType;
+    title: string;
+    description: string;
+    Icon: typeof Bell;
+  }[] = [
+    { type: 'like', title: 'Likes', description: 'When someone likes one of your posts.', Icon: Heart },
+    { type: 'comment', title: 'Comments', description: 'When someone comments on your posts.', Icon: MessageCircle },
+    { type: 'follow', title: 'New followers', description: 'When someone starts following you.', Icon: UserPlus },
+    { type: 'mention', title: 'Mentions', description: 'When someone mentions you in a server.', Icon: AtSign },
+    { type: 'reply', title: 'Replies', description: 'When someone replies to your server message.', Icon: MessageCircle },
+    { type: 'event_rsvp', title: 'Event responses', description: 'When someone responds to your server event.', Icon: CalendarDays },
+    { type: 'event_update', title: 'Event updates', description: 'Updates to events you are attending or interested in.', Icon: CalendarDays },
+    { type: 'event_reminder_24h', title: '24-hour reminders', description: 'A reminder one day before an event.', Icon: Bell },
+    { type: 'event_reminder_1h', title: '1-hour reminders', description: 'A reminder one hour before an event.', Icon: Bell },
+    { type: 'event_reminder_15m', title: '15-minute reminders', description: 'A reminder 15 minutes before an event.', Icon: Bell },
+  ];
+
+  async function handleNotificationPreferenceChange(type: NotificationType, enabled: boolean) {
+    const previous = notificationPreferences[type] ?? true;
+    setNotificationPreferences((current) => ({ ...current, [type]: enabled }));
+    setSavingNotificationType(type);
+    setError('');
+    try {
+      await saveNotificationPreference(type, enabled);
+    } catch (err) {
+      setNotificationPreferences((current) => ({ ...current, [type]: previous }));
+      setError(err instanceof Error ? err.message : 'Could not save notification preference.');
+    } finally {
+      setSavingNotificationType(null);
+    }
+  }
 
   const email = session?.user.email ?? 'Unavailable';
   const createdAt = session?.user.created_at
@@ -93,6 +151,47 @@ export function SettingsSection() {
             <p className="mt-2 text-sm font-medium text-ink-100">{createdAt}</p>
           </div>
         </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/60">
+        <div className="flex items-center gap-3 border-b border-white/[0.06] px-5 py-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500/10 text-primary-300"><Bell size={19} /></div>
+          <div>
+            <h2 className="text-sm font-semibold text-ink-100">Notifications</h2>
+            <p className="mt-0.5 text-xs text-ink-500">Choose which activity appears in your notification center.</p>
+          </div>
+        </div>
+        {loadingNotificationPreferences ? (
+          <div className="flex items-center gap-2 p-5 text-sm text-ink-400"><Loader2 size={16} className="animate-spin" /> Loading preferences…</div>
+        ) : (
+          <div className="divide-y divide-white/[0.06]">
+            {notificationOptions.map(({ type, title, description, Icon }) => {
+              const enabled = notificationPreferences[type] ?? true;
+              return (
+                <div key={type} className="flex items-center gap-3 px-5 py-3.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-ink-300"><Icon size={17} /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink-100">{title}</p>
+                    <p className="mt-0.5 text-xs text-ink-500">{description}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={enabled}
+                    aria-label={`Enable ${title} notifications`}
+                    disabled={savingNotificationType !== null}
+                    onClick={() => void handleNotificationPreferenceChange(type, !enabled)}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:cursor-wait disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-ink-700'}`}
+                  >
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${enabled ? 'left-6' : 'left-1'}`} />
+                  </button>
+                  {savingNotificationType === type && <Loader2 size={14} className="animate-spin text-ink-500" />}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="border-t border-white/[0.06] px-5 py-3 text-xs text-ink-500">Direct messages are kept in Messages and do not appear in this notification center.</p>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-900/60">
