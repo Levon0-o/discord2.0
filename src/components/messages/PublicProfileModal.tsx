@@ -49,6 +49,11 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
   const [error, setError] = useState('');
   const [isFollowing, setIsFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  const [relationType, setRelationType] = useState<'followers' | 'following' | null>(null);
+  const [relationProfiles, setRelationProfiles] = useState<Array<{ id: string; username: string; display_name: string | null; avatar_url: string | null }>>([]);
+  const [relationLoading, setRelationLoading] = useState(false);
+  const [relationError, setRelationError] = useState('');
+  const [selectedRelatedProfileId, setSelectedRelatedProfileId] = useState<string | null>(null);
   const { session } = useAuth();
   const currentUserId = session?.user.id;
 
@@ -80,6 +85,37 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
     return () => { active = false; };
   }, [userId, currentUserId]);
 
+
+  const openRelationList = async (type: 'followers' | 'following') => {
+    setRelationType(type);
+    setRelationLoading(true);
+    setRelationError('');
+    setRelationProfiles([]);
+    const column = type === 'followers' ? 'follower_id' : 'following_id';
+    const { data: relationRows, error: relationQueryError } = await supabase
+      .from('follows')
+      .select(column)
+      .eq(type === 'followers' ? 'following_id' : 'follower_id', userId)
+      .order('created_at', { ascending: false });
+    if (relationQueryError) {
+      setRelationError(relationQueryError.message);
+      setRelationLoading(false);
+      return;
+    }
+    const ids = (relationRows ?? []).map((row) => row[column] as string);
+    if (ids.length) {
+      const { data, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', ids);
+      if (profilesError) setRelationError(profilesError.message);
+      else {
+        const byId = new Map((data ?? []).map((person) => [person.id, person]));
+        setRelationProfiles(ids.map((id) => byId.get(id)).filter((person): person is NonNullable<typeof person> => Boolean(person)));
+      }
+    }
+    setRelationLoading(false);
+  };
 
   const toggleFollow = async () => {
     if (!profile || !currentUserId || currentUserId === userId || followBusy) return;
@@ -132,7 +168,9 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
               {profile.status_message && <p className="mt-4 inline-flex rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-ink-300">{profile.status_message}</p>}
               {profile.bio && <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-ink-200">{profile.bio}</p>}
               <div className="mt-5 grid grid-cols-3 gap-2">
-                {([['Posts', stats.posts], ['Followers', stats.followers], ['Following', stats.following]] as const).map(([label, value]) => <div key={label} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-center"><p className="text-lg font-bold text-white">{value}</p><p className="text-xs text-ink-500">{label}</p></div>)}
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-center"><p className="text-lg font-bold text-white">{stats.posts}</p><p className="text-xs text-ink-500">Posts</p></div>
+                <button type="button" onClick={() => void openRelationList('followers')} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-center transition hover:border-primary-400/30 hover:bg-primary-500/[0.07]"><p className="text-lg font-bold text-white">{stats.followers}</p><p className="text-xs text-ink-400">Followers</p></button>
+                <button type="button" onClick={() => void openRelationList('following')} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-center transition hover:border-primary-400/30 hover:bg-primary-500/[0.07]"><p className="text-lg font-bold text-white">{stats.following}</p><p className="text-xs text-ink-400">Following</p></button>
               </div>
               <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-ink-500"><span className="inline-flex items-center gap-1"><CalendarDays size={14} /> Joined {new Date(profile.created_at).toLocaleDateString()}</span></div>
               {links.length > 0 && <div className="mt-5 flex flex-wrap gap-2">{links.map(([label, url]) => <a key={label} href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-ink-200 hover:bg-white/[0.06]">{label}<ExternalLink size={12} /></a>)}</div>}
@@ -144,6 +182,26 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
           </>}
         </div>
       </section>
+      {relationType && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setRelationType(null)}>
+          <section role="dialog" aria-modal="true" aria-label={relationType === 'followers' ? 'Followers' : 'Following'} onClick={(event) => event.stopPropagation()} className="flex max-h-[75vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl">
+            <header className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
+              <h3 className="font-semibold text-white">{relationType === 'followers' ? 'Followers' : 'Following'} <span className="text-ink-500">({relationProfiles.length})</span></h3>
+              <button type="button" onClick={() => setRelationType(null)} className="rounded-lg px-2 py-1 text-sm text-ink-400 hover:bg-white/10 hover:text-white">Close</button>
+            </header>
+            <div className="overflow-y-auto p-3">
+              {relationLoading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-ink-400"><Loader2 size={17} className="animate-spin" /> Loading people…</div>
+                : relationError ? <p role="alert" className="p-4 text-sm text-red-300">{relationError}</p>
+                : relationProfiles.length ? <div className="space-y-1">{relationProfiles.map((person) => <button key={person.id} type="button" onClick={() => setSelectedRelatedProfileId(person.id)} className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-white/[0.06]">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-sm font-semibold text-primary-200">{person.avatar_url ? <img src={person.avatar_url} alt="" className="h-full w-full object-cover" /> : (person.display_name || person.username).slice(0, 1).toUpperCase()}</div>
+                    <div className="min-w-0"><p className="truncate text-sm font-semibold text-ink-100">{person.display_name || person.username}</p><p className="truncate text-xs text-ink-500">@{person.username}</p></div>
+                  </button>)}</div>
+                : <p className="py-10 text-center text-sm text-ink-500">No {relationType} yet.</p>}
+            </div>
+          </section>
+        </div>
+      )}
+      {selectedRelatedProfileId && <PublicProfileModal userId={selectedRelatedProfileId} onClose={() => setSelectedRelatedProfileId(null)} />}
     </div>
   );
 }
