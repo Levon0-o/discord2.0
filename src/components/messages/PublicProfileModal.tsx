@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CalendarDays, ExternalLink, Loader2, MessageSquare, UserRound } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ExternalLink, Loader2, MessageSquare, UserRound, Heart, MessageCircle, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -21,10 +21,21 @@ interface PublicProfile {
 
 interface PublicPost {
   id: string;
+  author_id: string;
   body: string;
   image_url: string | null;
   media_type: string;
   created_at: string;
+  likes: { user_id: string }[];
+  comments: { id: string }[];
+}
+
+interface PublicComment {
+  id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+  author: { username: string; display_name: string | null; avatar_url: string | null } | null;
 }
 
 interface Props {
@@ -45,6 +56,11 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [posts, setPosts] = useState<PublicPost[]>([]);
   const [likedPosts, setLikedPosts] = useState<PublicPost[]>([]);
+  const [expandedPost, setExpandedPost] = useState<string | null>(null);
+  const [postComments, setPostComments] = useState<Record<string, PublicComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [likeBusy, setLikeBusy] = useState<string | null>(null);
+  const [commentBusy, setCommentBusy] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'likes' | 'about'>('posts');
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
@@ -65,7 +81,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
       setLoading(true);
       const [profileResult, postsResult, postCount, followers, following, followResult, likesResult] = await Promise.all([
         supabase.from('profiles').select('id, username, display_name, bio, avatar_url, banner_url, website_url, instagram_url, twitch_url, youtube_url, profile_theme, status_message, created_at').eq('id', userId).maybeSingle(),
-        supabase.from('posts').select('id, body, image_url, media_type, created_at').eq('author_id', userId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
+        supabase.from('posts').select('id, author_id, body, image_url, media_type, created_at, likes(user_id), comments(id)').eq('author_id', userId).is('server_id', null).order('created_at', { ascending: false }).limit(12),
         supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).is('server_id', null),
         supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', userId),
         supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', userId),
@@ -84,7 +100,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
       setIsFollowing(Boolean(followResult.data));
       if (!likesResult.error && likesResult.data?.length) {
         const likedIds = likesResult.data.map((like) => like.post_id);
-        const { data: likedPostRows } = await supabase.from('posts').select('id, body, image_url, media_type, created_at').in('id', likedIds).is('server_id', null);
+        const { data: likedPostRows } = await supabase.from('posts').select('id, author_id, body, image_url, media_type, created_at, likes(user_id), comments(id)').in('id', likedIds).is('server_id', null);
         if (active) {
           const byId = new Map((likedPostRows ?? []).map((post) => [post.id, post as PublicPost]));
           setLikedPosts(likedIds.flatMap((id) => { const post = byId.get(id); return post ? [post] : []; }));
@@ -143,6 +159,55 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
     setFollowBusy(false);
   };
 
+
+  const loadPostComments = async (postId: string) => {
+    const { data, error: queryError } = await supabase.from('comments')
+      .select('id, author_id, body, created_at, author:profiles!comments_author_id_fkey(username, display_name, avatar_url)')
+      .eq('post_id', postId).order('created_at', { ascending: true });
+    if (queryError) setError(queryError.message);
+    else setPostComments((current) => ({ ...current, [postId]: (data ?? []) as unknown as PublicComment[] }));
+  };
+
+  const togglePostLike = async (post: PublicPost) => {
+    if (!currentUserId || likeBusy) return;
+    setLikeBusy(post.id);
+    const liked = post.likes.some((like) => like.user_id === currentUserId);
+    const result = liked
+      ? await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', currentUserId)
+      : await supabase.from('likes').insert({ post_id: post.id, user_id: currentUserId });
+    if (result.error) setError(result.error.message);
+    else {
+      const update = (items: PublicPost[]) => items.map((item) => item.id === post.id
+        ? { ...item, likes: liked ? item.likes.filter((like) => like.user_id !== currentUserId) : [...item.likes, { user_id: currentUserId }] }
+        : item);
+      setPosts(update);
+      setLikedPosts(update);
+    }
+    setLikeBusy(null);
+  };
+
+  const togglePostComments = async (postId: string) => {
+    if (expandedPost === postId) { setExpandedPost(null); return; }
+    setExpandedPost(postId);
+    await loadPostComments(postId);
+  };
+
+  const publishPostComment = async (postId: string) => {
+    const body = (commentDrafts[postId] ?? '').trim();
+    if (!body || !currentUserId || commentBusy) return;
+    setCommentBusy(postId);
+    const { error: insertError } = await supabase.from('comments').insert({ post_id: postId, body });
+    if (insertError) setError(insertError.message);
+    else {
+      setCommentDrafts((current) => ({ ...current, [postId]: '' }));
+      await loadPostComments(postId);
+      const update = (items: PublicPost[]) => items.map((item) => item.id === postId ? { ...item, comments: [...item.comments, { id: 'new-' + Date.now() }] } : item);
+      setPosts(update);
+      setLikedPosts(update);
+    }
+    setCommentBusy(null);
+  };
+
   const links = profile ? [
     ['Website', profile.website_url],
     ['Instagram', profile.instagram_url],
@@ -195,7 +260,7 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
                 <p className="text-xs text-ink-500">Member since {new Date(profile.created_at).toLocaleDateString()}</p>
               </div> : <div className="mt-5 border-t border-white/[0.07] pt-5">
                 <h3 className="mb-4 text-sm font-semibold text-white">{activeTab === 'posts' ? 'Public posts' : 'Liked posts'}</h3>
-                {(activeTab === 'posts' ? posts : likedPosts).length ? <div className="grid gap-3 sm:grid-cols-2">{(activeTab === 'posts' ? posts : likedPosts).map((post) => <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-3 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p></article>)}</div>
+                {(activeTab === 'posts' ? posts : likedPosts).length ? <div className="grid gap-3 sm:grid-cols-2">{(activeTab === 'posts' ? posts : likedPosts).map((post) => { const liked = Boolean(currentUserId && post.likes.some((like) => like.user_id === currentUserId)); return <article key={post.id} className="overflow-hidden rounded-xl border border-white/[0.07] bg-ink-900/70">{post.media_type === 'video' && post.image_url && <video src={post.image_url} controls playsInline preload="metadata" className="max-h-64 w-full bg-black object-contain" />}{post.media_type === 'image' && post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full object-cover" />}{post.body && <p className="whitespace-pre-wrap p-4 text-sm leading-6 text-ink-200">{post.body}</p>}<p className="px-4 pb-2 text-[11px] text-ink-500">{new Date(post.created_at).toLocaleString()}</p><div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2"><button type="button" onClick={() => void togglePostLike(post)} disabled={!currentUserId || likeBusy === post.id} aria-pressed={liked} className={'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/[0.05] ' + (liked ? 'text-rose-300' : 'text-ink-400')}><Heart size={15} className={liked ? 'fill-current' : ''} />{post.likes.length} likes</button><button type="button" onClick={() => void togglePostComments(post.id)} aria-expanded={expandedPost === post.id} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-ink-400 hover:bg-white/[0.05]"><MessageCircle size={15} />{post.comments.length} comments</button></div>{expandedPost === post.id && <div className="space-y-3 border-t border-white/[0.06] bg-ink-950/40 px-3 py-3"><div className="max-h-56 space-y-2 overflow-y-auto">{(postComments[post.id] ?? []).length ? (postComments[post.id] ?? []).map((comment) => <div key={comment.id} className="rounded-lg bg-white/[0.035] px-3 py-2"><p className="text-[11px] font-semibold text-ink-300">{comment.author?.display_name || comment.author?.username || 'Member'} <span className="font-normal text-ink-500">· {new Date(comment.created_at).toLocaleString()}</span></p><p className="mt-1 whitespace-pre-wrap break-words text-xs text-ink-200">{comment.body}</p></div>) : <p className="text-xs text-ink-500">No comments yet. Start the discussion.</p>}</div><div className="flex gap-2"><input value={commentDrafts[post.id] ?? ''} onChange={(event) => setCommentDrafts((current) => ({ ...current, [post.id]: event.target.value.slice(0, 1000) }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void publishPostComment(post.id); } }} maxLength={1000} placeholder="Write a comment…" className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2 text-xs text-ink-100 outline-none placeholder:text-ink-500" /><button type="button" onClick={() => void publishPostComment(post.id)} disabled={!(commentDrafts[post.id] ?? '').trim() || commentBusy === post.id} aria-label="Send comment" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white disabled:opacity-40"><Send size={14} /></button></div></div>}</article>; })}</div>
                   : <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-sm text-ink-500"><UserRound size={22} className="mx-auto mb-2" />{activeTab === 'posts' ? 'No public posts yet.' : 'No public liked posts yet.'}</div>}
               </div>}
             </div>
