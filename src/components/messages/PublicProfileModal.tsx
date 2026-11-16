@@ -120,6 +120,37 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
   }, [userId, currentUserId]);
 
 
+
+  useEffect(() => {
+    const channel = supabase.channel('public-profile-post-interactions-' + userId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, async () => {
+        const ids = [...new Set([...posts, ...likedPosts].map((post) => post.id))];
+        if (!ids.length) return;
+        const { data } = await supabase.from('likes').select('post_id, user_id').in('post_id', ids);
+        if (!data) return;
+        const grouped = new Map<string, { user_id: string }[]>();
+        data.forEach((like) => grouped.set(like.post_id, [...(grouped.get(like.post_id) ?? []), { user_id: like.user_id }]));
+        const update = (items: PublicPost[]) => items.map((post) => ({ ...post, likes: grouped.get(post.id) ?? [] }));
+        setPosts(update);
+        setLikedPosts(update);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, async (payload) => {
+        const postId = (payload.new as { post_id?: string } | null)?.post_id ?? (payload.old as { post_id?: string } | null)?.post_id;
+        if (postId && expandedPost === postId) await loadPostComments(postId);
+        const ids = [...new Set([...posts, ...likedPosts].map((post) => post.id))];
+        if (!ids.length) return;
+        const { data } = await supabase.from('comments').select('id, post_id').in('post_id', ids);
+        if (!data) return;
+        const grouped = new Map<string, { id: string }[]>();
+        data.forEach((comment) => grouped.set(comment.post_id, [...(grouped.get(comment.post_id) ?? []), { id: comment.id }]));
+        const update = (items: PublicPost[]) => items.map((post) => ({ ...post, comments: grouped.get(post.id) ?? [] }));
+        setPosts(update);
+        setLikedPosts(update);
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId, posts, likedPosts, expandedPost]);
+
   const openRelationList = async (type: 'followers' | 'following') => {
     setRelationType(type);
     setRelationLoading(true);
