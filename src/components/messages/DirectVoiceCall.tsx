@@ -158,6 +158,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         if (statusRef.current !== 'idle') stopMedia();
 
         setError('');
+        setIncomingCall(null);
         callIdRef.current = signal.call_id;
         incomingCallRef.current = signal;
         setIncomingCall(signal);
