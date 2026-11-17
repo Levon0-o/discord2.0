@@ -557,3 +557,42 @@ export async function setCategoryMemberPermission(
   if (error) throw error;
   return data;
 }
+
+
+export type CategoryRolePermissionKey = ChannelMemberPermissionKey;
+export interface CategoryRolePermission {
+  category_id: string;
+  role_id: string;
+  can_view: boolean | null;
+  can_send_messages: boolean | null;
+  can_attach_files: boolean | null;
+  can_manage_messages: boolean | null;
+  updated_at?: string;
+}
+
+export async function fetchCategoryRolePermissions(categoryId: string): Promise<CategoryRolePermission[]> {
+  const { data, error } = await supabase.from('category_role_permissions')
+    .select('category_id, role_id, can_view, can_send_messages, can_attach_files, can_manage_messages, updated_at')
+    .eq('category_id', categoryId);
+  if (error) throw error;
+  return (data ?? []) as CategoryRolePermission[];
+}
+
+export async function setCategoryRolePermission(categoryId: string, serverId: string, roleId: string, permission: CategoryRolePermissionKey, value: boolean | null): Promise<CategoryRolePermission> {
+  const { data: existing, error: readError } = await supabase.from('category_role_permissions')
+    .select('category_id, server_id, role_id, can_view, can_send_messages, can_attach_files, can_manage_messages')
+    .eq('category_id', categoryId).eq('role_id', roleId).maybeSingle();
+  if (readError) throw readError;
+  const payload = { ...(existing ?? { category_id: categoryId, server_id: serverId, role_id: roleId, can_view: null, can_send_messages: null, can_attach_files: null, can_manage_messages: null }), [permission]: value };
+  if ([payload.can_view, payload.can_send_messages, payload.can_attach_files, payload.can_manage_messages].every((entry) => entry === null)) {
+    const { error } = await supabase.from('category_role_permissions').delete().eq('category_id', categoryId).eq('role_id', roleId);
+    if (error) throw error;
+    return payload as CategoryRolePermission;
+  }
+  const { data, error } = await supabase.from('category_role_permissions')
+    .upsert(payload, { onConflict: 'category_id,role_id' })
+    .select('category_id, role_id, can_view, can_send_messages, can_attach_files, can_manage_messages, updated_at')
+    .single();
+  if (error) throw error;
+  return data as CategoryRolePermission;
+}
