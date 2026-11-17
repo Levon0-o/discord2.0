@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Headphones, Maximize2, Mic, MicOff, MonitorUp, PhoneOff, Users, Volume2, VolumeX, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import type { MemberWithProfile } from '@/types/servers';
 
 interface ServerEventVoiceRoomProps {
   eventId: string;
   eventTitle: string;
   userId: string;
-  members: MemberWithProfile[];
+  members: Array<{ user_id: string; profile?: { display_name?: string | null; username?: string | null } | null }>;
   onClose: () => void;
-  roomType?: 'event' | 'channel';
+  roomType?: 'event' | 'channel' | 'conversation';
 }
 
 type VoiceSignal = {
@@ -64,7 +63,8 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
       localStreamRef.current = stream;
-      const channel = supabase.channel((roomType === 'channel' ? 'server-channel-voice:' : 'server-event-voice:') + eventId, {
+      const topicPrefix = roomType === 'channel' ? 'server-channel-voice:' : roomType === 'conversation' ? 'dm-group-voice:' : 'server-event-voice:';
+      const channel = supabase.channel(topicPrefix + eventId, {
         config: { private: true, broadcast: { self: false }, presence: { key: userId } },
       });
       channelRef.current = channel;
@@ -213,7 +213,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
             }
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
             window.clearTimeout(timeout);
-            reject(new Error('Could not connect to the voice room. Check that the event voice migration has been applied.'));
+            reject(new Error('Could not connect to the voice room. Check that the voice-room migration has been applied and you are a member of this conversation or channel.'));
           }
         });
       });
@@ -341,7 +341,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       <div className="flex items-center justify-between border-b border-white/[0.07] px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <Headphones size={15} className="shrink-0 text-primary-300" />
-          <div className="min-w-0"><p className="text-xs font-semibold text-ink-100">{roomType === 'channel' ? 'Voice channel' : 'Event voice room'}</p><p className="truncate text-[10px] text-ink-500">{eventTitle}</p></div>
+          <div className="min-w-0"><p className="text-xs font-semibold text-ink-100">{roomType === 'channel' ? 'Voice channel' : roomType === 'conversation' ? 'Group voice call' : 'Event voice room'}</p><p className="truncate text-[10px] text-ink-500">{eventTitle}</p></div>
         </div>
         <button type="button" onClick={() => { void leaveRoom(); onClose(); }} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close voice room"><X size={14} /></button>
       </div>
