@@ -23,6 +23,7 @@ AFTERDARK is a dark, blue-accented social and community platform built with Reac
 - Channel-level member permissions.
 - Custom roles, role permissions and member role assignment.
 - Server events, RSVPs, calendar/list views, event chat and voice rooms.
+- Global Events discovery for upcoming events hosted by public servers, with date filters, search, RSVP counts and one-step server joining.
 - Event reminders delivered by scheduled database jobs.
 
 ### Messaging
@@ -63,11 +64,14 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 ## Known gaps / future work
 
 - Broader moderation tools beyond event-chat report review.
-- Global event discovery beyond individual server event calendars.
+
 - Spotify/YouTube playback integration.
 - Additional server settings and permission controls as the platform grows.
 - Automated test coverage and a dedicated test suite.
 - Review and refresh this document as features are completed.
+
+## Global Events database setup
+- Apply `supabase/migrations/20261119100000_global_public_event_discovery.sql` to expose only upcoming events from public servers through a restricted discovery RPC.
 
 ## Deployment and database notes
 
