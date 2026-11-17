@@ -137,3 +137,11 @@ export interface CreateChannelInput {
   position?: number;
   is_restricted?: boolean;
 }
+
+export interface ServerChannelCategory {
+  id: string;
+  server_id: string;
+  name: string;
+  position: number;
+  created_at: string;
+}
