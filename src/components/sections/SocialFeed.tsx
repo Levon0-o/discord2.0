@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { MentionTextarea } from '@/components/shared/MentionTextarea';
 import { MentionText } from '@/components/shared/MentionText';
 import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
+import { SocialReactionBar } from '@/components/shared/SocialReactionBar';
 
 interface FeedAuthor {
   username: string;
@@ -366,6 +367,7 @@ export function SocialFeed() {
                     <button type="button" onClick={() => void savePostEdit(post.id)} disabled={!postEditDraft.trim() || contentBusy === post.id} className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Save</button>
                   </div></div>
                 </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5"><MentionText>{post.body}</MentionText></p>}
+                <div className="px-4 pb-2 sm:px-5"><SocialReactionBar entityType="post" entityId={post.id} /></div>
                 <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2 sm:px-4">
                   <button type="button" onClick={() => void toggleLike(post)} disabled={likeBusy === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}>
                     <Heart size={16} className={liked ? 'fill-current' : ''} /> {post.likes.length} {post.likes.length === 1 ? 'like' : 'likes'}
@@ -399,6 +401,7 @@ export function SocialFeed() {
                               <button type="button" onClick={() => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button>
                               <button type="button" onClick={() => void deleteComment(post.id, comment.id)} disabled={contentBusy === comment.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button>
                             </div>}
+                            <SocialReactionBar entityType="comment" entityId={comment.id} />
                           </div>
                           </LongPressContextMenu>
                         </div>
