@@ -19,12 +19,12 @@ DROP POLICY IF EXISTS category_member_permissions_select ON public.category_memb
 CREATE POLICY category_member_permissions_select ON public.category_member_permissions FOR SELECT TO authenticated
 USING (user_id = auth.uid() OR EXISTS (
   SELECT 1 FROM public.server_channel_categories cat
-  WHERE cat.id = category_member_permissions.category_id AND public.server_rank(cat.server_id) >= 3
+  WHERE cat.id = category_member_permissions.category_id AND public.server_has_permission(cat.server_id, 'manage_channels')
 ));
 DROP POLICY IF EXISTS category_member_permissions_insert_admins ON public.category_member_permissions;
 CREATE POLICY category_member_permissions_insert_admins ON public.category_member_permissions FOR INSERT TO authenticated
 WITH CHECK (
-  EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_rank(cat.server_id) >= 3)
+  EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_has_permission(cat.server_id, 'manage_channels'))
   AND EXISTS (
     SELECT 1 FROM public.server_channel_categories cat
     JOIN public.server_members sm ON sm.server_id = cat.server_id
@@ -33,9 +33,9 @@ WITH CHECK (
 );
 DROP POLICY IF EXISTS category_member_permissions_update_admins ON public.category_member_permissions;
 CREATE POLICY category_member_permissions_update_admins ON public.category_member_permissions FOR UPDATE TO authenticated
-USING (EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_rank(cat.server_id) >= 3))
+USING (EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_has_permission(cat.server_id, 'manage_channels')))
 WITH CHECK (
-  EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_rank(cat.server_id) >= 3)
+  EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_has_permission(cat.server_id, 'manage_channels'))
   AND EXISTS (
     SELECT 1 FROM public.server_channel_categories cat
     JOIN public.server_members sm ON sm.server_id = cat.server_id
@@ -44,7 +44,7 @@ WITH CHECK (
 );
 DROP POLICY IF EXISTS category_member_permissions_delete_admins ON public.category_member_permissions;
 CREATE POLICY category_member_permissions_delete_admins ON public.category_member_permissions FOR DELETE TO authenticated
-USING (EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_rank(cat.server_id) >= 3));
+USING (EXISTS (SELECT 1 FROM public.server_channel_categories cat WHERE cat.id = category_member_permissions.category_id AND public.server_has_permission(cat.server_id, 'manage_channels')));
 
 CREATE OR REPLACE FUNCTION public.can_view_channel(p_channel_id uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
