@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type {
   Channel,
+  ChannelType,
   CreateChannelInput,
   CreateServerInput,
   MemberWithProfile,
@@ -270,7 +271,7 @@ export interface UpdateChannelInput {
   category: string;
   is_restricted: boolean;
   slowmode_seconds: number;
-  channel_type?: 'text' | 'announcement';
+  channel_type?: ChannelType;
 }
 
 export async function updateChannel(
