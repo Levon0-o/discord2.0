@@ -91,6 +91,7 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - The migration `supabase/migrations/20261119170000_group_dm_voice_rooms.sql` must be applied before group DM voice rooms can connect.
 - Screen sharing can include browser-provided system/tab audio where supported by the browser and selected capture source.
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
+- Direct calls and multiparty voice rooms expose microphone selection before joining and speaker selection where the browser supports `setSinkId`; available device names are refreshed when devices change.
 - The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
 - Group DM voice rooms reuse the multiparty WebRTC room UI and have conversation-members-only Realtime signaling. One-to-one incoming call invitations remain separate.
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
