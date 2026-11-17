@@ -122,7 +122,6 @@ export function ServerDetail({
   const [editCategory, setEditCategory] = useState('General');
   const [editRestricted, setEditRestricted] = useState(false);
   const [editChannelType, setEditChannelType] = useState<'text' | 'announcement'>('text');
-  const [channelMenuId, setChannelMenuId] = useState<string | null>(null);
   const [editSlowmode, setEditSlowmode] = useState(0);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
@@ -803,7 +802,7 @@ export function ServerDetail({
                                   <MoreHorizontal size={15} />
                                 </summary>
                                 <div className="absolute right-0 top-8 z-40 min-w-44 overflow-hidden rounded-xl border border-white/[0.1] bg-ink-900 p-1.5 shadow-2xl">
-                                  <button type="button" onClick={() => { openChannelEditor(channel); setChannelMenuId(null); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-200 hover:bg-white/[0.06]"><Pencil size={13} /> Edit channel</button>
+                                  <button type="button" onClick={() => { openChannelEditor(channel); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-200 hover:bg-white/[0.06]"><Pencil size={13} /> Edit channel</button>
                                   <button type="button" onClick={() => void handleReorderChannel(channel, 'up')} disabled={reorderingChannelId !== null || list[0]?.id === channel.id} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06] disabled:opacity-30"><ArrowUp size={13} /> Move up</button>
                                   <button type="button" onClick={() => void handleReorderChannel(channel, 'down')} disabled={reorderingChannelId !== null || list[list.length - 1]?.id === channel.id} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06] disabled:opacity-30"><ArrowDown size={13} /> Move down</button>
                                   <button type="button" onClick={() => { void duplicateChannel(channel).then(() => fetchChannels(server.id)).then(setChannels).catch((err) => setError(err instanceof Error ? err.message : 'Could not duplicate channel.')); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06]"><Copy size={13} /> Duplicate channel</button>
@@ -1194,7 +1193,7 @@ export function ServerDetail({
               </select>
             </label>
             <label className="block text-xs font-medium text-ink-300">Category
-              <input value={editCategory} onChange={(event) => setEditCategory(event.target.value)} maxLength={40} required className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
+              <select value={editCategory} onChange={(event) => setEditCategory(event.target.value)} required className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60">{[...new Set(['General', ...categoryNames])].map((item) => <option key={item} value={item}>{item}</option>)}</select>
             </label>
             <label className="flex items-start gap-2 rounded-lg border border-white/[0.07] p-3 text-xs text-ink-300">
               <input type="checkbox" checked={editRestricted} onChange={(event) => setEditRestricted(event.target.checked)} className="mt-0.5" />
@@ -1223,6 +1222,7 @@ export function ServerDetail({
           error={createError}
           serverId={server.id}
           defaultPosition={nextChannelPosition}
+          categories={categoryNames}
           onClose={() => {
             if (!createBusy) setCreateOpen(false);
           }}
