@@ -483,7 +483,7 @@ export function SocialFeed() {
                   </div>
                   <div className="space-y-2">
                     {polls[post.id].options.map((option) => {
-                      const poll = polls[post.id];
+                      const poll = polls[post.id]!;
                       const count = poll.votes.filter((vote) => vote.option_id === option.id).length;
                       const percentage = poll.votes.length ? Math.round((count / poll.votes.length) * 100) : 0;
                       const selected = Boolean(userId && poll.votes.some((vote) => vote.user_id === userId && vote.option_id === option.id));
