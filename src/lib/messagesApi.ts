@@ -359,14 +359,14 @@ export async function fetchChannelThreadCounts(messageIds: string[]): Promise<Re
 export interface ChannelPollOption {
   id: string;
   label: string;
+  vote_count: number;
+  voted_by_me: boolean;
 }
 
 export interface ChannelPollVote {
-  id: string;
   poll_id: string;
   option_id: string;
   user_id: string;
-  created_at: string;
 }
 
 export interface ChannelPoll {
@@ -380,29 +380,49 @@ export interface ChannelPoll {
   expires_at: string | null;
   closed_at: string | null;
   created_at: string;
+  is_anonymous: boolean;
+  results_visibility: 'always' | 'after_vote';
+  total_votes: number;
   votes: ChannelPollVote[];
 }
 
 export async function fetchChannelPolls(channelId: string): Promise<ChannelPoll[]> {
-  const { data, error } = await supabase
+  const { data: pollRows, error } = await supabase
     .from('channel_polls')
-    .select('id, channel_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at')
+    .select('id, channel_id, message_id, created_by, question, options, allow_multiple, expires_at, closed_at, created_at, is_anonymous, results_visibility')
     .eq('channel_id', channelId)
     .order('created_at', { ascending: true });
   if (error) throw error;
-  const polls = (data ?? []) as Omit<ChannelPoll, 'votes'>[];
+  const polls = pollRows ?? [];
   if (!polls.length) return [];
-  const { data: voteRows, error: voteError } = await supabase
-    .from('channel_poll_votes')
-    .select('id, poll_id, option_id, user_id, created_at')
-    .in('poll_id', polls.map((poll) => poll.id));
-  if (voteError) throw voteError;
-  const votes = (voteRows ?? []) as ChannelPollVote[];
-  return polls.map((poll) => ({
-    ...poll,
-    options: Array.isArray(poll.options) ? poll.options : [],
-    votes: votes.filter((vote) => vote.poll_id === poll.id),
-  }));
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('You must be logged in to view polls.');
+
+  const { data: resultRows, error: resultError } = await supabase.rpc('get_channel_poll_results', {
+    p_poll_ids: polls.map((poll) => poll.id),
+  });
+  if (resultError) throw resultError;
+  const results = (resultRows ?? []) as Array<{
+    poll_id: string; option_id: string; vote_count: number; voted_by_me: boolean; total_votes: number;
+  }>;
+
+  return polls.map((poll) => {
+    const pollResults = results.filter((row) => row.poll_id === poll.id);
+    const ownVotes = pollResults.filter((row) => row.voted_by_me).map((row) => ({
+      poll_id: poll.id, option_id: row.option_id, user_id: user.id,
+    }));
+    return {
+      ...(poll as Omit<ChannelPoll, 'votes' | 'options' | 'total_votes'>),
+      options: (Array.isArray(poll.options) ? poll.options : []).map((option: { id: string; label: string }) => {
+        const result = pollResults.find((row) => row.option_id === option.id);
+        return { ...option, vote_count: Number(result?.vote_count ?? 0), voted_by_me: Boolean(result?.voted_by_me) };
+      }),
+      total_votes: Number(pollResults[0]?.total_votes ?? 0),
+      votes: ownVotes,
+    };
+  });
 }
 
 export async function createChannelPoll(input: {
@@ -411,6 +431,8 @@ export async function createChannelPoll(input: {
   options: string[];
   allowMultiple: boolean;
   expiresAt: string | null;
+  isAnonymous: boolean;
+  resultsVisibility: 'always' | 'after_vote';
 }): Promise<{ pollId: string; messageId: string }> {
   const { data, error } = await supabase.rpc('create_channel_poll', {
     p_channel_id: input.channelId,
@@ -418,6 +440,8 @@ export async function createChannelPoll(input: {
     p_options: input.options,
     p_allow_multiple: input.allowMultiple,
     p_expires_at: input.expiresAt,
+    p_is_anonymous: input.isAnonymous,
+    p_results_visibility: input.resultsVisibility,
   });
   if (error) throw error;
   const row = (Array.isArray(data) ? data[0] : data) as { poll_id?: string; message_id?: string } | null;
@@ -425,8 +449,24 @@ export async function createChannelPoll(input: {
   return { pollId: row.poll_id, messageId: row.message_id };
 }
 
-export async function updateChannelPoll(input: { pollId: string; question: string; options: string[]; allowMultiple: boolean; expiresAt: string | null; }): Promise<void> {
-  const { error } = await supabase.rpc('update_channel_poll', { p_poll_id: input.pollId, p_question: input.question, p_options: input.options, p_allow_multiple: input.allowMultiple, p_expires_at: input.expiresAt });
+export async function updateChannelPoll(input: {
+  pollId: string;
+  question: string;
+  options: string[];
+  allowMultiple: boolean;
+  expiresAt: string | null;
+  isAnonymous: boolean;
+  resultsVisibility: 'always' | 'after_vote';
+}): Promise<void> {
+  const { error } = await supabase.rpc('update_channel_poll', {
+    p_poll_id: input.pollId,
+    p_question: input.question,
+    p_options: input.options,
+    p_allow_multiple: input.allowMultiple,
+    p_expires_at: input.expiresAt,
+    p_is_anonymous: input.isAnonymous,
+    p_results_visibility: input.resultsVisibility,
+  });
   if (error) throw error;
 }
 
