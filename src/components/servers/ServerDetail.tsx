@@ -24,13 +24,11 @@ import {
   Clock,
   CheckCircle2,
   Star,
-  Link2,
 } from 'lucide-react';
 
 import { ServerIcon } from '@/components/servers/ServerIcon';
 import { ChannelChat } from '@/components/servers/ChannelChat';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
-import { RoleManager } from '@/components/servers/RoleManager';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
@@ -143,7 +141,6 @@ export function ServerDetail({
     return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
   });
 
-  const [rolesOpen, setRolesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
     useState<MemberWithProfile | null>(null);
@@ -154,11 +151,6 @@ export function ServerDetail({
     Boolean(currentMember?.custom_roles?.some((role) => role.permissions?.[permission] === true));
   const canModerateMessages = ['owner', 'admin', 'moderator'].includes(server.my_role ?? '') || hasCustomPermission('moderate_messages');
   const canManageChannelsPermission = isAdminOrOwner || hasCustomPermission('manage_channels');
-  const canManageInvites =
-    server.my_role === 'owner' ||
-    server.my_role === 'admin' ||
-    server.my_role === 'moderator' ||
-    hasCustomPermission('manage_invites');
   const filteredEvents = useMemo(() => {
     const query = eventSearch.trim().toLocaleLowerCase();
     return events
@@ -681,7 +673,6 @@ export function ServerDetail({
                             <button
                               type="button"
                               onClick={() => {
-                                setRolesOpen(false);
                                 setSelectedMember(null);
                                 setActiveChannelId(channel.id);
                               }}
@@ -780,14 +771,6 @@ export function ServerDetail({
                 member={selectedMember}
                 onClose={() => {
                   setSelectedMember(null);
-                  void refreshMemberRoles();
-                }}
-              />
-            ) : rolesOpen ? (
-              <RoleManager
-                serverId={server.id}
-                onBack={() => {
-                  setRolesOpen(false);
                   void refreshMemberRoles();
                 }}
               />
