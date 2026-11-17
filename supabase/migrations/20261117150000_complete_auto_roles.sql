@@ -3,6 +3,8 @@
   Rules are evaluated inside the database when a server membership is created,
   so public joins and invitation redemption use the same trusted execution path.
 */
+DELETE FROM public.auto_role_rules WHERE event_type NOT IN ('join', 'account_age');
+
 ALTER TABLE public.auto_role_rules
   DROP CONSTRAINT IF EXISTS auto_role_rules_event_type;
 
