@@ -28,6 +28,8 @@ AFTERDARK is a dark, blue-accented social and community platform built with Reac
 
 ### Messaging
 - Direct conversations, friends and friend requests.
+- Group direct-message creation with friend selection, optional group names, member management, creator-controlled invites/removals, member leave flow and creator handoff when the creator leaves.
+- Group DM lifecycle is protected by SECURITY DEFINER RPCs; direct client inserts into conversations/members are revoked and group membership changes refresh the recipient's conversation list through Realtime.
 - Spotify and YouTube link embeds in direct messages, server channels and event chats, with click-to-load playback.
 - Shared Listening rooms in DMs, server channels and event chats, with a persistent realtime queue and synchronized current-item selection.
 - Message attachments, edits, deletes, reactions, pins and read receipts.
@@ -115,3 +117,6 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Frontend deployment is handled by Vercel.
 - Supabase schema changes are stored in `supabase/migrations`.
 - A successful frontend deployment does not apply SQL migrations automatically; database migrations must be run separately.
+
+## Group direct messages database setup
+- Apply `supabase/migrations/20261120100000_secure_group_direct_messages.sql` before using group creation or management. The migration replaces the broad member-insert policy with validated RPCs and restricts group renaming, adding and removing members to the creator.
