@@ -162,6 +162,12 @@ BEGIN
     RAISE EXCEPTION 'You can only add people who are already your friends.';
   END IF;
 
+  -- Serialize concurrent invites so the 25-member cap cannot be exceeded.
+  PERFORM 1
+  FROM public.conversations c
+  WHERE c.id = p_conversation_id
+  FOR UPDATE;
+
   SELECT count(*) INTO v_member_count
   FROM public.conversation_members cm
   WHERE cm.conversation_id = p_conversation_id;
