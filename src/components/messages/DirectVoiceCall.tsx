@@ -18,7 +18,7 @@ type CallSignal = {
   reason?: string;
 };
 
-type CallStatus = 'idle' | 'outgoing' | 'connecting' | 'connected';
+type CallStatus = 'idle' | 'outgoing' | 'connecting' | 'connected' | 'reconnecting';
 
 export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, otherName }: DirectVoiceCallProps) {
   const [status, setStatus] = useState<CallStatus>('idle');
@@ -58,6 +58,9 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const timerRef = useRef<number | null>(null);
   const callTimeoutRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const isCallerRef = useRef(false);
 
   const refreshAudioDevices = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -96,6 +99,10 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   function stopMedia() {
     if (timerRef.current !== null) window.clearInterval(timerRef.current);
     if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
+    if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+    reconnectAttemptsRef.current = 0;
+    isCallerRef.current = false;
     timerRef.current = null;
     callTimeoutRef.current = null;
     startedAtRef.current = null;
@@ -222,8 +229,44 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
       }
     };
+    const scheduleIceRestart = (delay: number) => {
+      if (!isCallerRef.current || callIdRef.current !== callId || peerRef.current !== peer) return;
+      if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = window.setTimeout(async () => {
+        reconnectTimerRef.current = null;
+        if (callIdRef.current !== callId || peerRef.current !== peer || peer.connectionState === 'connected' || peer.connectionState === 'closed') return;
+        if (reconnectAttemptsRef.current >= 3) {
+          setError('The network connection could not be restored. End the call and try again.');
+          void send('hangup', { call_id: callId, from: currentUserId, to: remoteUserId }).catch(() => undefined);
+          stopMedia();
+          setError('The network connection could not be restored. End the call and try again.');
+          return;
+        }
+        reconnectAttemptsRef.current += 1;
+        try {
+          if (peer.signalingState !== 'stable') {
+            await peer.setLocalDescription({ type: 'rollback' });
+          }
+          const offer = await peer.createOffer({ iceRestart: true });
+          await peer.setLocalDescription(offer);
+          await send('offer', {
+            call_id: callId,
+            from: currentUserId,
+            to: remoteUserId,
+            sdp: peer.localDescription ?? offer,
+          });
+          // If the attempt does not recover, connectionstatechange schedules the next retry.
+        } catch {
+          scheduleIceRestart(Math.min(2000 * reconnectAttemptsRef.current, 6000));
+        }
+      }, delay);
+    };
+
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
+        if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+        reconnectAttemptsRef.current = 0;
         if (callTimeoutRef.current !== null) window.clearTimeout(callTimeoutRef.current);
         callTimeoutRef.current = null;
         setCallStatus('connected');
@@ -233,9 +276,11 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
             if (startedAtRef.current !== null) setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
           }, 1000);
         }
-      } else if (peer.connectionState === 'failed' || peer.connectionState === 'closed') {
-        if (peer.connectionState === 'failed') setError('The network connection failed. Try calling again.');
-        stopMedia();
+      } else if (peer.connectionState === 'disconnected' || peer.connectionState === 'failed') {
+        setCallStatus('reconnecting');
+        scheduleIceRestart(peer.connectionState === 'failed' ? 0 : 5000);
+      } else if (peer.connectionState === 'closed') {
+        if (callIdRef.current === callId) stopMedia();
       }
     };
     return peer;
@@ -295,6 +340,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
           callTimeoutRef.current = null;
           setCallStatus('connecting');
           startConnectionTimeout(signal.call_id);
+          isCallerRef.current = true;
           const peer = createPeer(signal.call_id, signal.from);
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
@@ -414,6 +460,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         return;
       }
       streamRef.current = stream;
+      isCallerRef.current = true;
       setMicrophoneReady(true);
       await send('invite', { call_id: callId, from: currentUserId, to: otherUserId });
       callTimeoutRef.current = window.setTimeout(() => {
@@ -443,6 +490,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
         return;
       }
       streamRef.current = stream;
+      isCallerRef.current = false;
       setMicrophoneReady(true);
       incomingCallRef.current = null;
       setIncomingCall(null);
@@ -643,7 +691,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/15 text-primary-200"><PhoneCall size={18} /></div>
             <div className="min-w-0 flex-1 text-left">
               <p className="truncate text-sm font-semibold text-ink-100">{otherName}</p>
-              <p className="text-xs text-ink-400">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : timeLabel}</p>
+              <p className="text-xs text-ink-400">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : status === 'reconnecting' ? 'Reconnecting…' : timeLabel}</p>
             </div>
             <button type="button" onClick={() => setCallMinimized(false)} aria-label="Expand call window" title="Expand call window" className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:bg-white/[0.08]"><Maximize2 size={16} /></button>
             <button type="button" onClick={toggleMute} disabled={!microphoneReady} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'} title={muted ? 'Unmute microphone' : 'Mute microphone'} className={`flex h-9 w-9 items-center justify-center rounded-lg ${muted ? 'bg-red-500/15 text-red-300' : 'text-ink-300 hover:bg-white/[0.08]'} disabled:opacity-40`}>{muted ? <MicOff size={16} /> : <Mic size={16} />}</button>
@@ -657,9 +705,9 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-500/15 text-primary-200"><PhoneCall size={17} /></div>
                   <div className="min-w-0 text-left">
                     <h2 className="truncate text-sm font-bold text-ink-100">{otherName}</h2>
-                    <p className="text-xs text-ink-500">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : `Connected · ${timeLabel}`}</p>
+                    <p className="text-xs text-ink-500">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : status === 'reconnecting' ? 'Reconnecting…' : `Connected · ${timeLabel}`}</p>
                   </div>
-                  <span className={`ml-1 hidden rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex ${status === 'connected' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{status === 'connected' ? 'LIVE' : 'CONNECTING'}</span>
+                  <span className={`ml-1 hidden rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex ${status === 'connected' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{status === 'connected' ? 'LIVE' : status === 'reconnecting' ? 'RECONNECTING' : 'CONNECTING'}</span>
                 </div>
                 <button type="button" onClick={() => setCallMinimized(true)} aria-label="Minimize call window" title="Minimize" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-400 hover:bg-white/[0.08] hover:text-ink-100"><Minimize2 size={17} /></button>
               </header>
@@ -673,9 +721,9 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
                     </div>
                   ) : (
                     <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
-                      <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-primary-300/20 bg-primary-500/10 text-3xl font-bold text-primary-200 shadow-[0_0_70px_rgba(59,130,246,0.12)]">{otherName.trim().slice(0,1).toUpperCase() || '?'}<span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-4 border-ink-900 ${status === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} /></div>
+                      <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-primary-300/20 bg-primary-500/10 text-3xl font-bold text-primary-200 shadow-[0_0_70px_rgba(59,130,246,0.12)]">{otherName.trim().slice(0,1).toUpperCase() || '?'}<span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-4 border-ink-900 ${status === 'connected' ? 'bg-emerald-400' : status === 'reconnecting' ? 'bg-orange-400' : 'bg-amber-400'}`} /></div>
                       <h3 className="mt-5 text-xl font-bold text-ink-100">{otherName}</h3>
-                      <p className="mt-1 text-sm text-ink-400">{status === 'outgoing' ? 'Waiting for them to answer…' : status === 'connecting' ? 'Establishing a secure peer connection…' : timeLabel}</p>
+                      <p className="mt-1 text-sm text-ink-400">{status === 'outgoing' ? 'Waiting for them to answer…' : status === 'connecting' ? 'Establishing a secure peer connection…' : status === 'reconnecting' ? 'Restoring the network connection…' : timeLabel}</p>
                       {status === 'connected' ? <p className="mt-4 rounded-full border border-emerald-400/15 bg-emerald-400/[0.06] px-3 py-1 text-xs text-emerald-300">Voice connected</p> : null}
                     </div>
                   )}
@@ -687,7 +735,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
                     <div className="mt-3 flex items-center gap-3">
                       <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500/15 text-sm font-bold text-primary-200">{otherName.trim().slice(0,1).toUpperCase() || '?'}</div>
                       <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-ink-100">{otherName}</p><p className="text-[10px] text-ink-500">Remote participant</p></div>
-                      <span className={`h-2 w-2 rounded-full ${status === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                      <span className={`h-2 w-2 rounded-full ${status === 'connected' ? 'bg-emerald-400' : status === 'reconnecting' ? 'bg-orange-400' : 'bg-amber-400'}`} />
                     </div>
                     <div className="mt-3 flex items-center gap-3">
                       <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-xs font-bold text-ink-200">You</div>
