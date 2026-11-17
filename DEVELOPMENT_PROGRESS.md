@@ -1,30 +1,73 @@
 # AFTERDARK Development Progress
 
-## Current state (audit)
+## Project overview
 
-- The project was a blank Vite + React + TypeScript template with Tailwind and Lucide icons.
-- Supabase database: no tables and no migrations existed.
-- Authentication: not implemented.
-- The attached `AFTERDARK-Phase1.zip` could not be read as a project archive, so its code was not merged. Its contents must be re-supplied in readable form if they should be carried over.
+AFTERDARK is a dark, blue-accented social and community platform built with React, Vite, TypeScript, Tailwind CSS and Supabase.
 
-## Stage 1: Visual foundation and responsive layout (done)
+## Implemented
 
-- Design tokens: primary (electric blue), secondary (cyan), accent (sky), success, warning, error, and an `ink` neutral ramp, all in Tailwind config.
-- Typography: Inter with three weights (400, 500, 600, 700 loaded; used sparingly).
-- Desktop: left navigation (icons only on tablet, icons with labels on large screens).
-- Tablet: icon-only navigation rail.
-- Mobile: top bar, bottom navigation for Home, Explore, Messages, Notifications and Profile, and a Menu drawer for all sections.
-- Right panel (large screens and up) with Activity and Recommendations areas.
-- Section navigation by URL hash, so refresh keeps the current section.
-- Sections (Home, Explore, Servers, Messages, Notifications, Profile, Settings) are visible shells marked "Not built yet".
+### Authentication and profiles
+- Email/password registration, login, session persistence, password recovery and sign-out.
+- Profile creation, profile pages, profile editing, avatars, banners, status and featured profile elements.
 
-## Remaining stages
+### Social
+- Feed posts with image/video support.
+- Comments, replies, likes and reactions.
+- Editing, deleting, pinning and saving posts.
+- Mentions, follows, user search and Explore views.
+- Social polls with configurable voting options.
 
-2. Supabase foundation: schema for profiles, posts, comments, likes, follows, servers, server_members, server_roles, channels, messages, conversations, conversation_members, notifications and invitations, with RLS.
-3. Authentication: email/password sign-up, login, logout, persistent sessions, password recovery, unique usernames, protected routes.
-4. Profiles and social feed: posts, likes, comments, follows, explore, profile editing, avatar and banner uploads.
-5. Servers and communities: create/edit/delete servers, channels and categories, roles, invitations, discovery, membership checks.
-6. Messaging: one-to-one and group conversations, realtime updates, replies, reactions, edits, image sharing, unread indicators.
-7. Music sharing: Spotify and YouTube links with embeds where permitted, link previews, shared music activity.
-8. Notifications: new messages, comments, likes, followers, invitations, with unread indicators.
-9. Settings: profile customization, blue accent theme, server colors, Polish/English language, notification preferences.
+### Servers and channels
+- Public/private servers, discovery, joining and invitation links.
+- Server channels, categories, channel editing, restricted channels and slowmode.
+- Channel-level member permissions.
+- Custom roles, role permissions and member role assignment.
+- Server events, RSVPs, calendar/list views, event chat and voice rooms.
+- Event reminders delivered by scheduled database jobs.
+
+### Messaging
+- Direct conversations, friends and friend requests.
+- Message attachments, edits, deletes, reactions, pins and read receipts.
+- Typing indicators, unread counts and WebRTC voice calls.
+
+### Notifications and account settings
+- Notification center with read/unread management.
+- Notification preferences for social activity and server events.
+- Account information, password updates and sign-out.
+
+## Current work: centralized server settings
+
+Server administration is being consolidated into one Discord-inspired **Server Settings** panel. The current panel includes:
+- Overview: server name, description, visibility, theme color, icon URL and banner URL.
+- Members: member search and custom-role assignment.
+- Roles & Permissions: existing custom role manager.
+- Auto Roles: create, enable/disable and delete automatic role rules.
+- Channels: create, edit, delete and configure channel permissions.
+- Invites: create, copy and revoke invitation links.
+
+All user-facing labels and messages in the new settings interface are in English.
+
+## Automatic roles
+
+The database previously contained an automatic-role rules table but did not execute rules. The current implementation adds:
+- Automatic custom-role assignment when a member joins.
+- Minimum account-age rules, checked when a member joins.
+- Database-trigger execution for both public joins and invitation redemption.
+- Admin-only rule management through server settings.
+
+The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must be applied to the Supabase project before automatic role rules work in production.
+
+## Known gaps / future work
+
+- Broader moderation tools and moderation dashboard.
+- Global event discovery beyond individual server event calendars.
+- Spotify/YouTube playback integration.
+- Additional server settings and permission controls as the platform grows.
+- Automated test coverage and a dedicated test suite.
+- Review and refresh this document as features are completed.
+
+## Deployment and database notes
+
+- Frontend deployment is handled by Vercel.
+- Supabase schema changes are stored in `supabase/migrations`.
+- A successful frontend deployment does not apply SQL migrations automatically; database migrations must be run separately.
