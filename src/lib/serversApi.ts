@@ -450,3 +450,33 @@ export async function reorderChannelCategory(categoryId: string, position: numbe
     .eq('id', categoryId);
   if (error) throw error;
 }
+
+
+export async function fetchCategoryMemberPermissions(categoryId: string) {
+  const { data, error } = await supabase.from('category_member_permissions').select('*').eq('category_id', categoryId);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function setCategoryMemberPermission(
+  categoryId: string,
+  userId: string,
+  permission: ChannelMemberPermissionKey,
+  value: boolean | null,
+) {
+  const { data: existing, error: readError } = await supabase
+    .from('category_member_permissions').select('*')
+    .eq('category_id', categoryId).eq('user_id', userId).maybeSingle();
+  if (readError) throw readError;
+  const { data, error } = await supabase.from('category_member_permissions').upsert({
+    category_id: categoryId,
+    user_id: userId,
+    can_view: existing?.can_view ?? null,
+    can_send_messages: existing?.can_send_messages ?? null,
+    can_attach_files: existing?.can_attach_files ?? null,
+    can_manage_messages: existing?.can_manage_messages ?? null,
+    [permission]: value,
+  }, { onConflict: 'category_id,user_id' }).select('*').single();
+  if (error) throw error;
+  return data;
+}
