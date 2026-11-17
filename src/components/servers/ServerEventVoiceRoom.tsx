@@ -30,6 +30,11 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const [sharingScreen, setSharingScreen] = useState(false);
   const [localPreviewStream, setLocalPreviewStream] = useState<MediaStream | null>(null);
   const [mutedParticipants, setMutedParticipants] = useState<Record<string, boolean>>({});
+  const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
+  const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedInputId, setSelectedInputId] = useState('');
+  const [selectedOutputId, setSelectedOutputId] = useState('');
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -40,6 +45,41 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const joinedRef = useRef(false);
+
+  const refreshAudioDevices = async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter((device) => device.kind === 'audioinput');
+      const outputs = devices.filter((device) => device.kind === 'audiooutput');
+      setAudioInputs(inputs);
+      setAudioOutputs(outputs);
+      setSelectedInputId((current) => current || inputs[0]?.deviceId || '');
+      setSelectedOutputId((current) => current || outputs.find((device) => device.deviceId === 'default')?.deviceId || outputs[0]?.deviceId || '');
+    } catch {
+      // Device enumeration is optional; the browser may restrict it.
+    }
+  };
+
+  useEffect(() => {
+    void refreshAudioDevices();
+    const handleDeviceChange = () => { void refreshAudioDevices(); };
+    navigator.mediaDevices?.addEventListener?.('devicechange', handleDeviceChange);
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    audioElementsRef.current.forEach((element) => {
+      const sinkElement = element as HTMLMediaElement & { setSinkId?: (deviceId: string) => Promise<void> };
+      if (selectedOutputId && sinkElement.setSinkId) {
+        void sinkElement.setSinkId(selectedOutputId).catch(() => {
+          setError('Could not switch the audio output device in this browser.');
+        });
+      }
+    });
+  }, [selectedOutputId, remoteStreams]);
 
   useEffect(() => {
     return () => {
@@ -61,8 +101,17 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
         throw new Error('This browser does not support WebRTC voice rooms.');
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          ...(selectedInputId ? { deviceId: { exact: selectedInputId } } : {}),
+        },
+        video: false,
+      });
       localStreamRef.current = stream;
+      await refreshAudioDevices();
       const topicPrefix = roomType === 'channel' ? 'server-channel-voice:' : roomType === 'conversation' ? 'dm-group-voice:' : 'server-event-voice:';
       const channel = supabase.channel(topicPrefix + eventId, {
         config: { private: true, broadcast: { self: false }, presence: { key: userId } },
@@ -366,8 +415,23 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
         ) : <p className="text-center text-xs text-ink-500">Join to talk with other server members. Your microphone is requested only after you press Join.</p>}
         {joined ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {localPreviewStream ? <div className="relative"><video autoPlay muted playsInline ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" /><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen preview"><Maximize2 size={14} /></button></div> : null}
-          {Object.entries(remoteStreams).map(([id, remoteStream]) => <div key={id} className="relative"><video autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" /><audio autoPlay ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; if (element) element.muted = Boolean(mutedParticipants[id]); }} /><div className="absolute bottom-2 right-2 flex gap-1"><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen video"><Maximize2 size={14} /></button><button type="button" onClick={() => toggleParticipantAudio(id)} className="rounded-md bg-black/70 p-2 text-white" aria-label={mutedParticipants[id] ? 'Unmute participant audio' : 'Mute participant audio'}>{mutedParticipants[id] ? <VolumeX size={14} /> : <Volume2 size={14} />}</button></div></div>)}
+          {Object.entries(remoteStreams).map(([id, remoteStream]) => <div key={id} className="relative"><video autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" /><audio autoPlay ref={(element) => { if (element) { audioElementsRef.current.set(id, element); if (element.srcObject !== remoteStream) element.srcObject = remoteStream; element.muted = Boolean(mutedParticipants[id]); const sinkElement = element as HTMLMediaElement & { setSinkId?: (deviceId: string) => Promise<void> }; if (selectedOutputId && sinkElement.setSinkId) void sinkElement.setSinkId(selectedOutputId).catch(() => setError('Could not switch the audio output device.')); } else { audioElementsRef.current.delete(id); } }} /><div className="absolute bottom-2 right-2 flex gap-1"><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen video"><Maximize2 size={14} /></button><button type="button" onClick={() => toggleParticipantAudio(id)} className="rounded-md bg-black/70 p-2 text-white" aria-label={mutedParticipants[id] ? 'Unmute participant audio' : 'Mute participant audio'}>{mutedParticipants[id] ? <VolumeX size={14} /> : <Volume2 size={14} />}</button></div></div>)}
         </div> : null}
+        <div className="grid gap-2 rounded-lg border border-white/[0.06] bg-black/10 p-3 sm:grid-cols-2">
+          <label className="min-w-0 space-y-1">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">Microphone</span>
+            <select value={selectedInputId} onChange={(event) => setSelectedInputId(event.target.value)} disabled={joined || connecting || audioInputs.length === 0} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-200 outline-none focus:border-primary-400 disabled:opacity-50">
+              {audioInputs.length === 0 ? <option value="">Default microphone</option> : audioInputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+            </select>
+          </label>
+          <label className="min-w-0 space-y-1">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">Speaker</span>
+            <select value={selectedOutputId} onChange={(event) => setSelectedOutputId(event.target.value)} disabled={audioOutputs.length === 0} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-200 outline-none focus:border-primary-400 disabled:opacity-50">
+              {audioOutputs.length === 0 ? <option value="">Browser default</option> : audioOutputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</option>)}
+            </select>
+          </label>
+          {!joined && <p className="text-[10px] text-ink-500 sm:col-span-2">Microphone selection is applied when you join. Speaker switching depends on browser support.</p>}
+        </div>
         {error ? <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-[10px] text-red-300">{error}</p> : null}
         <div className="flex justify-center gap-2">
           {!joined ? <button type="button" onClick={() => void joinRoom()} disabled={connecting} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-50"><Headphones size={14} />{connecting ? 'Connecting…' : 'Join voice'}</button> : <>
