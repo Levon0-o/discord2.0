@@ -1893,47 +1893,61 @@ Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
       <aside className="hidden w-64 shrink-0 flex-col border-l border-white/[0.08] bg-ink-900/50 2xl:flex">
         <div className="border-b border-white/[0.08] p-5">
           <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400">
-            Profile
+            {activeConversation?.kind === 'group' ? 'Group details' : 'Profile'}
           </h3>
         </div>
 
         {activeConversation && (
-          <div className="p-6 text-center">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-3xl font-bold text-primary-200">
-              {otherProfile?.avatar_url ? (
-                <img
-                  src={otherProfile.avatar_url}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                displayName.slice(0, 1).toUpperCase()
-              )}
-            </div>
-
-            {otherProfile ? <>
-              <button type="button" onClick={() => setViewingProfileId(otherProfile.id)} className="mt-5 text-base font-bold text-ink-100 hover:text-primary-200">
-                {displayName}
-              </button>
-              {otherProfile.username && <button type="button" onClick={() => setViewingProfileId(otherProfile.id)} className="mt-1 block w-full text-sm text-ink-500 hover:text-primary-300">
-                @{otherProfile.username}
-              </button>}
-            </> : <h3 className="mt-5 text-base font-bold text-ink-100">{displayName}</h3>}
-            {otherProfile && (
-              <p className={`mt-2 inline-flex items-center gap-2 text-xs ${presence[otherProfile.id] === 'online' ? 'text-emerald-300' : presence[otherProfile.id] === 'idle' ? 'text-amber-300' : 'text-ink-500'}`}>
-                <span className={`h-2 w-2 rounded-full ${presence[otherProfile.id] === 'online' ? 'bg-emerald-400' : presence[otherProfile.id] === 'idle' ? 'bg-amber-400' : 'bg-ink-600'}`} />
-                {presence[otherProfile.id] === 'online' ? 'Online' : presence[otherProfile.id] === 'idle' ? 'Idle' : 'Offline'}
-              </p>
+          <div className="p-5 text-center">
+            {activeConversation.kind === 'group' ? (
+              <>
+                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-primary-500/15 text-primary-300">
+                  <Users size={32} />
+                </div>
+                <h3 className="mt-4 break-words text-base font-bold text-ink-100">{displayName}</h3>
+                <p className="mt-1 text-xs text-ink-500">{activeMembers.length} members</p>
+                <div className="mt-5 space-y-1 border-t border-white/[0.08] pt-4 text-left">
+                  {activeMembers.map((member) => {
+                    const profile = profiles[member.user_id];
+                    const isSelf = member.user_id === userId;
+                    return (
+                      <button key={member.user_id} type="button" onClick={() => !isSelf && setViewingProfileId(member.user_id)} disabled={isSelf} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-white/[0.04] disabled:cursor-default">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-[10px] font-bold text-primary-200">
+                          {profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : (isSelf ? 'Y' : (profile?.display_name || profile?.username || '?').slice(0, 1).toUpperCase())}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-ink-300">{isSelf ? 'You' : profile?.display_name || profile?.username || 'AFTERDARK member'}</span>
+                        {member.user_id === activeConversation.created_by && <span className="text-[9px] font-semibold uppercase tracking-wider text-primary-300">Creator</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button type="button" onClick={() => setGroupModalMode('manage')} className="mt-4 w-full rounded-xl border border-primary-400/20 bg-primary-500/10 px-3 py-2.5 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/20">
+                  Manage group
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-3xl font-bold text-primary-200">
+                  {otherProfile?.avatar_url ? (
+                    <img src={otherProfile.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : displayName.slice(0, 1).toUpperCase()}
+                </div>
+                {otherProfile ? <>
+                  <button type="button" onClick={() => setViewingProfileId(otherProfile.id)} className="mt-5 text-base font-bold text-ink-100 hover:text-primary-200">{displayName}</button>
+                  {otherProfile.username && <button type="button" onClick={() => setViewingProfileId(otherProfile.id)} className="mt-1 block w-full text-sm text-ink-500 hover:text-primary-300">@{otherProfile.username}</button>}
+                </> : <h3 className="mt-5 text-base font-bold text-ink-100">{displayName}</h3>}
+                {otherProfile && (
+                  <p className={`mt-2 inline-flex items-center gap-2 text-xs ${presence[otherProfile.id] === 'online' ? 'text-emerald-300' : presence[otherProfile.id] === 'idle' ? 'text-amber-300' : 'text-ink-500'}`}>
+                    <span className={`h-2 w-2 rounded-full ${presence[otherProfile.id] === 'online' ? 'bg-emerald-400' : presence[otherProfile.id] === 'idle' ? 'bg-amber-400' : 'bg-ink-600'}`} />
+                    {presence[otherProfile.id] === 'online' ? 'Online' : presence[otherProfile.id] === 'idle' ? 'Idle' : 'Offline'}
+                  </p>
+                )}
+                <div className="mt-6 border-t border-white/[0.08] pt-5 text-left">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">About</p>
+                  <p className="mt-2 text-sm text-ink-400">AFTERDARK member</p>
+                </div>
+              </>
             )}
-
-            <div className="mt-6 border-t border-white/[0.08] pt-5 text-left">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">
-                About
-              </p>
-              <p className="mt-2 text-sm text-ink-400">
-                AFTERDARK member
-              </p>
-            </div>
           </div>
         )}
       </aside>
