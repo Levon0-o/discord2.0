@@ -88,7 +88,10 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Video is negotiated as a WebRTC transceiver so camera and screen tracks can be switched without restarting the call.
 - Camera and screen permissions are requested only when the user activates those controls.
 - The new migration `supabase/migrations/20261119150000_server_voice_channels.sql` must be applied before creating or joining dedicated voice channels.
+- Screen sharing can include browser-provided system/tab audio where supported by the browser and selected capture source.
+- Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
 - The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
+- Group DM voice rooms are the next separate milestone; current direct-call invitations remain one-to-one.
 - This frontend work has not yet been build-tested or deployed; the Vercel daily deployment quota was previously reached.
 
 ## Media embeds
