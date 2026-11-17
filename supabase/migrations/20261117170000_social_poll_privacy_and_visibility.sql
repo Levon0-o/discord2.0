@@ -135,3 +135,48 @@ revoke all on function public.update_social_poll(uuid,text,text[],timestamptz,bo
 grant execute on function public.update_social_poll(uuid,text,text[],timestamptz,boolean,boolean,text) to authenticated;
 revoke all on function public.get_social_poll_results(uuid[]) from public,anon;
 grant execute on function public.get_social_poll_results(uuid[]) to authenticated;
+
+
+-- Enforce "after you vote" at the data layer, not only in the UI.
+create or replace function public.get_social_poll_results(p_poll_ids uuid[])
+returns table (
+  poll_id uuid,
+  option_id uuid,
+  vote_count bigint,
+  voted_by_me boolean,
+  total_votes bigint
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with option_votes as (
+    select v.poll_id, v.option_id, count(*)::bigint as vote_count,
+           bool_or(v.user_id = auth.uid()) as voted_by_me
+    from public.social_poll_votes v
+    where v.poll_id = any(coalesce(p_poll_ids, array[]::uuid[]))
+    group by v.poll_id, v.option_id
+  ),
+  poll_totals as (
+    select v.poll_id, count(*)::bigint as total_votes
+    from public.social_poll_votes v
+    where v.poll_id = any(coalesce(p_poll_ids, array[]::uuid[]))
+    group by v.poll_id
+  )
+  select o.poll_id, o.id,
+    case when sp.results_visibility = 'always'
+              or (sp.ends_at is not null and sp.ends_at <= now())
+              or exists (select 1 from public.social_poll_votes mine where mine.poll_id = sp.id and mine.user_id = auth.uid())
+         then coalesce(ov.vote_count, 0) else 0 end,
+    coalesce(ov.voted_by_me, false),
+    case when sp.results_visibility = 'always'
+              or (sp.ends_at is not null and sp.ends_at <= now())
+              or exists (select 1 from public.social_poll_votes mine where mine.poll_id = sp.id and mine.user_id = auth.uid())
+         then coalesce(pt.total_votes, 0) else 0 end
+  from public.social_poll_options o
+  join public.social_polls sp on sp.id = o.poll_id
+  left join option_votes ov on ov.poll_id = o.poll_id and ov.option_id = o.id
+  left join poll_totals pt on pt.poll_id = o.poll_id
+  where o.poll_id = any(coalesce(p_poll_ids, array[]::uuid[]));
+$$;
