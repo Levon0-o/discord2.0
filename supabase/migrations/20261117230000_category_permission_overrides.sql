@@ -66,7 +66,7 @@ CREATE OR REPLACE FUNCTION public.can_send_channel_message(p_channel_id uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
   SELECT public.can_view_channel(p_channel_id) AND COALESCE(
     (SELECT cmp.can_send_messages FROM public.channel_member_permissions cmp WHERE cmp.channel_id = p_channel_id AND cmp.user_id = auth.uid()),
-    (SELECT cmp.can_send_messages FROM public.category_member_permissions cmp JOIN public.channels c ON c.server_id = cat.server_id AND c.category = cat.name JOIN public.server_channel_categories cat ON cat.id = cmp.category_id WHERE c.id = p_channel_id AND cmp.user_id = auth.uid()),
+    (SELECT cmp.can_send_messages FROM public.category_member_permissions cmp JOIN public.server_channel_categories cat ON cat.id = cmp.category_id JOIN public.channels c ON c.server_id = cat.server_id AND c.category = cat.name WHERE c.id = p_channel_id AND cmp.user_id = auth.uid()),
     true
   );
 $$;
