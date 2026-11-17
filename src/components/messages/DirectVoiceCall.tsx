@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Maximize2, Mic, MicOff, MonitorUp, Phone, PhoneCall, PhoneIncoming, PhoneOff, Volume2, VolumeX, X } from 'lucide-react';
+import { Camera, CameraOff, Maximize2, Mic, MicOff, MonitorUp, Phone, PhoneCall, PhoneIncoming, PhoneOff, Volume2, VolumeX, X, Settings2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface DirectVoiceCallProps {
@@ -587,6 +587,26 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       >
         <Phone size={17} />
       </button>
+      {status === 'idle' && !incomingCall ? (
+        <details className="relative inline-block">
+          <summary aria-label="Audio device settings" title="Audio device settings" className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-ink-300 hover:bg-white/[0.07]">
+            <Settings2 size={16} />
+          </summary>
+          <div className="absolute right-0 top-12 z-[80] w-64 space-y-3 rounded-xl border border-white/10 bg-ink-900 p-3 shadow-2xl">
+            <p className="text-xs font-semibold text-ink-100">Audio devices</p>
+            <label className="block space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Microphone
+              <select value={selectedInputId} onChange={(event) => setSelectedInputId(event.target.value)} disabled={audioInputs.length === 0} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2.5 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
+                {audioInputs.length === 0 ? <option value="">Default microphone</option> : audioInputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+              </select>
+            </label>
+            <label className="block space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Speaker
+              <select value={selectedOutputId} onChange={(event) => setSelectedOutputId(event.target.value)} disabled={audioOutputs.length === 0 || !('setSinkId' in HTMLMediaElement.prototype)} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2.5 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
+                {audioOutputs.length === 0 ? <option value="">Browser default</option> : audioOutputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</option>)}
+              </select>
+            </label>
+          </div>
+        </details>
+      ) : null}
 
       {incomingCall && status === 'idle' ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
