@@ -23,6 +23,29 @@ export interface ServerEvent {
   rsvps: ServerEventRsvp[];
 }
 
+export interface DiscoverableServerEvent extends ServerEvent {
+  server_name: string;
+  server_icon_url: string | null;
+  server_member_count: number;
+  going_count: number;
+  interested_count: number;
+  my_rsvp: ServerEventRsvpStatus | null;
+  is_member: boolean;
+}
+
+export async function fetchGlobalServerEvents(limit = 100): Promise<DiscoverableServerEvent[]> {
+  const { data, error } = await supabase.rpc('discover_public_server_events', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    ...row,
+    rsvps: [],
+    server_member_count: Number(row.server_member_count ?? 0),
+    going_count: Number(row.going_count ?? 0),
+    interested_count: Number(row.interested_count ?? 0),
+    is_member: Boolean(row.is_member),
+  })) as DiscoverableServerEvent[];
+}
+
 export async function fetchServerEvents(serverId: string): Promise<ServerEvent[]> {
   const { data: events, error } = await supabase
     .from('server_events')
