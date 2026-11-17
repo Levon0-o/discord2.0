@@ -188,6 +188,7 @@ export function DirectMessagesSection({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'reconnecting'>('connecting');
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
@@ -207,14 +208,14 @@ export function DirectMessagesSection({
   conversationIdsRef.current = new Set(conversations.map((conversation) => conversation.id));
   messageIdsRef.current = new Set(messages.map((message) => message.id));
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (silent = false) => {
     if (!userId) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError('');
+    if (!silent) setLoading(true);
+    if (!silent) setError('');
 
     try {
       const rows = await fetchMyConversations();
@@ -712,6 +713,8 @@ export function DirectMessagesSection({
   useEffect(() => {
     if (!userId) return;
 
+    let active = true;
+    let hasConnected = false;
     const channel = supabase
       .channel(`direct-messages:${userId}`)
       .on(
@@ -736,7 +739,9 @@ export function DirectMessagesSection({
             setMessages((current) =>
               current.some((message) => message.id === incoming.id)
                 ? current
-                : [...current, incoming]
+                : [...current, incoming].sort((a, b) =>
+                    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                  )
             );
             if (incoming.author_id !== userId) {
               void markActiveConversationRead(conversationId);
@@ -814,13 +819,65 @@ export function DirectMessagesSection({
           setEditingMessageId((current) => current === deleted.id ? null : current);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (!active) return;
+        if (status === 'SUBSCRIBED') {
+          const isReconnect = hasConnected;
+          hasConnected = true;
+          setRealtimeStatus('connected');
+
+          if (isReconnect) {
+            // Recover missed DM events, unread counters, read receipts and message metadata.
+            const conversationId = activeIdRef.current;
+            void (async () => {
+              try {
+                await loadConversations(true);
+
+                if (!conversationId) return;
+                const [latestMessages, latestPins] = await Promise.all([
+                  fetchDirectMessages(conversationId),
+                  fetchPinnedDirectMessages(conversationId),
+                ]);
+                const latestReactions = await fetchMessageReactions(
+                  latestMessages.map((message) => message.id)
+                );
+
+                if (!active || activeIdRef.current !== conversationId) return;
+
+                setMessages((current) => {
+                  const merged = new Map(current.map((message) => [message.id, message]));
+                  latestMessages.forEach((message) => merged.set(message.id, message));
+                  return [...merged.values()].sort((a, b) =>
+                    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                  );
+                });
+                setHasMoreMessages(latestMessages.length === 100);
+                setPinnedMessages(latestPins);
+                setReactions((current) => {
+                  const visibleIds = new Set(latestMessages.map((message) => message.id));
+                  return [
+                    ...current.filter((reaction) => !visibleIds.has(reaction.message_id)),
+                    ...latestReactions,
+                  ];
+                });
+                await markActiveConversationRead(conversationId);
+              } catch (err) {
+                if (active) {
+                  setError(err instanceof Error ? err.message : 'Could not sync messages after reconnecting.');
+                }
+              }
+            })();
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setRealtimeStatus('reconnecting');
+        }
+      });
 
     return () => {
+      active = false;
       void supabase.removeChannel(channel);
     };
-  }, [userId, markActiveConversationRead]);
-
+  }, [userId, markActiveConversationRead, loadConversations]);
   useEffect(() => {
     if (loadingOlderRef.current) {
       const container = messagesScrollRef.current;
@@ -1233,6 +1290,13 @@ export function DirectMessagesSection({
                 </div>
               </div>
             </header>
+
+            {realtimeStatus !== 'connected' && (
+              <div role="status" className="flex shrink-0 items-center gap-2 border-b border-amber-400/15 bg-amber-400/[0.06] px-4 py-2 text-xs text-amber-200">
+                <RefreshCw size={13} className="animate-spin" />
+                {realtimeStatus === 'connecting' ? 'Connecting to live messages…' : 'Connection interrupted. Reconnecting and syncing messages…'}
+              </div>
+            )}
 
             <SharedListening roomType="conversation" roomId={activeId} />
             {showGroupVoiceRoom && activeMembers.length > 2 ? (
