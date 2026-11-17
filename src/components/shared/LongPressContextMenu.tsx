@@ -17,7 +17,6 @@ export function LongPressContextMenu({ actions, children, className = '', disabl
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
-  const openedByLongPressRef = useRef(false);
 
   const clearTimer = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -28,7 +27,6 @@ export function LongPressContextMenu({ actions, children, className = '', disabl
 
   const openMenu = (x: number, y: number) => {
     if (disabled || actions.length === 0) return;
-    openedByLongPressRef.current = true;
     setMenu({ x: Math.max(12, Math.min(x, window.innerWidth - 220)), y: Math.max(12, Math.min(y, window.innerHeight - Math.min(actions.length * 44 + 16, 320))) });
   };
 
@@ -43,9 +41,9 @@ export function LongPressContextMenu({ actions, children, className = '', disabl
       onPointerDown={(event) => {
         if (disabled || actions.length === 0 || event.pointerType !== 'touch') return;
         startRef.current = { x: event.clientX, y: event.clientY };
-        openedByLongPressRef.current = false;
         clearTimer();
-        timerRef.current = setTimeout(() => openMenu(event.clientX, event.clientY), 520);
+        const { clientX, clientY } = event;
+        timerRef.current = setTimeout(() => openMenu(clientX, clientY), 520);
       }}
       onPointerMove={(event) => {
         if (!startRef.current || event.pointerType !== 'touch') return;
