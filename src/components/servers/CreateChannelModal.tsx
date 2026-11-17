@@ -28,6 +28,7 @@ export function CreateChannelModal({
   const [name, setName] = useState('');
   const [topic, setTopic] = useState('');
   const [category, setCategory] = useState('General');
+  const [channelType, setChannelType] = useState<'text' | 'announcement'>('text');
   const [isRestricted, setIsRestricted] = useState(false);
   const [localError, setLocalError] = useState('');
 
@@ -36,6 +37,7 @@ export function CreateChannelModal({
     setName('');
     setTopic('');
     setCategory('General');
+    setChannelType('text');
     setIsRestricted(false);
     setLocalError('');
   }, [open]);
@@ -79,6 +81,7 @@ export function CreateChannelModal({
       name: normalizedName,
       topic: normalizedTopic,
       category: normalizedCategory,
+      channel_type: channelType,
       position: defaultPosition,
       is_restricted: isRestricted,
     });
@@ -105,7 +108,7 @@ export function CreateChannelModal({
               Create channel
             </h2>
             <p className="mt-1 text-sm text-ink-400">
-              Add a text channel to this server.
+              Create a channel with the right purpose and access settings.
             </p>
           </div>
           <button
@@ -148,6 +151,15 @@ export function CreateChannelModal({
               placeholder="What is this channel for?"
               className="w-full rounded-xl border border-white/[0.08] bg-ink-950/80 px-3.5 py-2.5 text-sm text-ink-100 outline-none transition placeholder:text-ink-600 focus:border-primary-400/60 focus:ring-2 focus:ring-primary-500/15"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-ink-200">Channel type</span>
+            <select value={channelType} onChange={(e) => setChannelType(e.target.value as 'text' | 'announcement')} className="w-full rounded-xl border border-white/[0.08] bg-ink-950/80 px-3.5 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/60">
+              <option value="text">Text — conversations, files and polls</option>
+              <option value="announcement">Announcement — official server updates</option>
+            </select>
+            <span className="mt-1 block text-xs text-ink-500">Announcement channels support the existing announcement publishing tools.</span>
           </label>
 
           <label className="block">
