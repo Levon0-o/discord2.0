@@ -28,8 +28,9 @@ function findMediaTarget(text: string): MediaTarget | null {
       }
       if (host === 'open.spotify.com') {
         const parts = url.pathname.split('/').filter(Boolean);
-        const type = parts[0] === 'intl' ? parts[2] : parts[0];
-        const id = parts[0] === 'intl' ? parts[3] : parts[1];
+        const hasLocalePrefix = /^intl(?:-[a-z]{2})?$/i.test(parts[0] ?? '');
+        const type = hasLocalePrefix ? parts[2] : parts[0];
+        const id = hasLocalePrefix ? parts[3] : parts[1];
         if (['track', 'album', 'playlist', 'episode', 'show'].includes(type ?? '') && /^[a-zA-Z0-9]{10,64}$/.test(id ?? '')) {
           return {
             provider: 'spotify',
