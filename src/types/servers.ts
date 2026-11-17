@@ -23,7 +23,7 @@ export interface ServerMember {
   joined_at: string;
 }
 
-export type ChannelType = 'text' | 'announcement';
+export type ChannelType = 'text' | 'announcement' | 'voice';
 
 export interface Channel {
   id: string;
