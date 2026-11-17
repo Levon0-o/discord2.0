@@ -284,6 +284,9 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
             if (userId < peerId) {
               void (async () => {
                 try {
+                  if (peer.signalingState !== 'stable') {
+                    await peer.setLocalDescription({ type: 'rollback' });
+                  }
                   const offer = await peer.createOffer({ iceRestart: true });
                   await peer.setLocalDescription(offer);
                   await sendSignal('offer', { from: userId, to: peerId, sdp: peer.localDescription ?? offer });
