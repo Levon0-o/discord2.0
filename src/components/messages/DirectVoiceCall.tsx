@@ -34,6 +34,10 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
   const [localPreviewStream, setLocalPreviewStream] = useState<MediaStream | null>(null);
   const [remoteAudioMuted, setRemoteAudioMuted] = useState(false);
+  const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
+  const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedInputId, setSelectedInputId] = useState('');
+  const [selectedOutputId, setSelectedOutputId] = useState('');
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
@@ -53,6 +57,35 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const timerRef = useRef<number | null>(null);
   const callTimeoutRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
+
+  const refreshAudioDevices = async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter((device) => device.kind === 'audioinput');
+      const outputs = devices.filter((device) => device.kind === 'audiooutput');
+      setAudioInputs(inputs);
+      setAudioOutputs(outputs);
+      setSelectedInputId((current) => current || inputs[0]?.deviceId || '');
+      setSelectedOutputId((current) => current || outputs.find((device) => device.deviceId === 'default')?.deviceId || outputs[0]?.deviceId || '');
+    } catch {
+      // Device enumeration is optional; the browser may restrict it.
+    }
+  };
+
+  useEffect(() => {
+    void refreshAudioDevices();
+    const handleDeviceChange = () => { void refreshAudioDevices(); };
+    navigator.mediaDevices?.addEventListener?.('devicechange', handleDeviceChange);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange);
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current as (HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> }) | null;
+    if (audio && selectedOutputId && audio.setSinkId) {
+      void audio.setSinkId(selectedOutputId).catch(() => setError('Could not switch the audio output device in this browser.'));
+    }
+  }, [selectedOutputId, remoteVideoStream, status]);
 
   function setCallStatus(next: CallStatus) {
     statusRef.current = next;
@@ -118,10 +151,17 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       throw new Error('Your browser does not support voice calls.');
     }
     try {
-      return await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          ...(selectedInputId ? { deviceId: { exact: selectedInputId } } : {}),
+        },
         video: false,
       });
+      await refreshAudioDevices();
+      return stream;
     } catch (err) {
       if (err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
         throw new Error('Microphone access was blocked. Allow microphone access in your browser settings.');
@@ -555,6 +595,18 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
             <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-emerald-300">Incoming voice call</p>
             <h2 className="mt-2 text-xl font-bold text-ink-50">{otherName}</h2>
             <p className="mt-1 text-sm text-ink-400">is calling you</p>
+            <div className="mt-5 grid gap-2 text-left">
+              <label className="space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Microphone
+                <select value={selectedInputId} onChange={(event) => setSelectedInputId(event.target.value)} disabled={microphoneReady || audioInputs.length === 0} className="mt-1 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
+                  {audioInputs.length === 0 ? <option value="">Default microphone</option> : audioInputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Speaker
+                <select value={selectedOutputId} onChange={(event) => setSelectedOutputId(event.target.value)} disabled={audioOutputs.length === 0 || !('setSinkId' in HTMLMediaElement.prototype)} className="mt-1 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
+                  {audioOutputs.length === 0 ? <option value="">Browser default</option> : audioOutputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</option>)}
+                </select>
+              </label>
+            </div>
             <div className="mt-6 flex justify-center gap-3">
               <button type="button" onClick={() => void rejectCall()} className="inline-flex items-center gap-2 rounded-xl bg-red-500/15 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-500/25"><PhoneOff size={16} /> Decline</button>
               <button type="button" onClick={() => void acceptCall()} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-400"><PhoneCall size={16} /> Accept</button>
@@ -569,6 +621,18 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary-500/15 text-primary-200"><PhoneCall size={25} /></div>
             <h2 className="mt-4 text-xl font-bold text-ink-50">{otherName}</h2>
             <p className="mt-1 text-sm text-ink-400">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : timeLabel}</p>
+            <div className="mt-4 grid gap-2 text-left sm:grid-cols-2">
+              <label className="space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Microphone
+                <select value={selectedInputId} onChange={(event) => setSelectedInputId(event.target.value)} disabled={microphoneReady || audioInputs.length === 0} className="mt-1 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
+                  {audioInputs.length === 0 ? <option value="">Default microphone</option> : audioInputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Speaker
+                <select value={selectedOutputId} onChange={(event) => setSelectedOutputId(event.target.value)} disabled={audioOutputs.length === 0 || !('setSinkId' in HTMLMediaElement.prototype)} className="mt-1 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
+                  {audioOutputs.length === 0 ? <option value="">Browser default</option> : audioOutputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</option>)}
+                </select>
+              </label>
+            </div>
             {error ? <p role="alert" className="mt-3 rounded-lg bg-red-400/10 p-2 text-xs text-red-300">{error}</p> : null}
             {audioPlaybackBlocked ? (
               <button
