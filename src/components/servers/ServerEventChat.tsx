@@ -240,6 +240,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
 
   async function handlePollVote(poll: ServerEventChatPoll, optionId: string) {
     const selected = pollVotes.some((vote) => vote.poll_id === poll.id && vote.option_id === optionId && vote.user_id === userId);
+    const alreadyVoted = pollVotes.some((vote) => vote.poll_id === poll.id && vote.user_id === userId);
+    if (!poll.allow_multiple && alreadyVoted) return;
     try {
       await castServerEventChatPollVote(poll.id, optionId, !selected);
       const result = await fetchServerEventChatPolls(eventId);
@@ -803,7 +805,7 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
               const count = votes.filter((vote) => vote.option_id === option.id).length;
               const percent = total ? Math.round(count / total * 100) : 0;
               const selected = ownVotes.some((vote) => vote.option_id === option.id);
-              return <button key={option.id} type="button" disabled={closed} onClick={() => void handlePollVote(poll, option.id)} className={'relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-md border px-2.5 py-2 text-left text-[10px] transition disabled:cursor-default ' + (selected ? 'border-primary-400/40 bg-primary-500/10 text-primary-100' : 'border-white/[0.07] bg-white/[0.025] text-ink-300 hover:border-primary-400/30')}>
+              return <button key={option.id} type="button" disabled={closed || (!poll.allow_multiple && ownVotes.length > 0)} onClick={() => void handlePollVote(poll, option.id)} className={'relative flex w-full items-center justify-between gap-2 overflow-hidden rounded-md border px-2.5 py-2 text-left text-[10px] transition disabled:cursor-default ' + (selected ? 'border-primary-400/40 bg-primary-500/10 text-primary-100' : 'border-white/[0.07] bg-white/[0.025] text-ink-300 hover:border-primary-400/30')}>
                 <span className="absolute inset-y-0 left-0 bg-primary-500/10" style={{ width: percent + '%' }} />
                 <span className="relative flex min-w-0 items-center gap-2"><span className={'h-3 w-3 shrink-0 rounded-full border ' + (selected ? 'border-primary-300 bg-primary-400' : 'border-ink-500')} />{option.image_url ? <img src={option.image_url} alt="" className="h-9 w-12 shrink-0 rounded object-cover" /> : null}<span className="min-w-0">{option.label}</span></span>
                 <span className="relative shrink-0 tabular-nums text-ink-500">{count} · {percent}%</span>
