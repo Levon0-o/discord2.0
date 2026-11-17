@@ -4,13 +4,35 @@
   Only the creator can rename a group or add/remove other members; any member can leave.
 */
 
--- Prevent clients from bypassing the RPC validation by inserting conversations or members directly.
-REVOKE INSERT ON public.conversations FROM authenticated;
-REVOKE INSERT (kind, title, created_by) ON public.conversations FROM authenticated;
-REVOKE INSERT ON public.conversation_members FROM authenticated;
-REVOKE INSERT (conversation_id, user_id) ON public.conversation_members FROM authenticated;
-
+-- Preserve the existing direct-conversation RPC's creator-based insert path,
+-- while preventing ordinary members from adding arbitrary participants.
 DROP POLICY IF EXISTS "conversation_members_insert_by_members_or_creator" ON public.conversation_members;
+DROP POLICY IF EXISTS "conversation_members_insert_by_creator" ON public.conversation_members;
+CREATE POLICY "conversation_members_insert_by_creator" ON public.conversation_members
+FOR INSERT TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM public.conversations c
+    WHERE c.id = conversation_members.conversation_id
+      AND c.created_by = (SELECT auth.uid())
+      AND (
+        c.kind = 'direct'
+        OR (
+          c.kind = 'group'
+          AND EXISTS (
+            SELECT 1
+            FROM public.friend_requests fr
+            WHERE fr.status = 'accepted'
+              AND (
+                (fr.sender_id = (SELECT auth.uid()) AND fr.receiver_id = conversation_members.user_id)
+                OR (fr.sender_id = conversation_members.user_id AND fr.receiver_id = (SELECT auth.uid()))
+              )
+          )
+        )
+      )
+  )
+);
 DROP POLICY IF EXISTS "conversation_members_delete_own" ON public.conversation_members;
 DROP POLICY IF EXISTS "conversations_update_group_members" ON public.conversations;
 
