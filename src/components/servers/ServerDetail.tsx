@@ -37,6 +37,7 @@ import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 import { ChannelRolePermissionsModal } from '@/components/servers/ChannelRolePermissionsModal';
 import { CategoryPermissionsModal } from '@/components/servers/CategoryPermissionsModal';
+import { CategoryRolePermissionsModal } from '@/components/servers/CategoryRolePermissionsModal';
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
 import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
 import { ServerSettings } from '@/components/servers/ServerSettings';
@@ -129,6 +130,7 @@ export function ServerDetail({
   const [permissionsChannel, setPermissionsChannel] = useState<Channel | null>(null);
   const [rolePermissionsChannel, setRolePermissionsChannel] = useState<Channel | null>(null);
   const [permissionsCategory, setPermissionsCategory] = useState<string | null>(null);
+  const [rolePermissionsCategory, setRolePermissionsCategory] = useState<string | null>(null);
   const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -753,7 +755,7 @@ export function ServerDetail({
                       </button>
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleReorderCategory(category, 'up')} title="Move category up" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><ArrowUp size={10} /></button>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleReorderCategory(category, 'down')} title="Move category down" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><ArrowDown size={10} /></button>}
-                      {canManageChannelsPermission && categoryIds[category] && <button type="button" onClick={() => setPermissionsCategory(category)} title="Category permissions" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Shield size={10} /></button>}
+                      {canManageChannelsPermission && categoryIds[category] && <><button type="button" onClick={() => setPermissionsCategory(category)} title="Member category permissions" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Shield size={10} /></button><button type="button" onClick={() => setRolePermissionsCategory(category)} title="Role category permissions" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Users size={10} /></button></>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleRenameCategory(category)} title="Rename category" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Pencil size={10} /></button>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleDeleteCategory(category)} title="Delete category" className="rounded p-1 text-ink-700 hover:bg-red-400/10 hover:text-red-300"><Trash2 size={10} /></button>}
                     </div>
@@ -1145,6 +1147,15 @@ export function ServerDetail({
           </div>
         </div>
       ) : null}
+
+      {rolePermissionsCategory && categoryIds[rolePermissionsCategory] && (
+        <CategoryRolePermissionsModal
+          serverId={server.id}
+          categoryId={categoryIds[rolePermissionsCategory]}
+          categoryName={rolePermissionsCategory}
+          onClose={() => setRolePermissionsCategory(null)}
+        />
+      )}
 
       {permissionsCategory && categoryIds[permissionsCategory] && (
         <CategoryPermissionsModal
