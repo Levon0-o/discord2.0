@@ -425,6 +425,11 @@ export async function createChannelPoll(input: {
   return { pollId: row.poll_id, messageId: row.message_id };
 }
 
+export async function updateChannelPoll(input: { pollId: string; question: string; options: string[]; allowMultiple: boolean; expiresAt: string | null; }): Promise<void> {
+  const { error } = await supabase.rpc('update_channel_poll', { p_poll_id: input.pollId, p_question: input.question, p_options: input.options, p_allow_multiple: input.allowMultiple, p_expires_at: input.expiresAt });
+  if (error) throw error;
+}
+
 export async function castChannelPollVote(
   pollId: string,
   optionId: string,
