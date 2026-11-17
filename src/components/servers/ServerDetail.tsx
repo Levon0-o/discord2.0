@@ -32,6 +32,7 @@ import { ChannelChat } from '@/components/servers/ChannelChat';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
+import { CategoryPermissionsModal } from '@/components/servers/CategoryPermissionsModal';
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
 import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
 import { ServerSettings } from '@/components/servers/ServerSettings';
@@ -120,6 +121,7 @@ export function ServerDetail({
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
   const [permissionsChannel, setPermissionsChannel] = useState<Channel | null>(null);
+  const [permissionsCategory, setPermissionsCategory] = useState<string | null>(null);
   const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -742,6 +744,7 @@ export function ServerDetail({
                       </button>
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleReorderCategory(category, 'up')} title="Move category up" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><ArrowUp size={10} /></button>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleReorderCategory(category, 'down')} title="Move category down" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><ArrowDown size={10} /></button>}
+                      {canManageChannelsPermission && categoryIds[category] && <button type="button" onClick={() => setPermissionsCategory(category)} title="Category permissions" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Shield size={10} /></button>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleRenameCategory(category)} title="Rename category" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Pencil size={10} /></button>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleDeleteCategory(category)} title="Delete category" className="rounded p-1 text-ink-700 hover:bg-red-400/10 hover:text-red-300"><Trash2 size={10} /></button>}
                     </div>
@@ -1161,6 +1164,15 @@ export function ServerDetail({
           </div>
         </div>
       ) : null}
+
+      {permissionsCategory && categoryIds[permissionsCategory] && (
+        <CategoryPermissionsModal
+          categoryId={categoryIds[permissionsCategory]}
+          categoryName={permissionsCategory}
+          members={members}
+          onClose={() => setPermissionsCategory(null)}
+        />
+      )}
 
       {permissionsChannel && (
         <ChannelPermissionsModal
