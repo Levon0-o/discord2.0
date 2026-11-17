@@ -839,7 +839,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                         const hasVoted = poll.votes.some((vote) => vote.user_id === userId);
                         const canManage = poll.created_by === userId || ['owner', 'admin', 'moderator'].includes(membersById.get(userId)?.role ?? '');
                         const canClose = canManage;
-                        const canEdit = canManage && !isClosed && totalVotes === 0;
+                        const canEdit = canManage && !isClosed && !poll.has_votes;
                         return (
                           <div key={poll.id} className="mt-3 max-w-xl rounded-xl border border-white/10 bg-ink-900/80 p-4">
                             <div className="mb-3 flex items-start justify-between gap-3">
