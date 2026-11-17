@@ -51,6 +51,7 @@ import {
   leaveServer,
   fetchChannelCategories,
   createChannelCategory,
+  reorderChannelCategory,
   renameChannelCategory,
   deleteChannelCategory,
 } from '@/lib/serversApi';
@@ -96,6 +97,7 @@ export function ServerDetail({
 }: ServerDetailProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [categoryNames, setCategoryNames] = useState<string[]>(['General']);
+  const [categoryIds, setCategoryIds] = useState<Record<string, string>>({});
   const [collapsedCategories, setCollapsedCategories] = useState<string[]>([]);
   const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -231,6 +233,7 @@ export function ServerDetail({
 
         setChannels(channelRows);
         setCategoryNames(Array.from(new Set(['General', ...categoryRows.map((row) => row.name), ...channelRows.map((row) => row.category)])));
+        setCategoryIds(Object.fromEntries(categoryRows.map((row) => [row.name, row.id])));
         setMembers(membersWithRoles);
 
         setActiveChannelId((current) => {
@@ -462,6 +465,7 @@ export function ServerDetail({
     try {
       const created = await createChannelCategory(server.id, name);
       setCategoryNames((current) => Array.from(new Set([...current, created.name])));
+      setCategoryIds((current) => ({ ...current, [created.name]: created.id }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create category.');
     }
@@ -474,6 +478,7 @@ export function ServerDetail({
     try {
       await renameChannelCategory(server.id, category, nextName);
       setCategoryNames((current) => current.map((name) => name === category ? nextName.trim() : name));
+      setCategoryIds((current) => { const next = { ...current }; next[nextName.trim()] = next[category]; delete next[category]; return next; });
       setChannels(await fetchChannels(server.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not rename category.');
@@ -486,9 +491,26 @@ export function ServerDetail({
     try {
       await deleteChannelCategory(server.id, category);
       setCategoryNames((current) => current.filter((name) => name !== category));
+      setCategoryIds((current) => { const next = { ...current }; delete next[category]; return next; });
       setChannels(await fetchChannels(server.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not delete category.');
+    }
+  }
+
+  async function handleReorderCategory(category: string, direction: 'up' | 'down') {
+    if (!canManageChannelsPermission) return;
+    const index = categoryNames.indexOf(category);
+    const target = index + (direction === 'up' ? -1 : 1);
+    if (index < 0 || target < 0 || target >= categoryNames.length) return;
+    const next = [...categoryNames];
+    [next[index], next[target]] = [next[target], next[index]];
+    setCategoryNames(next);
+    try {
+      await Promise.all(next.map((name, position) => categoryIds[name] ? reorderChannelCategory(categoryIds[name], position) : Promise.resolve()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reorder categories.');
+      setCategoryNames(categoryNames);
     }
   }
 
@@ -718,6 +740,8 @@ export function ServerDetail({
                         <span className="truncate">{category}</span>
                         <span className="ml-auto text-ink-700">{list.length}</span>
                       </button>
+                      {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleReorderCategory(category, 'up')} title="Move category up" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><ArrowUp size={10} /></button>}
+                      {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleReorderCategory(category, 'down')} title="Move category down" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><ArrowDown size={10} /></button>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleRenameCategory(category)} title="Rename category" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Pencil size={10} /></button>}
                       {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleDeleteCategory(category)} title="Delete category" className="rounded p-1 text-ink-700 hover:bg-red-400/10 hover:text-red-300"><Trash2 size={10} /></button>}
                     </div>
