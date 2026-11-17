@@ -91,7 +91,9 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Screen sharing can include browser-provided system/tab audio where supported by the browser and selected capture source.
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
 - The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
-- Group DM voice rooms are the next separate milestone; current direct-call invitations remain one-to-one.
+- Group DM voice rooms reuse the multiparty WebRTC room UI and have conversation-members-only Realtime signaling. One-to-one incoming call invitations remain separate.
+- Screen sharing can include browser-provided system/tab audio where supported by the browser and selected capture source.
+- Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
 - This frontend work has not yet been build-tested or deployed; the Vercel daily deployment quota was previously reached.
 
 ## Media embeds
