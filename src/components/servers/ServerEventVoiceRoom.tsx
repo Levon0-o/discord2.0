@@ -40,11 +40,14 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const [stageLayout, setStageLayout] = useState<'grid' | 'focus'>('grid');
   const [focusedParticipantId, setFocusedParticipantId] = useState('');
   const [speakingParticipants, setSpeakingParticipants] = useState<Record<string, boolean>>({});
+  const [reconnectingParticipants, setReconnectingParticipants] = useState<Record<string, boolean>>({});
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const reconnectTimersRef = useRef<Map<string, number>>(new Map());
+  const reconnectAttemptsRef = useRef<Map<string, number>>(new Map());
   const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const screenAudioSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
@@ -174,6 +177,9 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   useEffect(() => {
     return () => {
       joinedRef.current = false;
+      reconnectTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      reconnectTimersRef.current.clear();
+      reconnectAttemptsRef.current.clear();
       peersRef.current.forEach((peer) => peer.close());
       peersRef.current.clear();
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -239,20 +245,72 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           setRemoteStreams((current) => ({ ...current, [peerId]: remote }));
         };
         peer.onconnectionstatechange = () => {
-          if (peer.connectionState === 'failed' || peer.connectionState === 'closed' || peer.connectionState === 'disconnected') {
-            if (peer.connectionState !== 'disconnected') {
-              peer.close();
-              peersRef.current.delete(peerId);
-              videoSendersRef.current.delete(peerId);
-              screenAudioSendersRef.current.delete(peerId);
-              remoteStreamsRef.current.delete(peerId);
-              setRemoteStreams((current) => {
-                const next = { ...current };
-                delete next[peerId];
-                return next;
-              });
-            }
+          const connectionState = peer.connectionState;
+          if (connectionState === 'connected') {
+            const timer = reconnectTimersRef.current.get(peerId);
+            if (timer) window.clearTimeout(timer);
+            reconnectTimersRef.current.delete(peerId);
+            reconnectAttemptsRef.current.delete(peerId);
+            setReconnectingParticipants((current) => {
+              if (!current[peerId]) return current;
+              const next = { ...current };
+              delete next[peerId];
+              return next;
+            });
+            return;
           }
+          if (connectionState === 'closed') return;
+          if (connectionState !== 'failed' && connectionState !== 'disconnected') return;
+
+          setReconnectingParticipants((current) => ({ ...current, [peerId]: true }));
+          if (reconnectTimersRef.current.has(peerId)) return;
+          const attempt = reconnectAttemptsRef.current.get(peerId) ?? 0;
+          if (attempt >= 3) {
+            setReconnectingParticipants((current) => {
+              const next = { ...current };
+              delete next[peerId];
+              return next;
+            });
+            setError('A participant connection could not recover. They may need to rejoin the voice room.');
+            return;
+          }
+          const delay = connectionState === 'failed' ? 0 : 5000;
+          const timer = window.setTimeout(() => {
+            reconnectTimersRef.current.delete(peerId);
+            if (!joinedRef.current || peersRef.current.get(peerId) !== peer || peer.connectionState === 'connected' || peer.connectionState === 'closed') return;
+            const nextAttempt = (reconnectAttemptsRef.current.get(peerId) ?? 0) + 1;
+            reconnectAttemptsRef.current.set(peerId, nextAttempt);
+            // The lexicographically first participant owns renegotiation to avoid offer collisions.
+            if (userId < peerId) {
+              void (async () => {
+                try {
+                  const offer = await peer.createOffer({ iceRestart: true });
+                  await peer.setLocalDescription(offer);
+                  await sendSignal('offer', { from: userId, to: peerId, sdp: peer.localDescription ?? offer });
+                } catch {
+                  if (nextAttempt >= 3) {
+                    setReconnectingParticipants((current) => {
+                      const next = { ...current };
+                      delete next[peerId];
+                      return next;
+                    });
+                    setError('A participant connection could not recover. They may need to rejoin the voice room.');
+                  }
+                }
+              })();
+            }
+            if (nextAttempt < 3 && peer.connectionState !== 'connected') {
+              const retryDelay = Math.min(5000 * nextAttempt, 10000);
+              const retryTimer = window.setTimeout(() => {
+                reconnectTimersRef.current.delete(peerId);
+                if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
+                  peer.dispatchEvent(new Event('connectionstatechange'));
+                }
+              }, retryDelay);
+              reconnectTimersRef.current.set(peerId, retryTimer);
+            }
+          }, delay);
+          reconnectTimersRef.current.set(peerId, timer);
         };
         return peer;
       };
@@ -323,6 +381,15 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           for (const peerId of [...peersRef.current.keys()]) {
             if (!ids.includes(peerId)) {
               peersRef.current.get(peerId)?.close();
+              const reconnectTimer = reconnectTimersRef.current.get(peerId);
+              if (reconnectTimer) window.clearTimeout(reconnectTimer);
+              reconnectTimersRef.current.delete(peerId);
+              reconnectAttemptsRef.current.delete(peerId);
+              setReconnectingParticipants((current) => {
+                const next = { ...current };
+                delete next[peerId];
+                return next;
+              });
               peersRef.current.delete(peerId);
               videoSendersRef.current.delete(peerId);
               screenAudioSendersRef.current.delete(peerId);
@@ -371,6 +438,9 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
 
   async function leaveRoom() {
     joinedRef.current = false;
+    reconnectTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    reconnectTimersRef.current.clear();
+    reconnectAttemptsRef.current.clear();
     peersRef.current.forEach((peer) => peer.close());
     peersRef.current.clear();
     videoSendersRef.current.clear();
@@ -395,6 +465,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
     setParticipants([]);
     setRemoteStreams({});
     setMutedParticipants({});
+    setReconnectingParticipants({});
   }
 
   function toggleMute() {
@@ -507,7 +578,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
               return <div key={id} className="flex min-w-0 items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-500/15 text-[10px] font-bold text-primary-200">{label.slice(0, 1).toUpperCase()}</span>
                 <span className="truncate text-[11px] text-ink-200">{label}</span>
-                {id === userId && muted ? <MicOff size={12} className="ml-auto text-amber-300" /> : speakingParticipants[id] ? <span className="ml-auto rounded bg-emerald-400/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">Speaking</span> : <Mic size={12} className="ml-auto text-ink-500" />}
+                {id !== userId && reconnectingParticipants[id] ? <span className="ml-auto rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">Reconnecting</span> : id === userId && muted ? <MicOff size={12} className="ml-auto text-amber-300" /> : speakingParticipants[id] ? <span className="ml-auto rounded bg-emerald-400/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">Speaking</span> : <Mic size={12} className="ml-auto text-ink-500" />}
               </div>;
             })}
           </div>
@@ -525,7 +596,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           </div>
           <div className={stageLayout === 'focus' ? 'grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(180px,1fr)]' : 'grid grid-cols-1 gap-2 sm:grid-cols-2'}>
             {localPreviewStream ? <div className={'relative overflow-hidden rounded-xl border border-white/[0.08] bg-black ' + (stageLayout === 'focus' && (focusedParticipantId || userId) === userId ? 'sm:row-span-2' : '')}><video autoPlay muted playsInline ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} className={'w-full bg-black object-contain ' + (stageLayout === 'focus' && (focusedParticipantId || userId) === userId ? 'aspect-video h-full min-h-[240px]' : 'aspect-video')} /><span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white">You · {sharingScreen ? 'Sharing screen' : cameraEnabled ? 'Camera on' : 'Preview'}</span><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen preview"><Maximize2 size={14} /></button></div> : null}
-            {Object.entries(remoteStreams).sort(([a], [b]) => { const focus = focusedParticipantId || userId; return a === focus ? -1 : b === focus ? 1 : 0; }).map(([id, remoteStream]) => <div key={id} className={'relative overflow-hidden rounded-xl border bg-black transition-colors ' + (speakingParticipants[id] ? 'border-emerald-400/80 ring-1 ring-emerald-400/40' : 'border-white/[0.08]') + ' ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'sm:row-span-2' : '')}>{remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled) ? <video autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className={'w-full bg-black object-contain ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'aspect-video h-full min-h-[240px]' : 'aspect-video')} /> : <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-black"><span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-400/10 text-xl font-semibold text-primary-100">{(members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'P').slice(0, 1).toUpperCase()}</span><span className="text-[10px] text-ink-500">Camera is off</span></div>}<audio autoPlay ref={(element) => { if (element) { audioElementsRef.current.set(id, element); if (element.srcObject !== remoteStream) element.srcObject = remoteStream; element.muted = Boolean(mutedParticipants[id]); const sinkElement = element as HTMLMediaElement & { setSinkId?: (deviceId: string) => Promise<void> }; if (selectedOutputId && sinkElement.setSinkId) void sinkElement.setSinkId(selectedOutputId).catch(() => setError('Could not switch the audio output device.')); } else { audioElementsRef.current.delete(id); } }} /><span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 text-[10px] text-white">{members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'Participant'}{speakingParticipants[id] ? <span className="font-semibold text-emerald-300">· Speaking</span> : null}</span><div className="absolute bottom-2 right-2 flex gap-1"><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen video"><Maximize2 size={14} /></button><button type="button" onClick={() => toggleParticipantAudio(id)} className="rounded-md bg-black/70 p-2 text-white" aria-label={mutedParticipants[id] ? 'Unmute participant audio' : 'Mute participant audio'}>{mutedParticipants[id] ? <VolumeX size={14} /> : <Volume2 size={14} />}</button></div></div>)}
+            {Object.entries(remoteStreams).sort(([a], [b]) => { const focus = focusedParticipantId || userId; return a === focus ? -1 : b === focus ? 1 : 0; }).map(([id, remoteStream]) => <div key={id} className={'relative overflow-hidden rounded-xl border bg-black transition-colors ' + (speakingParticipants[id] ? 'border-emerald-400/80 ring-1 ring-emerald-400/40' : 'border-white/[0.08]') + ' ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'sm:row-span-2' : '')}>{remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled) ? <video autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className={'w-full bg-black object-contain ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'aspect-video h-full min-h-[240px]' : 'aspect-video')} /> : <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-black"><span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-400/10 text-xl font-semibold text-primary-100">{(members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'P').slice(0, 1).toUpperCase()}</span><span className="text-[10px] text-ink-500">Camera is off</span></div>}<audio autoPlay ref={(element) => { if (element) { audioElementsRef.current.set(id, element); if (element.srcObject !== remoteStream) element.srcObject = remoteStream; element.muted = Boolean(mutedParticipants[id]); const sinkElement = element as HTMLMediaElement & { setSinkId?: (deviceId: string) => Promise<void> }; if (selectedOutputId && sinkElement.setSinkId) void sinkElement.setSinkId(selectedOutputId).catch(() => setError('Could not switch the audio output device.')); } else { audioElementsRef.current.delete(id); } }} /><span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 text-[10px] text-white">{members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'Participant'}{reconnectingParticipants[id] ? <span className="font-semibold text-amber-300">· Reconnecting</span> : speakingParticipants[id] ? <span className="font-semibold text-emerald-300">· Speaking</span> : null}</span><div className="absolute bottom-2 right-2 flex gap-1"><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen video"><Maximize2 size={14} /></button><button type="button" onClick={() => toggleParticipantAudio(id)} className="rounded-md bg-black/70 p-2 text-white" aria-label={mutedParticipants[id] ? 'Unmute participant audio' : 'Mute participant audio'}>{mutedParticipants[id] ? <VolumeX size={14} /> : <Volume2 size={14} />}</button></div></div>)}
             {!localPreviewStream && Object.keys(remoteStreams).length === 0 ? <div className="rounded-xl border border-dashed border-white/10 bg-black/10 p-8 text-center text-xs text-ink-500 sm:col-span-2">You're connected. Participant video tiles will appear here when cameras are enabled.</div> : null}
           </div>
         </> : null}
