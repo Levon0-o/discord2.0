@@ -51,7 +51,8 @@ import {
   leaveServer,
   fetchChannelCategories,
   createChannelCategory,
-  updateChannel,
+  renameChannelCategory,
+  deleteChannelCategory,
 } from '@/lib/serversApi';
 
 import type {
@@ -466,6 +467,31 @@ export function ServerDetail({
     }
   }
 
+  async function handleRenameCategory(category: string) {
+    if (!canManageChannelsPermission) return;
+    const nextName = window.prompt('Rename category', category);
+    if (!nextName?.trim() || nextName.trim() === category) return;
+    try {
+      await renameChannelCategory(server.id, category, nextName);
+      setCategoryNames((current) => current.map((name) => name === category ? nextName.trim() : name));
+      setChannels(await fetchChannels(server.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not rename category.');
+    }
+  }
+
+  async function handleDeleteCategory(category: string) {
+    if (!canManageChannelsPermission || category === 'General') return;
+    if (!window.confirm('Delete category "' + category + '"? Its channels will be moved to General.')) return;
+    try {
+      await deleteChannelCategory(server.id, category);
+      setCategoryNames((current) => current.filter((name) => name !== category));
+      setChannels(await fetchChannels(server.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete category.');
+    }
+  }
+
   async function handleMoveChannelToCategory(channel: Channel, category: string) {
     if (channel.category === category) return;
     setReorderingChannelId(channel.id);
@@ -686,11 +712,15 @@ export function ServerDetail({
               ) : (
                 channelsByCategory.map(([category, list]) => (
                   <div key={category} onDragOver={(event) => { if (canManageChannelsPermission) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); const dragged = channels.find((item) => item.id === draggedChannelId); if (dragged) void handleMoveChannelToCategory(dragged, category); }}>
-                    <button type="button" onClick={() => setCollapsedCategories((current) => current.includes(category) ? current.filter((item) => item !== category) : [...current, category])} className="mb-1 flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[9px] font-bold uppercase tracking-widest text-ink-600 transition hover:bg-white/[0.04] hover:text-ink-300">
-                      {collapsedCategories.includes(category) ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
-                      <span className="truncate">{category}</span>
-                      <span className="ml-auto text-ink-700">{list.length}</span>
-                    </button>
+                    <div className="mb-1 flex items-center gap-1">
+                      <button type="button" onClick={() => setCollapsedCategories((current) => current.includes(category) ? current.filter((item) => item !== category) : [...current, category])} className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-[9px] font-bold uppercase tracking-widest text-ink-600 transition hover:bg-white/[0.04] hover:text-ink-300">
+                        {collapsedCategories.includes(category) ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                        <span className="truncate">{category}</span>
+                        <span className="ml-auto text-ink-700">{list.length}</span>
+                      </button>
+                      {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleRenameCategory(category)} title="Rename category" className="rounded p-1 text-ink-700 hover:bg-white/[0.05] hover:text-primary-300"><Pencil size={10} /></button>}
+                      {canManageChannelsPermission && category !== 'General' && <button type="button" onClick={() => void handleDeleteCategory(category)} title="Delete category" className="rounded p-1 text-ink-700 hover:bg-red-400/10 hover:text-red-300"><Trash2 size={10} /></button>}
+                    </div>
 
                     {!collapsedCategories.includes(category) && <ul className="space-y-0.5">
                       {list.map((channel) => {
