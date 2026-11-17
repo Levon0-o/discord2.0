@@ -185,7 +185,7 @@ begin
   if p_options is null then raise exception 'Poll options are required.'; end if;
   select count(*) into v_option_count from unnest(p_options);
   if v_option_count not between 2 and 6 then raise exception 'A poll must have between 2 and 6 options.'; end if;
-  if exists (select 1 from unnest(p_options) o where char_length(btrim(coalesce(o, ''))) not between 1 and 80) then
+  if exists (select 1 from unnest(p_options) as opts(value) where char_length(btrim(coalesce(value, ''))) not between 1 and 80) then
     raise exception 'Each option must be between 1 and 80 characters.';
   end if;
   if exists (
