@@ -208,6 +208,10 @@ export function ServersSection() {
       <ServerDetail
         server={view.server}
         userId={userId}
+        onServerUpdated={(updatedServer) => {
+          setView((current) => current.mode === 'detail' ? { mode: 'detail', server: updatedServer } : current);
+          setMyServers((current) => current.map((item) => item.id === updatedServer.id ? updatedServer : item));
+        }}
         onBack={() => {
           storeActiveServer(null);
           setView({ mode: 'list' });
