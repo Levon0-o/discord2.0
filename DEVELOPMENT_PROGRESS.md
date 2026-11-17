@@ -88,12 +88,14 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Video is negotiated as a WebRTC transceiver so camera and screen tracks can be switched without restarting the call.
 - Camera and screen permissions are requested only when the user activates those controls.
 - The new migration `supabase/migrations/20261119150000_server_voice_channels.sql` must be applied before creating or joining dedicated voice channels.
-- The migration `supabase/migrations/20261119170000_group_dm_voice_rooms.sql` must be applied before group DM voice rooms can connect.
+- The migration `supabase/migrations/20261119170000_group_dm_voice_rooms.sql` enables conversation-member-only Realtime signaling for group DM voice rooms and has been applied to the project.
 - Screen sharing can include browser-provided system/tab audio where supported by the browser and selected capture source.
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
 - Direct calls and multiparty voice rooms expose microphone selection before joining and speaker selection where the browser supports `setSinkId`; available device names are refreshed when devices change.
 - One-to-one calls use an expanded call panel with participant status, video stage, device controls, call actions and a compact minimized call bar.
 - Multiparty voice rooms now offer responsive Grid and Focus stage layouts, participant selection for the focus stage, participant labels, camera-off placeholders, local mute indicators and fullscreen controls.
+- Voice rooms detect active speakers from live audio levels and highlight participants while they speak; detection gracefully disables when Web Audio is unavailable.
+- Voice rooms expose camera-device selection and 480p, 720p or 1080p quality preferences; settings apply when the camera is next enabled, subject to device and browser capabilities.
 - The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
 - Group DM voice rooms reuse the multiparty WebRTC room UI and have conversation-members-only Realtime signaling. One-to-one incoming call invitations remain separate.
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
