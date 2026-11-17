@@ -1023,7 +1023,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
             </div>
             <label className="block space-y-1.5"><span className="text-xs font-medium text-ink-300">Target channel</span>
               <select value={forwardTargetChannelId} onChange={(event) => setForwardTargetChannelId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50">
-                {availableChannels.filter((channel) => channel.id !== channelId).map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                {availableChannels.filter((channel) => channel.id !== channelId && channel.channel_type !== 'voice').map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
               </select>
             </label>
             <p className="text-[10px] leading-relaxed text-ink-500">The text and original author attribution will be forwarded. Attachments and poll cards are not copied. Your permissions in the destination channel are checked when sending.</p>
