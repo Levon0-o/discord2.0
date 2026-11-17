@@ -63,7 +63,7 @@ export function GroupConversationModal({
     setSelectedIds((current) =>
       current.includes(userId)
         ? current.filter((id) => id !== userId)
-        : [...current, userId]
+        : current.length >= 24 ? current : [...current, userId]
     );
   }
 
