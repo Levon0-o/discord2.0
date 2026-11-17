@@ -395,12 +395,12 @@ export async function fetchChannelRolePermissions(channelId: string): Promise<Ch
   return (data ?? []) as ChannelRolePermission[];
 }
 
-export async function setChannelRolePermission(channelId: string, roleId: string, permission: ChannelRolePermissionKey, value: boolean | null): Promise<ChannelRolePermission> {
+export async function setChannelRolePermission(channelId: string, serverId: string, roleId: string, permission: ChannelRolePermissionKey, value: boolean | null): Promise<ChannelRolePermission> {
   const { data: existing, error: readError } = await supabase.from('channel_role_permissions')
     .select('channel_id, role_id, can_view, can_send_messages, can_attach_files, can_manage_messages')
     .eq('channel_id', channelId).eq('role_id', roleId).maybeSingle();
   if (readError) throw readError;
-  const payload = { ...(existing ?? { channel_id: channelId, role_id: roleId, can_view: null, can_send_messages: null, can_attach_files: null, can_manage_messages: null }), [permission]: value };
+  const payload = { ...(existing ?? { channel_id: channelId, server_id: serverId, role_id: roleId, can_view: null, can_send_messages: null, can_attach_files: null, can_manage_messages: null }), [permission]: value };
   if ([payload.can_view, payload.can_send_messages, payload.can_attach_files, payload.can_manage_messages].every((entry) => entry === null)) {
     const { error } = await supabase.from('channel_role_permissions').delete().eq('channel_id', channelId).eq('role_id', roleId);
     if (error) throw error;
