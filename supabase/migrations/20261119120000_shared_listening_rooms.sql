@@ -107,7 +107,7 @@ begin
 
   return v_room;
 end;
-$;
+$$;
 
 revoke all on function public.set_shared_listening_current_item(uuid, uuid) from public, anon;
 grant execute on function public.set_shared_listening_current_item(uuid, uuid) to authenticated;
