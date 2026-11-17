@@ -34,6 +34,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const joinedRef = useRef(false);
@@ -85,7 +86,12 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           if (event.candidate) void sendSignal('ice', { from: userId, to: peerId, candidate: event.candidate.toJSON() });
         };
         peer.ontrack = (event) => {
-          const remote = event.streams[0] ?? new MediaStream([event.track]);
+          const remote = remoteStreamsRef.current.get(peerId) ?? new MediaStream();
+          const incomingTracks = event.streams[0]?.getTracks() ?? [event.track];
+          for (const track of incomingTracks) {
+            if (!remote.getTracks().some((existingTrack) => existingTrack.id === track.id)) remote.addTrack(track);
+          }
+          remoteStreamsRef.current.set(peerId, remote);
           setRemoteStreams((current) => ({ ...current, [peerId]: remote }));
         };
         peer.onconnectionstatechange = () => {
@@ -94,6 +100,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
               peer.close();
               peersRef.current.delete(peerId);
               videoSendersRef.current.delete(peerId);
+              remoteStreamsRef.current.delete(peerId);
               setRemoteStreams((current) => {
                 const next = { ...current };
                 delete next[peerId];
@@ -173,6 +180,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
               peersRef.current.get(peerId)?.close();
               peersRef.current.delete(peerId);
               videoSendersRef.current.delete(peerId);
+              remoteStreamsRef.current.delete(peerId);
               setRemoteStreams((current) => {
                 const next = { ...current };
                 delete next[peerId];
@@ -220,6 +228,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
     peersRef.current.forEach((peer) => peer.close());
     peersRef.current.clear();
     videoSendersRef.current.clear();
+    remoteStreamsRef.current.clear();
     pendingIceRef.current.clear();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
