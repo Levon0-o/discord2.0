@@ -754,7 +754,7 @@ export function ServerDetail({
                         const active = channel.id === activeChannelId;
 
                         return (
-                          <li key={channel.id} draggable={canManageChannelsPermission} onDragStart={() => setDraggedChannelId(channel.id)} onDragEnd={() => setDraggedChannelId(null)} className={cn('flex items-center rounded-md', draggedChannelId === channel.id && 'opacity-40')}>
+                          <li key={channel.id} draggable={canManageChannelsPermission} onDragStart={() => setDraggedChannelId(channel.id)} onDragEnd={() => setDraggedChannelId(null)} onDragOver={(event) => { if (canManageChannelsPermission) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const dragged = channels.find((item) => item.id === draggedChannelId); if (!dragged) return; if (dragged.category !== category) { void handleMoveChannelToCategory(dragged, category); return; } const from = list.findIndex((item) => item.id === dragged.id); const to = list.findIndex((item) => item.id === channel.id); if (from === to || from < 0 || to < 0) return; void (async () => { try { for (let step = 0; step < Math.abs(from - to); step += 1) await reorderChannel(server.id, dragged.id, from > to ? 'up' : 'down'); setChannels(await fetchChannels(server.id)); } catch (err) { setError(err instanceof Error ? err.message : 'Could not reorder channels.'); } finally { setDraggedChannelId(null); } })(); }} className={cn('flex items-center rounded-md', draggedChannelId === channel.id && 'opacity-40')}>
                             <button
                               type="button"
                               onClick={() => {
