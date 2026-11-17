@@ -450,7 +450,13 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       setEditingPollId(null);
       await loadMessages();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create poll.');
+      const details = err && typeof err === 'object'
+        ? err as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown }
+        : null;
+      const message = typeof details?.message === 'string' ? details.message : err instanceof Error ? err.message : 'Could not create poll.';
+      const extra = [details?.details, details?.hint].filter((value): value is string => typeof value === 'string' && value.length > 0);
+      setError([message, ...extra].join(' — '));
+      console.error('Channel poll creation failed:', err);
     } finally {
       setPollBusy(false);
     }
