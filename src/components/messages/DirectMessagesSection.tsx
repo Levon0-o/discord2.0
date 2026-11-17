@@ -24,6 +24,7 @@ import { DirectVoiceCall } from '@/components/messages/DirectVoiceCall';
 import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
 import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
+import { SharedListening } from '@/components/shared/SharedListening';
 import {
   fetchMyConversations,
   fetchConversationMembers,
@@ -1222,6 +1223,8 @@ export function DirectMessagesSection({
                 </div>
               </div>
             </header>
+
+            <SharedListening roomType="conversation" roomId={activeId} />
 
             {error && (
               <p
