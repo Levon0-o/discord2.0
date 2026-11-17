@@ -35,6 +35,7 @@ import { ChannelChat } from '@/components/servers/ChannelChat';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
+import { ChannelRolePermissionsModal } from '@/components/servers/ChannelRolePermissionsModal';
 import { CategoryPermissionsModal } from '@/components/servers/CategoryPermissionsModal';
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
 import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
@@ -126,6 +127,7 @@ export function ServerDetail({
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
   const [permissionsChannel, setPermissionsChannel] = useState<Channel | null>(null);
+  const [rolePermissionsChannel, setRolePermissionsChannel] = useState<Channel | null>(null);
   const [permissionsCategory, setPermissionsCategory] = useState<string | null>(null);
   const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -811,6 +813,7 @@ export function ServerDetail({
                                   <button type="button" onClick={() => void handleReorderChannel(channel, 'down')} disabled={reorderingChannelId !== null || list[list.length - 1]?.id === channel.id} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06] disabled:opacity-30"><ArrowDown size={13} /> Move down</button>
                                   <button type="button" onClick={() => { void duplicateChannel(channel).then(() => fetchChannels(server.id)).then(setChannels).catch((err) => setError(err instanceof Error ? err.message : 'Could not duplicate channel.')); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06]"><Copy size={13} /> Duplicate channel</button>
                                   {canManageChannelsPermission && <button type="button" onClick={() => setPermissionsChannel(channel)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06]"><SlidersHorizontal size={13} /> Permissions</button>}
+                                  {canManageChannelsPermission && <button type="button" onClick={() => setRolePermissionsChannel(channel)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06]"><Shield size={13} /> Role permissions</button>}
                                   <div className="my-1 border-t border-white/[0.07]" />
                                   <button type="button" onClick={() => { setDeleteError(''); setDeletingChannel(channel); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-red-300 hover:bg-red-400/10"><Trash2 size={13} /> Delete channel</button>
                                 </div>
