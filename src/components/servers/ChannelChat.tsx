@@ -10,7 +10,7 @@ import {
   toggleChannelPin, uploadChannelMessageAttachment, getChannelMessageAttachmentUrl, searchChannelMessages,
   fetchChannelNotificationPreference, setChannelNotificationsMuted, unmuteChannelNotifications,
   fetchSavedChannelMessages, toggleSavedChannelMessage,
-  fetchChannelPolls, createChannelPoll, castChannelPollVote, closeChannelPoll, forwardChannelMessage,
+  fetchChannelPolls, createChannelPoll, updateChannelPoll, castChannelPollVote, closeChannelPoll, forwardChannelMessage,
   fetchChannelAnnouncements, createChannelAnnouncement,
   type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage, type ChannelPoll, type ChannelAnnouncement,
 } from '@/lib/messagesApi';
@@ -60,6 +60,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
   const [pollExpiresIn, setPollExpiresIn] = useState('never');
   const [pollBusy, setPollBusy] = useState(false);
+  const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [forwardTargetChannelId, setForwardTargetChannelId] = useState('');
   const [forwardingBusy, setForwardingBusy] = useState(false);
@@ -423,12 +424,14 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         '7d': 604800000,
       };
       const expiresAt = pollExpiresIn === 'never' ? null : new Date(Date.now() + durations[pollExpiresIn]).toISOString();
-      await createChannelPoll({ channelId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt });
+      if (editingPollId) await updateChannelPoll({ pollId: editingPollId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt });
+      else await createChannelPoll({ channelId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt });
       setPollQuestion('');
       setPollOptions(['', '']);
       setPollAllowMultiple(false);
       setPollExpiresIn('never');
       setShowPollCreator(false);
+      setEditingPollId(null);
       await loadMessages();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create poll.');
@@ -439,7 +442,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
 
   async function handlePollVote(poll: ChannelPoll, optionId: string) {
     const selected = poll.votes.some((vote) => vote.user_id === userId && vote.option_id === optionId);
-    if (selected && !poll.allow_multiple) return;
+    if (!poll.allow_multiple && poll.votes.some((vote) => vote.user_id === userId)) return;
     try {
       await castChannelPollVote(poll.id, optionId, poll.allow_multiple ? !selected : true);
       await refreshPolls();
@@ -822,7 +825,10 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                         const totalVotes = poll.votes.length;
                         const isExpired = Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
                         const isClosed = Boolean(poll.closed_at || isExpired);
-                        const canClose = poll.created_by === userId || ['owner', 'admin', 'moderator'].includes(membersById.get(userId)?.role ?? '');
+                        const hasVoted = poll.votes.some((vote) => vote.user_id === userId);
+                        const canManage = poll.created_by === userId || ['owner', 'admin', 'moderator'].includes(membersById.get(userId)?.role ?? '');
+                        const canClose = canManage;
+                        const canEdit = canManage && !isClosed && totalVotes === 0;
                         return (
                           <div key={poll.id} className="mt-3 max-w-xl rounded-xl border border-white/10 bg-ink-900/80 p-4">
                             <div className="mb-3 flex items-start justify-between gap-3">
@@ -838,7 +844,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                                 const percent = totalVotes ? Math.round((count / totalVotes) * 100) : 0;
                                 const selected = poll.votes.some((vote) => vote.user_id === userId && vote.option_id === option.id);
                                 return (
-                                  <button key={option.id} type="button" disabled={isClosed} onClick={() => void handlePollVote(poll, option.id)} className={'relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition ' + (selected ? 'border-primary-400/50 bg-primary-500/10' : 'border-white/[0.08] bg-ink-950/70 hover:border-white/20') + ' disabled:cursor-default'}>
+                                  <button key={option.id} type="button" disabled={isClosed || (!poll.allow_multiple && hasVoted)} onClick={() => void handlePollVote(poll, option.id)} className={'relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition ' + (selected ? 'border-primary-400/50 bg-primary-500/10' : 'border-white/[0.08] bg-ink-950/70 hover:border-white/20') + ' disabled:cursor-default'}>
                                     <span className="absolute inset-y-0 left-0 bg-primary-500/10 transition-all" style={{ width: percent + '%' }} />
                                     <span className="relative flex items-center justify-between gap-3 text-xs">
                                       <span className={selected ? 'font-semibold text-primary-200' : 'text-ink-200'}>{option.label}</span>
@@ -849,8 +855,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                               })}
                             </div>
                             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-[10px] text-ink-500">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} · {poll.allow_multiple ? 'Multiple choices' : 'One choice'}{poll.expires_at && !isExpired ? ' · Ends ' + new Date(poll.expires_at).toLocaleString() : ''}</span>
-                              {canClose && !isClosed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded-md px-2 py-1 text-[10px] font-medium text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100">Close poll</button> : null}
+                              <span className="text-[10px] text-ink-500">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} · {poll.allow_multiple ? 'Multiple choices' : hasVoted ? 'Vote locked' : 'One choice'}{poll.expires_at && !isExpired ? ' · Ends ' + new Date(poll.expires_at).toLocaleString() : ''}</span>
+                              {canEdit ? <button type="button" onClick={() => { setEditingPollId(poll.id); setPollQuestion(poll.question); setPollOptions(poll.options.map((option) => option.label)); setPollAllowMultiple(poll.allow_multiple); setPollExpiresIn(poll.expires_at ? '24h' : 'never'); setShowPollCreator(true); }} className="rounded-md px-2 py-1 text-[10px] font-medium text-primary-300 transition hover:bg-primary-500/10">Edit</button> : null}{canClose && !isClosed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded-md px-2 py-1 text-[10px] font-medium text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100">Close poll</button> : null}
                             </div>
                           </div>
                         );
@@ -1026,7 +1032,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <form onSubmit={handleCreatePoll} className="w-full max-w-lg space-y-4 rounded-2xl border border-white/10 bg-ink-950 p-5 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
-              <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-300"><BarChart3 size={15} /> New poll</div><h3 className="mt-1 text-lg font-semibold text-ink-100">Create a channel poll</h3></div>
+              <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-300"><BarChart3 size={15} /> New poll</div><h3 className="mt-1 text-lg font-semibold text-ink-100">{editingPollId ? 'Edit channel poll' : 'Create a channel poll'}</h3></div>
               <button type="button" onClick={() => setShowPollCreator(false)} className="rounded-lg p-2 text-ink-400 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close poll creator"><X size={17} /></button>
             </div>
             <label className="block space-y-1.5"><span className="text-xs font-medium text-ink-300">Question</span><input autoFocus value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} maxLength={200} placeholder="Ask your community…" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50" /></label>
@@ -1046,7 +1052,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
             </div>
             <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3">
               <button type="button" onClick={() => setShowPollCreator(false)} className="rounded-lg px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]">Cancel</button>
-              <button type="submit" disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{pollBusy ? <RefreshCw size={14} className="animate-spin" /> : <BarChart3 size={14} />} Create poll</button>
+              <button type="submit" disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{pollBusy ? <RefreshCw size={14} className="animate-spin" /> : <BarChart3 size={14} />} {editingPollId ? 'Save changes' : 'Create poll'}</button>
             </div>
           </form>
         </div>
