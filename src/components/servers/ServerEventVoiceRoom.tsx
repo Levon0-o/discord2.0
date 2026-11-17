@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Headphones, Mic, MicOff, MonitorUp, PhoneOff, Users, X } from 'lucide-react';
+import { Camera, CameraOff, Headphones, Maximize2, Mic, MicOff, MonitorUp, PhoneOff, Users, Volume2, VolumeX, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
 import type { MemberWithProfile } from '@/types/servers';
@@ -30,11 +30,13 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [sharingScreen, setSharingScreen] = useState(false);
   const [localPreviewStream, setLocalPreviewStream] = useState<MediaStream | null>(null);
+  const [mutedParticipants, setMutedParticipants] = useState<Record<string, boolean>>({});
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
+  const screenAudioSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -81,6 +83,8 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
         stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream));
         const videoTransceiver = peer.addTransceiver('video', { direction: 'sendrecv' });
         videoSendersRef.current.set(peerId, videoTransceiver.sender);
+        const screenAudioTransceiver = peer.addTransceiver('audio', { direction: 'sendrecv' });
+        screenAudioSendersRef.current.set(peerId, screenAudioTransceiver.sender);
         const activeVideoTrack = screenStreamRef.current?.getVideoTracks()[0] ?? cameraStreamRef.current?.getVideoTracks()[0];
         if (activeVideoTrack) void videoTransceiver.sender.replaceTrack(activeVideoTrack);
         peer.onicecandidate = (event) => {
@@ -101,6 +105,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
               peer.close();
               peersRef.current.delete(peerId);
               videoSendersRef.current.delete(peerId);
+              screenAudioSendersRef.current.delete(peerId);
               remoteStreamsRef.current.delete(peerId);
               setRemoteStreams((current) => {
                 const next = { ...current };
@@ -181,6 +186,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
               peersRef.current.get(peerId)?.close();
               peersRef.current.delete(peerId);
               videoSendersRef.current.delete(peerId);
+              screenAudioSendersRef.current.delete(peerId);
               remoteStreamsRef.current.delete(peerId);
               setRemoteStreams((current) => {
                 const next = { ...current };
@@ -229,6 +235,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
     peersRef.current.forEach((peer) => peer.close());
     peersRef.current.clear();
     videoSendersRef.current.clear();
+    screenAudioSendersRef.current.clear();
     remoteStreamsRef.current.clear();
     pendingIceRef.current.clear();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -254,6 +261,16 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
     const next = !muted;
     localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next; });
     setMuted(next);
+  }
+
+  function toggleParticipantAudio(participantId: string) {
+    setMutedParticipants((current) => ({ ...current, [participantId]: !current[participantId] }));
+  }
+
+  function openFullscreen(element: HTMLVideoElement | null) {
+    if (!element) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else if (element.requestFullscreen) void element.requestFullscreen().catch(() => setError('Fullscreen is not available in this browser.'));
   }
 
   async function toggleCamera() {
@@ -289,22 +306,26 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       screenStreamRef.current = null;
       const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
       await Promise.all(senders.map((sender) => sender.replaceTrack(cameraTrack)));
+      await Promise.all([...screenAudioSendersRef.current.values()].map((sender) => sender.replaceTrack(null)));
       setSharingScreen(false);
       setLocalPreviewStream(cameraStreamRef.current);
       return;
     }
     try {
       if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen sharing is not supported by this browser.');
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: true });
       const track = stream.getVideoTracks()[0];
       if (!track) throw new Error('No screen source was selected.');
       await Promise.all(senders.map((sender) => sender.replaceTrack(track)));
+      const screenAudioTrack = stream.getAudioTracks()[0] ?? null;
+      await Promise.all([...screenAudioSendersRef.current.values()].map((sender) => sender.replaceTrack(screenAudioTrack)));
       screenStreamRef.current = stream;
       setLocalPreviewStream(stream);
       setSharingScreen(true);
       track.onended = () => { void (async () => {
         const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
         await Promise.all([...videoSendersRef.current.values()].map((sender) => sender.replaceTrack(cameraTrack)));
+        await Promise.all([...screenAudioSendersRef.current.values()].map((sender) => sender.replaceTrack(null)));
         screenStreamRef.current?.getTracks().forEach((item) => item.stop());
         screenStreamRef.current = null;
         setSharingScreen(false);
@@ -343,8 +364,8 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           </div>
         ) : <p className="text-center text-xs text-ink-500">Join to talk with other server members. Your microphone is requested only after you press Join.</p>}
         {joined ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {localPreviewStream ? <video autoPlay muted playsInline ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" /> : null}
-          {Object.entries(remoteStreams).map(([id, remoteStream]) => <video key={id} autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" />)}
+          {localPreviewStream ? <div className="relative"><video autoPlay muted playsInline ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" /><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen preview"><Maximize2 size={14} /></button></div> : null}
+          {Object.entries(remoteStreams).map(([id, remoteStream]) => <div key={id} className="relative"><video autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" /><audio autoPlay ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; if (element) element.muted = Boolean(mutedParticipants[id]); }} /><div className="absolute bottom-2 right-2 flex gap-1"><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen video"><Maximize2 size={14} /></button><button type="button" onClick={() => toggleParticipantAudio(id)} className="rounded-md bg-black/70 p-2 text-white" aria-label={mutedParticipants[id] ? 'Unmute participant audio' : 'Mute participant audio'}>{mutedParticipants[id] ? <VolumeX size={14} /> : <Volume2 size={14} />}</button></div></div>)}
         </div> : null}
         {error ? <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-[10px] text-red-300">{error}</p> : null}
         <div className="flex justify-center gap-2">
