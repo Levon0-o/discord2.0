@@ -93,6 +93,7 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
 - Direct calls and multiparty voice rooms expose microphone selection before joining and speaker selection where the browser supports `setSinkId`; available device names are refreshed when devices change.
 - One-to-one calls use an expanded call panel with participant status, video stage, device controls, call actions and a compact minimized call bar.
+- Direct one-to-one calls now detect transient WebRTC disconnections, display a reconnecting state and let the caller attempt up to three ICE restarts with increasing delays; the callee answers restart offers through the existing signaling flow. Recovery failure ends the call with an explicit error.
 - Multiparty voice rooms now offer responsive Grid and Focus stage layouts, participant selection for the focus stage, participant labels, camera-off placeholders, local mute indicators and fullscreen controls.
 - Voice rooms detect active speakers from live audio levels and highlight participants while they speak; detection gracefully disables when Web Audio is unavailable.
 - Voice rooms expose camera-device selection and 480p, 720p or 1080p quality preferences; settings apply when the camera is next enabled, subject to device and browser capabilities.
