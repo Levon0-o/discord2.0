@@ -36,7 +36,7 @@ export function ChannelRolePermissionsModal({ serverId, channelId, channelName, 
   async function update(role: CustomRole, key: ChannelRolePermissionKey, value: boolean | null) {
     setBusy(role.id + key); setError('');
     try {
-      const row = await setChannelRolePermission(channelId, role.id, key, value);
+      const row = await setChannelRolePermission(channelId, serverId, role.id, key, value);
       setRows((current) => {
         const next = { ...current };
         if ([row.can_view, row.can_send_messages, row.can_attach_files, row.can_manage_messages].every((item) => item === null)) delete next[role.id];
