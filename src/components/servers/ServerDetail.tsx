@@ -775,15 +775,19 @@ export function ServerDetail({
                                   : 'text-ink-400 hover:bg-white/[0.04] hover:text-ink-100',
                               )}
                             >
-                              <Hash
-                                size={13}
-                                className={cn(
-                                  'shrink-0',
-                                  active
-                                    ? 'text-primary-300'
-                                    : 'text-ink-600',
-                                )}
-                              />
+                              {channel.channel_type === 'announcement' ? (
+                                <Megaphone size={13} className={cn('shrink-0', active ? 'text-primary-300' : 'text-amber-300/70')} />
+                              ) : (
+                                <Hash
+                                  size={13}
+                                  className={cn(
+                                    'shrink-0',
+                                    active
+                                      ? 'text-primary-300'
+                                      : 'text-ink-600',
+                                  )}
+                                />
+                              )}
 
                               <span className="min-w-0 flex-1 truncate">
                                 {channel.name}
