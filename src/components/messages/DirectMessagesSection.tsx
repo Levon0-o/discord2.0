@@ -16,11 +16,13 @@ import {
   FileText,
   Image as ImageIcon,
   Pin,
+  Headphones,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { FriendsPanel } from '@/components/messages/FriendsPanel';
 import { DirectVoiceCall } from '@/components/messages/DirectVoiceCall';
+import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
 import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
 import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
@@ -165,6 +167,7 @@ export function DirectMessagesSection({
   >({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [activeId, setActiveId] = useState('');
+  const [showGroupVoiceRoom, setShowGroupVoiceRoom] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
@@ -363,6 +366,8 @@ export function DirectMessagesSection({
   const activeMembers = members.filter(
     (member) => member.conversation_id === activeId
   );
+
+  useEffect(() => { setShowGroupVoiceRoom(false); }, [activeId]);
 
   const otherMember = activeMembers.find(
     (member) => member.user_id !== userId
@@ -1200,6 +1205,11 @@ export function DirectMessagesSection({
                     otherName={displayName}
                   />
                 ) : null}
+                {activeMembers.length > 2 ? (
+                  <button type="button" onClick={() => setShowGroupVoiceRoom((value) => !value)} aria-expanded={showGroupVoiceRoom} title="Open group voice call" className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition ${showGroupVoiceRoom ? 'border-primary-400/40 bg-primary-500/15 text-primary-200' : 'border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-300 hover:bg-emerald-400/[0.14]'}`}>
+                    <Headphones size={17} />
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setShowPinnedMessages((value) => !value)}
@@ -1225,6 +1235,18 @@ export function DirectMessagesSection({
             </header>
 
             <SharedListening roomType="conversation" roomId={activeId} />
+            {showGroupVoiceRoom && activeMembers.length > 2 ? (
+              <div className="border-b border-white/[0.06] p-3">
+                <ServerEventVoiceRoom
+                  eventId={activeId}
+                  eventTitle={activeConversation?.title || 'Group conversation'}
+                  userId={userId}
+                  members={activeMembers.map((member) => ({ user_id: member.user_id, profile: profiles[member.user_id] ?? null }))}
+                  roomType="conversation"
+                  onClose={() => setShowGroupVoiceRoom(false)}
+                />
+              </div>
+            ) : null}
 
             {error && (
               <p
