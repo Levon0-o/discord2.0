@@ -36,6 +36,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const [selectedOutputId, setSelectedOutputId] = useState('');
   const [stageLayout, setStageLayout] = useState<'grid' | 'focus'>('grid');
   const [focusedParticipantId, setFocusedParticipantId] = useState('');
+  const [speakingParticipants, setSpeakingParticipants] = useState<Record<string, boolean>>({});
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -71,6 +72,87 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       navigator.mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!joined) {
+      setSpeakingParticipants({});
+      return;
+    }
+    const AudioContextConstructor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) return;
+
+    let context: AudioContext;
+    try {
+      context = new AudioContextConstructor();
+    } catch {
+      return;
+    }
+    void context.resume().catch(() => undefined);
+
+    const analysers = new Map<string, AnalyserNode>();
+    const sources = new Map<string, MediaStreamAudioSourceNode>();
+    const buffers = new Map<string, Uint8Array>();
+    const lastActive = new Map<string, number>();
+    let frame = 0;
+    let lastCheck = 0;
+
+    const streams: Array<[string, MediaStream]> = [];
+    if (localStreamRef.current) streams.push([userId, localStreamRef.current]);
+    Object.entries(remoteStreams).forEach(([id, stream]) => streams.push([id, stream]));
+
+    for (const [id, stream] of streams) {
+      if (!stream.getAudioTracks().some((track) => track.readyState === 'live')) continue;
+      try {
+        const source = context.createMediaStreamSource(stream);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        sources.set(id, source);
+        analysers.set(id, analyser);
+        buffers.set(id, new Uint8Array(analyser.fftSize));
+      } catch {
+        // A stream may become unavailable while the room is reconnecting.
+      }
+    }
+
+    const checkLevels = (timestamp: number) => {
+      if (timestamp - lastCheck >= 90) {
+        lastCheck = timestamp;
+        const next: Record<string, boolean> = {};
+        analysers.forEach((analyser, id) => {
+          const buffer = buffers.get(id);
+          if (!buffer) return;
+          analyser.getByteTimeDomainData(buffer);
+          let sum = 0;
+          for (let index = 0; index < buffer.length; index += 1) {
+            const sample = (buffer[index] - 128) / 128;
+            sum += sample * sample;
+          }
+          const rms = Math.sqrt(sum / buffer.length);
+          const localUnavailable = id === userId && (muted || !localStreamRef.current?.getAudioTracks().some((track) => track.enabled && track.readyState === 'live'));
+          const active = !localUnavailable && rms > 0.035;
+          if (active) lastActive.set(id, timestamp);
+          const isSpeaking = active || timestamp - (lastActive.get(id) ?? 0) < 320;
+          if (isSpeaking) next[id] = true;
+        });
+        setSpeakingParticipants((current) => {
+          const currentIds = Object.keys(current).filter((id) => current[id]);
+          const nextIds = Object.keys(next);
+          if (currentIds.length === nextIds.length && currentIds.every((id) => next[id])) return current;
+          return next;
+        });
+      }
+      frame = window.requestAnimationFrame(checkLevels);
+    };
+
+    frame = window.requestAnimationFrame(checkLevels);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      sources.forEach((source) => { try { source.disconnect(); } catch { /* already disconnected */ } });
+      analysers.forEach((analyser) => { try { analyser.disconnect(); } catch { /* already disconnected */ } });
+      void context.close().catch(() => undefined);
+    };
+  }, [joined, remoteStreams, muted, userId]);
 
   useEffect(() => {
     audioElementsRef.current.forEach((element) => {
@@ -410,7 +492,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
               return <div key={id} className="flex min-w-0 items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-500/15 text-[10px] font-bold text-primary-200">{label.slice(0, 1).toUpperCase()}</span>
                 <span className="truncate text-[11px] text-ink-200">{label}</span>
-                {id === userId && muted ? <MicOff size={12} className="ml-auto text-amber-300" /> : <Mic size={12} className="ml-auto text-emerald-300" />}
+                {id === userId && muted ? <MicOff size={12} className="ml-auto text-amber-300" /> : speakingParticipants[id] ? <span className="ml-auto rounded bg-emerald-400/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">Speaking</span> : <Mic size={12} className="ml-auto text-ink-500" />}
               </div>;
             })}
           </div>
@@ -428,7 +510,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           </div>
           <div className={stageLayout === 'focus' ? 'grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(180px,1fr)]' : 'grid grid-cols-1 gap-2 sm:grid-cols-2'}>
             {localPreviewStream ? <div className={'relative overflow-hidden rounded-xl border border-white/[0.08] bg-black ' + (stageLayout === 'focus' && (focusedParticipantId || userId) === userId ? 'sm:row-span-2' : '')}><video autoPlay muted playsInline ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} className={'w-full bg-black object-contain ' + (stageLayout === 'focus' && (focusedParticipantId || userId) === userId ? 'aspect-video h-full min-h-[240px]' : 'aspect-video')} /><span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white">You · {sharingScreen ? 'Sharing screen' : cameraEnabled ? 'Camera on' : 'Preview'}</span><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen preview"><Maximize2 size={14} /></button></div> : null}
-            {Object.entries(remoteStreams).sort(([a], [b]) => { const focus = focusedParticipantId || userId; return a === focus ? -1 : b === focus ? 1 : 0; }).map(([id, remoteStream]) => <div key={id} className={'relative overflow-hidden rounded-xl border border-white/[0.08] bg-black ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'sm:row-span-2' : '')}>{remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled) ? <video autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className={'w-full bg-black object-contain ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'aspect-video h-full min-h-[240px]' : 'aspect-video')} /> : <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-black"><span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-400/10 text-xl font-semibold text-primary-100">{(members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'P').slice(0, 1).toUpperCase()}</span><span className="text-[10px] text-ink-500">Camera is off</span></div>}<audio autoPlay ref={(element) => { if (element) { audioElementsRef.current.set(id, element); if (element.srcObject !== remoteStream) element.srcObject = remoteStream; element.muted = Boolean(mutedParticipants[id]); const sinkElement = element as HTMLMediaElement & { setSinkId?: (deviceId: string) => Promise<void> }; if (selectedOutputId && sinkElement.setSinkId) void sinkElement.setSinkId(selectedOutputId).catch(() => setError('Could not switch the audio output device.')); } else { audioElementsRef.current.delete(id); } }} /><span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white">{members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'Participant'}</span><div className="absolute bottom-2 right-2 flex gap-1"><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen video"><Maximize2 size={14} /></button><button type="button" onClick={() => toggleParticipantAudio(id)} className="rounded-md bg-black/70 p-2 text-white" aria-label={mutedParticipants[id] ? 'Unmute participant audio' : 'Mute participant audio'}>{mutedParticipants[id] ? <VolumeX size={14} /> : <Volume2 size={14} />}</button></div></div>)}
+            {Object.entries(remoteStreams).sort(([a], [b]) => { const focus = focusedParticipantId || userId; return a === focus ? -1 : b === focus ? 1 : 0; }).map(([id, remoteStream]) => <div key={id} className={'relative overflow-hidden rounded-xl border bg-black transition-colors ' + (speakingParticipants[id] ? 'border-emerald-400/80 ring-1 ring-emerald-400/40' : 'border-white/[0.08]') + ' ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'sm:row-span-2' : '')}>{remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled) ? <video autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className={'w-full bg-black object-contain ' + (stageLayout === 'focus' && id === focusedParticipantId ? 'aspect-video h-full min-h-[240px]' : 'aspect-video')} /> : <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-black"><span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-400/10 text-xl font-semibold text-primary-100">{(members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'P').slice(0, 1).toUpperCase()}</span><span className="text-[10px] text-ink-500">Camera is off</span></div>}<audio autoPlay ref={(element) => { if (element) { audioElementsRef.current.set(id, element); if (element.srcObject !== remoteStream) element.srcObject = remoteStream; element.muted = Boolean(mutedParticipants[id]); const sinkElement = element as HTMLMediaElement & { setSinkId?: (deviceId: string) => Promise<void> }; if (selectedOutputId && sinkElement.setSinkId) void sinkElement.setSinkId(selectedOutputId).catch(() => setError('Could not switch the audio output device.')); } else { audioElementsRef.current.delete(id); } }} /><span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/75 px-2 py-1 text-[10px] text-white">{members.find((entry) => entry.user_id === id)?.profile?.display_name || members.find((entry) => entry.user_id === id)?.profile?.username || 'Participant'}{speakingParticipants[id] ? <span className="font-semibold text-emerald-300">· Speaking</span> : null}</span><div className="absolute bottom-2 right-2 flex gap-1"><button type="button" onClick={(event) => { const video = event.currentTarget.parentElement?.parentElement?.querySelector('video') ?? null; openFullscreen(video); }} className="rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen video"><Maximize2 size={14} /></button><button type="button" onClick={() => toggleParticipantAudio(id)} className="rounded-md bg-black/70 p-2 text-white" aria-label={mutedParticipants[id] ? 'Unmute participant audio' : 'Mute participant audio'}>{mutedParticipants[id] ? <VolumeX size={14} /> : <Volume2 size={14} />}</button></div></div>)}
             {!localPreviewStream && Object.keys(remoteStreams).length === 0 ? <div className="rounded-xl border border-dashed border-white/10 bg-black/10 p-8 text-center text-xs text-ink-500 sm:col-span-2">You're connected. Participant video tiles will appear here when cameras are enabled.</div> : null}
           </div>
         </> : null}
