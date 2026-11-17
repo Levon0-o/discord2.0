@@ -15,6 +15,7 @@ import {
   type ChannelMessageReaction, type PinnedChannelMessage, type ChannelNotificationPreference, type SavedChannelMessage, type ChannelPoll, type ChannelAnnouncement,
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
+import { MediaEmbed } from '@/components/shared/MediaEmbed';
 import type { Channel, MemberWithProfile } from '@/types/servers';
 
 interface ChannelChatProps {
@@ -826,7 +827,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                           )}
                         </p>
                       ) : null}
-
+                      {message.body && !polls.some((poll) => poll.message_id === message.id) ? <MediaEmbed text={message.body} /> : null}
 
                       {announcements.filter((announcement) => announcement.message_id === message.id).map((announcement) => (
                         <div key={announcement.message_id} className="mt-2 max-w-2xl overflow-hidden rounded-xl border border-amber-300/25 bg-gradient-to-br from-amber-400/[0.10] via-ink-900 to-ink-950 shadow-lg shadow-amber-950/10">
