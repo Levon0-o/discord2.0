@@ -46,6 +46,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'reconnecting'>('connecting');
   const [userId, setUserId] = useState('');
   const [reactions, setReactions] = useState<ChannelMessageReaction[]>([]);
   const [pinned, setPinned] = useState<PinnedChannelMessage[]>([]);
@@ -276,6 +277,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   }, [messages]);
 
   useEffect(() => {
+    let active = true;
+    let hasConnected = false;
     const channel = supabase.channel(`channel-chat:${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` }, (payload) => {
         const next = payload.new as Message;
@@ -320,10 +323,51 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
           setPinned((current) => current.filter((item) => item.message_id !== old.message_id));
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (!active) return;
+        if (status === 'SUBSCRIBED') {
+          const isReconnect = hasConnected;
+          hasConnected = true;
+          setRealtimeStatus('connected');
+          if (isReconnect) {
+            // Realtime can miss events while offline; reconcile the visible channel state.
+            void (async () => {
+              try {
+                const latestMessages = await fetchChannelMessages(channelId);
+                const [latestReactions, latestPins, latestSaved, latestPolls, latestAnnouncements, latestThreadCounts] = await Promise.all([
+                  fetchChannelReactions(latestMessages.map((message) => message.id)),
+                  fetchPinnedChannelMessages(channelId),
+                  fetchSavedChannelMessages(channelId),
+                  fetchChannelPolls(channelId),
+                  fetchChannelAnnouncements(channelId),
+                  fetchChannelThreadCounts(latestMessages.map((message) => message.id)),
+                ]);
+                if (!active) return;
+                setMessages(latestMessages);
+                setHasMore(latestMessages.length === 100);
+                setReactions(latestReactions);
+                setPinned(latestPins);
+                setSavedMessages(latestSaved);
+                setPolls(latestPolls);
+                setAnnouncements(latestAnnouncements);
+                setThreadCounts(latestThreadCounts);
+                if (activeThreadRoot?.id) {
+                  const latestThread = await fetchChannelThreadMessages(activeThreadRoot.id);
+                  if (active) setThreadMessages(latestThread);
+                }
+              } catch (err) {
+                if (active) setError(err instanceof Error ? err.message : 'Could not sync channel after reconnecting.');
+              }
+            })();
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setRealtimeStatus('reconnecting');
+        }
+      });
     // Vote rows are private under RLS, so other members' changes may not be broadcast to this client.
     const pollRefreshInterval = window.setInterval(() => { void refreshPolls(); }, 15000);
     return () => {
+      active = false;
       window.clearInterval(pollRefreshInterval);
       void supabase.removeChannel(channel);
     };
@@ -651,6 +695,12 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
 
   return (
     <section className="panel flex h-full min-h-0 flex-col overflow-hidden">
+      {realtimeStatus !== 'connected' ? (
+        <div role="status" className="flex shrink-0 items-center gap-2 border-b border-amber-400/15 bg-amber-400/[0.05] px-5 py-2 text-xs text-amber-200">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />
+          {realtimeStatus === 'connecting' ? 'Connecting to live channel updates…' : 'Connection interrupted. Reconnecting and syncing missed messages…'}
+        </div>
+      ) : null}
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-5 py-3.5">
         <div className="flex min-w-0 items-center gap-2">
           <Hash size={18} className="text-ink-400" />
