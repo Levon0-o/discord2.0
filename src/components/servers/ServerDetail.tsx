@@ -19,6 +19,7 @@ import {
   Headphones,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   X,
   MapPin,
   Clock,
@@ -48,6 +49,9 @@ import {
   fetchChannels,
   fetchServerMembers,
   leaveServer,
+  fetchChannelCategories,
+  createChannelCategory,
+  updateChannel,
 } from '@/lib/serversApi';
 
 import type {
@@ -90,6 +94,9 @@ export function ServerDetail({
   onServerUpdated,
 }: ServerDetailProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [categoryNames, setCategoryNames] = useState<string[]>(['General']);
+  const [collapsedCategories, setCollapsedCategories] = useState<string[]>([]);
+  const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
 
@@ -191,12 +198,13 @@ export function ServerDetail({
       setError('');
 
       try {
-        const [channelRows, memberRows, roleRows, memberRoleRows] =
+        const [channelRows, memberRows, roleRows, memberRoleRows, categoryRows] =
           await Promise.all([
             fetchChannels(server.id),
             fetchServerMembers(server.id),
             fetchCustomRoles(server.id),
             fetchMemberRoles(server.id),
+            fetchChannelCategories(server.id),
           ]);
 
         if (cancelled) return;
@@ -221,6 +229,7 @@ export function ServerDetail({
         }));
 
         setChannels(channelRows);
+        setCategoryNames(Array.from(new Set(['General', ...categoryRows.map((row) => row.name), ...channelRows.map((row) => row.category)])));
         setMembers(membersWithRoles);
 
         setActiveChannelId((current) => {
@@ -280,15 +289,14 @@ export function ServerDetail({
 
   const channelsByCategory = useMemo(() => {
     const map = new Map<string, Channel[]>();
-
+    for (const name of categoryNames) map.set(name, []);
     for (const channel of channels) {
       const list = map.get(channel.category) ?? [];
       list.push(channel);
       map.set(channel.category, list);
     }
-
     return Array.from(map.entries());
-  }, [channels]);
+  }, [channels, categoryNames]);
 
   const sortedMembers = useMemo(
     () =>
@@ -444,6 +452,33 @@ export function ServerDetail({
     setEditRestricted(channel.is_restricted);
     setEditSlowmode(channel.slowmode_seconds ?? 0);
     setEditError('');
+  }
+
+  async function handleCreateCategory() {
+    if (!canManageChannelsPermission) return;
+    const name = window.prompt('New category name');
+    if (!name?.trim()) return;
+    try {
+      const created = await createChannelCategory(server.id, name);
+      setCategoryNames((current) => Array.from(new Set([...current, created.name])));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create category.');
+    }
+  }
+
+  async function handleMoveChannelToCategory(channel: Channel, category: string) {
+    if (channel.category === category) return;
+    setReorderingChannelId(channel.id);
+    try {
+      await updateChannel(channel.id, { name: channel.name, topic: channel.topic, category, is_restricted: channel.is_restricted, slowmode_seconds: channel.slowmode_seconds ?? 0 });
+      setChannels(await fetchChannels(server.id));
+      setCategoryNames((current) => Array.from(new Set([...current, category])));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not move channel.');
+    } finally {
+      setReorderingChannelId(null);
+      setDraggedChannelId(null);
+    }
   }
 
   async function handleReorderChannel(channel: Channel, direction: 'up' | 'down') {
