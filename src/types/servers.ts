@@ -23,12 +23,15 @@ export interface ServerMember {
   joined_at: string;
 }
 
+export type ChannelType = 'text' | 'announcement';
+
 export interface Channel {
   id: string;
   server_id: string;
   name: string;
   topic: string;
   category: string;
+  channel_type: ChannelType;
   position: number;
   is_restricted: boolean;
   slowmode_seconds: number;
@@ -134,6 +137,7 @@ export interface CreateChannelInput {
   name: string;
   topic?: string;
   category?: string;
+  channel_type?: ChannelType;
   position?: number;
   is_restricted?: boolean;
 }
