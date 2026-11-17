@@ -190,10 +190,17 @@ export async function leaveServer(serverId: string, userId: string): Promise<voi
 }
 
 export async function fetchChannels(serverId: string): Promise<Channel[]> {
+  const { data: visibleIds, error: visibilityError } = await supabase
+    .rpc('get_visible_channel_ids', { p_server_id: serverId });
+  if (visibilityError) throw visibilityError;
+  const ids = (visibleIds ?? []) as string[];
+  if (ids.length === 0) return [];
+
   const { data, error } = await supabase
     .from('channels')
     .select('*')
     .eq('server_id', serverId)
+    .in('id', ids)
     .order('position', { ascending: true })
     .order('name', { ascending: true });
 
@@ -367,6 +374,45 @@ export async function deleteChannel(channelId: string): Promise<void> {
   if (error) throw error;
 }
 
+
+
+export type ChannelRolePermissionKey = ChannelMemberPermissionKey;
+export interface ChannelRolePermission {
+  channel_id: string;
+  role_id: string;
+  can_view: boolean | null;
+  can_send_messages: boolean | null;
+  can_attach_files: boolean | null;
+  can_manage_messages: boolean | null;
+  updated_at?: string;
+}
+
+export async function fetchChannelRolePermissions(channelId: string): Promise<ChannelRolePermission[]> {
+  const { data, error } = await supabase.from('channel_role_permissions')
+    .select('channel_id, role_id, can_view, can_send_messages, can_attach_files, can_manage_messages, updated_at')
+    .eq('channel_id', channelId);
+  if (error) throw error;
+  return (data ?? []) as ChannelRolePermission[];
+}
+
+export async function setChannelRolePermission(channelId: string, roleId: string, permission: ChannelRolePermissionKey, value: boolean | null): Promise<ChannelRolePermission> {
+  const { data: existing, error: readError } = await supabase.from('channel_role_permissions')
+    .select('channel_id, role_id, can_view, can_send_messages, can_attach_files, can_manage_messages')
+    .eq('channel_id', channelId).eq('role_id', roleId).maybeSingle();
+  if (readError) throw readError;
+  const payload = { ...(existing ?? { channel_id: channelId, role_id: roleId, can_view: null, can_send_messages: null, can_attach_files: null, can_manage_messages: null }), [permission]: value };
+  if ([payload.can_view, payload.can_send_messages, payload.can_attach_files, payload.can_manage_messages].every((entry) => entry === null)) {
+    const { error } = await supabase.from('channel_role_permissions').delete().eq('channel_id', channelId).eq('role_id', roleId);
+    if (error) throw error;
+    return payload as ChannelRolePermission;
+  }
+  const { data, error } = await supabase.from('channel_role_permissions')
+    .upsert(payload, { onConflict: 'channel_id,role_id' })
+    .select('channel_id, role_id, can_view, can_send_messages, can_attach_files, can_manage_messages, updated_at')
+    .single();
+  if (error) throw error;
+  return data as ChannelRolePermission;
+}
 
 export type ChannelMemberPermissionKey =
   | 'can_view'
