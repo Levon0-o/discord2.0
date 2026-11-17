@@ -1,6 +1,6 @@
-import { Bell, Bookmark, Compass, Home, MessageSquare, Settings, User, Users, type LucideIcon } from 'lucide-react';
+import { Bell, Bookmark, CalendarDays, Compass, Home, MessageSquare, Settings, User, Users, type LucideIcon } from 'lucide-react';
 
-export const SECTION_IDS = ['feed', 'explore', 'servers', 'messages', 'notifications', 'saved', 'profile', 'settings'] as const;
+export const SECTION_IDS = ['feed', 'explore', 'events', 'servers', 'messages', 'notifications', 'saved', 'profile', 'settings'] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
 
@@ -15,6 +15,7 @@ export interface NavSection {
 export const NAV_SECTIONS: NavSection[] = [
   { id: 'feed', label: 'Home', description: 'Posts from people and communities you follow.', icon: Home, mobilePrimary: true },
   { id: 'explore', label: 'Explore', description: 'Discover people, posts and public servers.', icon: Compass, mobilePrimary: true },
+  { id: 'events', label: 'Events', description: 'Discover upcoming events across public communities.', icon: CalendarDays, mobilePrimary: true },
   { id: 'servers', label: 'Servers', description: 'Your communities, channels and invitations.', icon: Users, mobilePrimary: false },
   { id: 'messages', label: 'Messages', description: 'Private and group conversations.', icon: MessageSquare, mobilePrimary: true },
   { id: 'notifications', label: 'Notifications', description: 'Likes, comments, followers and invitations.', icon: Bell, mobilePrimary: true },
