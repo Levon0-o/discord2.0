@@ -30,7 +30,7 @@ export function CreateChannelModal({
   const [name, setName] = useState('');
   const [topic, setTopic] = useState('');
   const [category, setCategory] = useState('General');
-  const [channelType, setChannelType] = useState<'text' | 'announcement'>('text');
+  const [channelType, setChannelType] = useState<'text' | 'announcement' | 'voice'>('text');
   const [isRestricted, setIsRestricted] = useState(false);
   const [localError, setLocalError] = useState('');
 
@@ -157,11 +157,12 @@ export function CreateChannelModal({
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink-200">Channel type</span>
-            <select value={channelType} onChange={(e) => setChannelType(e.target.value as 'text' | 'announcement')} className="w-full rounded-xl border border-white/[0.08] bg-ink-950/80 px-3.5 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/60">
+            <select value={channelType} onChange={(e) => setChannelType(e.target.value as 'text' | 'announcement' | 'voice')} className="w-full rounded-xl border border-white/[0.08] bg-ink-950/80 px-3.5 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/60">
               <option value="text">Text — conversations, files and polls</option>
               <option value="announcement">Announcement — official server updates</option>
+              <option value="voice">Voice — camera, microphone and screen sharing</option>
             </select>
-            <span className="mt-1 block text-xs text-ink-500">Announcement channels support the existing announcement publishing tools.</span>
+            <span className="mt-1 block text-xs text-ink-500">Voice channels open a live room with audio, camera and screen sharing. Announcement channels support official publishing tools.</span>
           </label>
 
           <label className="block">
