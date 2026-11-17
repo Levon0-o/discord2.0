@@ -90,11 +90,7 @@ export interface MemberWithCustomRoles extends MemberWithProfile {
   custom_roles: CustomRole[];
 }
 
-export type AutoRoleEventType =
-  | 'join'
-  | 'account_age'
-  | 'profile_verified'
-  | 'activity';
+export type AutoRoleEventType = 'join' | 'account_age';
 
 export interface AutoRoleRule {
   id: string;
