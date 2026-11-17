@@ -77,7 +77,7 @@ returns public.shared_listening_rooms
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_room public.shared_listening_rooms;
 begin
