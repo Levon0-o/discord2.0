@@ -17,7 +17,7 @@ export function BottomNav({ activeSection, onNavigate, onOpenMenu, unreadNotific
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.06] bg-ink-950/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
     >
-      <ul className="grid grid-cols-6">
+      <ul className="grid grid-cols-7">
         {primarySections.map((section) => {
           const Icon = section.icon;
           const isActive = section.id === activeSection;
