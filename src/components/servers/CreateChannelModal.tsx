@@ -11,6 +11,7 @@ interface CreateChannelModalProps {
   error: string;
   serverId: string;
   defaultPosition?: number;
+  categories?: string[];
   onClose: () => void;
   onSubmit: (input: CreateChannelInput) => Promise<void>;
 }
@@ -21,6 +22,7 @@ export function CreateChannelModal({
   error,
   serverId,
   defaultPosition = 0,
+  categories = ['General'],
   onClose,
   onSubmit,
 }: CreateChannelModalProps) {
@@ -164,13 +166,13 @@ export function CreateChannelModal({
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-ink-200">Category</span>
-            <input
+            <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              maxLength={40}
-              placeholder="General"
-              className="w-full rounded-xl border border-white/[0.08] bg-ink-950/80 px-3.5 py-2.5 text-sm text-ink-100 outline-none transition placeholder:text-ink-600 focus:border-primary-400/60 focus:ring-2 focus:ring-primary-500/15"
-            />
+              className="w-full rounded-xl border border-white/[0.08] bg-ink-950/80 px-3.5 py-2.5 text-sm text-ink-100 outline-none transition focus:border-primary-400/60 focus:ring-2 focus:ring-primary-500/15"
+            >
+              {[...new Set(['General', ...categories])].map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
           </label>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.08] bg-ink-950/50 px-3.5 py-3">
