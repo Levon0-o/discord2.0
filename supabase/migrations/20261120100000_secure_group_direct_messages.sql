@@ -18,7 +18,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
-AS $
+AS $member_check$
   SELECT EXISTS (
     SELECT 1
     FROM public.conversations c
@@ -53,7 +53,7 @@ AS $
         )
       )
   );
-$;
+$member_check$;
 
 REVOKE EXECUTE ON FUNCTION public.can_insert_conversation_member(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.can_insert_conversation_member(uuid, uuid) TO authenticated;
