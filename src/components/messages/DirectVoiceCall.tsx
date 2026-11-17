@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, Maximize2, Mic, MicOff, MonitorUp, Phone, PhoneCall, PhoneIncoming, PhoneOff, Volume2, VolumeX, X, Settings2 } from 'lucide-react';
+import { Camera, CameraOff, Maximize2, Minimize2, Mic, MicOff, MonitorUp, Phone, PhoneCall, PhoneIncoming, PhoneOff, Volume2, VolumeX, X, Settings2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface DirectVoiceCallProps {
@@ -38,6 +38,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
   const [selectedInputId, setSelectedInputId] = useState('');
   const [selectedOutputId, setSelectedOutputId] = useState('');
+  const [callMinimized, setCallMinimized] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
@@ -124,6 +125,7 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     setAudioPlaybackBlocked(false);
     setMuted(false);
     setElapsed(0);
+    setCallMinimized(false);
     setCallStatus('idle');
     callIdRef.current = '';
   }
@@ -636,53 +638,92 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       ) : null}
 
       {status !== 'idle' ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-          <section role="dialog" aria-modal="true" aria-label="Voice call" className="w-full max-w-sm rounded-2xl border border-white/10 bg-ink-900 p-6 text-center shadow-2xl">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary-500/15 text-primary-200"><PhoneCall size={25} /></div>
-            <h2 className="mt-4 text-xl font-bold text-ink-50">{otherName}</h2>
-            <p className="mt-1 text-sm text-ink-400">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : timeLabel}</p>
-            <div className="mt-4 grid gap-2 text-left sm:grid-cols-2">
-              <label className="space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Microphone
-                <select value={selectedInputId} onChange={(event) => setSelectedInputId(event.target.value)} disabled={microphoneReady || audioInputs.length === 0} className="mt-1 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
-                  {audioInputs.length === 0 ? <option value="">Default microphone</option> : audioInputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
-                </select>
-              </label>
-              <label className="space-y-1 text-[10px] font-semibold uppercase tracking-wide text-ink-500">Speaker
-                <select value={selectedOutputId} onChange={(event) => setSelectedOutputId(event.target.value)} disabled={audioOutputs.length === 0 || !('setSinkId' in HTMLMediaElement.prototype)} className="mt-1 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs normal-case tracking-normal text-ink-200 disabled:opacity-50">
-                  {audioOutputs.length === 0 ? <option value="">Browser default</option> : audioOutputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</option>)}
-                </select>
-              </label>
+        callMinimized ? (
+          <div className="fixed bottom-4 right-4 z-[90] flex w-[min(360px,calc(100vw-2rem))] items-center gap-3 rounded-2xl border border-primary-400/25 bg-ink-900/95 p-3 shadow-2xl backdrop-blur-xl">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/15 text-primary-200"><PhoneCall size={18} /></div>
+            <div className="min-w-0 flex-1 text-left">
+              <p className="truncate text-sm font-semibold text-ink-100">{otherName}</p>
+              <p className="text-xs text-ink-400">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : timeLabel}</p>
             </div>
-            {error ? <p role="alert" className="mt-3 rounded-lg bg-red-400/10 p-2 text-xs text-red-300">{error}</p> : null}
-            {audioPlaybackBlocked ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const audio = audioRef.current;
-                  if (!audio) return;
-                  void audio.play().then(() => {
-                    setAudioPlaybackBlocked(false);
-                    setError('');
-                  }).catch(() => setError('Audio is still blocked. Check your browser sound permissions.'));
-                }}
-                className="mt-3 rounded-lg border border-primary-400/30 bg-primary-500/10 px-3 py-2 text-xs font-semibold text-primary-200 hover:bg-primary-500/20"
-              >
-                Enable audio
-              </button>
-            ) : null}
-            {remoteVideoStream || localPreviewStream ? <div className="mt-4 grid grid-cols-2 gap-2">
-              {remoteVideoStream ? <div className="relative"><video ref={(element) => { if (element && element.srcObject !== remoteVideoStream) element.srcObject = remoteVideoStream; }} autoPlay playsInline className="aspect-video w-full rounded-lg bg-black object-cover" /><button type="button" onClick={(event) => openFullscreen(event.currentTarget.parentElement?.querySelector('video') ?? null)} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen remote video"><Maximize2 size={14} /></button></div> : <div className="flex aspect-video items-center justify-center rounded-lg bg-black/30 text-xs text-ink-500">Camera off</div>}
-              {localPreviewStream ? <div className="relative"><video ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} autoPlay muted playsInline className="aspect-video w-full rounded-lg bg-black object-cover" /><button type="button" onClick={(event) => openFullscreen(event.currentTarget.parentElement?.querySelector('video') ?? null)} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen local video"><Maximize2 size={14} /></button></div> : <div className="flex aspect-video items-center justify-center rounded-lg bg-black/30 text-xs text-ink-500">Your camera is off</div>}
-            </div> : null}
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
-              <button type="button" onClick={toggleRemoteAudio} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06]">{remoteAudioMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}{remoteAudioMuted ? 'Unmute audio' : 'Mute audio'}</button>
-              <button type="button" onClick={toggleMute} disabled={!microphoneReady} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{muted ? <MicOff size={16} /> : <Mic size={16} />}{muted ? 'Unmute' : 'Mute'}</button>
-              <button type="button" onClick={() => void toggleCamera()} disabled={status !== 'connected' || sharingScreen} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{cameraEnabled ? <CameraOff size={16} /> : <Camera size={16} />}{cameraEnabled ? 'Camera off' : 'Camera on'}</button>
-              <button type="button" onClick={() => void toggleScreenShare()} disabled={status !== 'connected'} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40"><MonitorUp size={16} />{sharingScreen ? 'Stop sharing' : 'Share screen'}</button>
-              <button type="button" onClick={() => void hangUp()} className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-400"><PhoneOff size={16} /> End call</button>
-            </div>
-          </section>
-        </div>
+            <button type="button" onClick={() => setCallMinimized(false)} aria-label="Expand call window" title="Expand call window" className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:bg-white/[0.08]"><Maximize2 size={16} /></button>
+            <button type="button" onClick={toggleMute} disabled={!microphoneReady} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'} title={muted ? 'Unmute microphone' : 'Mute microphone'} className={`flex h-9 w-9 items-center justify-center rounded-lg ${muted ? 'bg-red-500/15 text-red-300' : 'text-ink-300 hover:bg-white/[0.08]'} disabled:opacity-40`}>{muted ? <MicOff size={16} /> : <Mic size={16} />}</button>
+            <button type="button" onClick={() => void hangUp()} aria-label="End call" title="End call" className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500 text-white hover:bg-red-400"><PhoneOff size={16} /></button>
+          </div>
+        ) : (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-3 backdrop-blur-md sm:p-6">
+            <section role="dialog" aria-modal="true" aria-label="Voice call" className="flex max-h-[min(900px,94vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl">
+              <header className="flex shrink-0 items-center justify-between border-b border-white/[0.08] bg-ink-900/90 px-4 py-3 sm:px-5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-500/15 text-primary-200"><PhoneCall size={17} /></div>
+                  <div className="min-w-0 text-left">
+                    <h2 className="truncate text-sm font-bold text-ink-100">{otherName}</h2>
+                    <p className="text-xs text-ink-500">{status === 'outgoing' ? 'Calling…' : status === 'connecting' ? 'Connecting…' : `Connected · ${timeLabel}`}</p>
+                  </div>
+                  <span className={`ml-1 hidden rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex ${status === 'connected' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{status === 'connected' ? 'LIVE' : 'CONNECTING'}</span>
+                </div>
+                <button type="button" onClick={() => setCallMinimized(true)} aria-label="Minimize call window" title="Minimize" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-400 hover:bg-white/[0.08] hover:text-ink-100"><Minimize2 size={17} /></button>
+              </header>
+
+              <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:p-5">
+                <div className="flex min-h-[240px] flex-col justify-center rounded-xl border border-white/[0.06] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-950/50 via-ink-900 to-ink-950 p-3 sm:min-h-[380px] sm:p-5">
+                  {remoteVideoStream || localPreviewStream ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {remoteVideoStream ? <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black"><video ref={(element) => { if (element && element.srcObject !== remoteVideoStream) element.srcObject = remoteVideoStream; }} autoPlay playsInline className="aspect-video max-h-[55vh] w-full object-contain" /><button type="button" onClick={(event) => openFullscreen(event.currentTarget.parentElement?.querySelector('video') ?? null)} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen remote video"><Maximize2 size={14} /></button><span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white">{otherName}</span></div> : <div className="flex aspect-video items-center justify-center rounded-xl bg-black/30 text-sm text-ink-500">Camera is off</div>}
+                      {localPreviewStream ? <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black"><video ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} autoPlay muted playsInline className="aspect-video max-h-[55vh] w-full object-contain" /><button type="button" onClick={(event) => openFullscreen(event.currentTarget.parentElement?.querySelector('video') ?? null)} className="absolute bottom-2 right-2 rounded-md bg-black/70 p-2 text-white" aria-label="Fullscreen local video"><Maximize2 size={14} /></button><span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white">You {sharingScreen ? '· Sharing screen' : ''}</span></div> : <div className="flex aspect-video items-center justify-center rounded-xl bg-black/30 text-sm text-ink-500">Your camera is off</div>}
+                    </div>
+                  ) : (
+                    <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
+                      <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-primary-300/20 bg-primary-500/10 text-3xl font-bold text-primary-200 shadow-[0_0_70px_rgba(59,130,246,0.12)]">{otherName.trim().slice(0,1).toUpperCase() || '?'}<span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-4 border-ink-900 ${status === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} /></div>
+                      <h3 className="mt-5 text-xl font-bold text-ink-100">{otherName}</h3>
+                      <p className="mt-1 text-sm text-ink-400">{status === 'outgoing' ? 'Waiting for them to answer…' : status === 'connecting' ? 'Establishing a secure peer connection…' : timeLabel}</p>
+                      {status === 'connected' ? <p className="mt-4 rounded-full border border-emerald-400/15 bg-emerald-400/[0.06] px-3 py-1 text-xs text-emerald-300">Voice connected</p> : null}
+                    </div>
+                  )}
+                </div>
+
+                <aside className="flex flex-col gap-3">
+                  <div className="rounded-xl border border-white/[0.07] bg-ink-900/70 p-3 text-left">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-ink-500">Participants</p>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500/15 text-sm font-bold text-primary-200">{otherName.trim().slice(0,1).toUpperCase() || '?'}</div>
+                      <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-ink-100">{otherName}</p><p className="text-[10px] text-ink-500">Remote participant</p></div>
+                      <span className={`h-2 w-2 rounded-full ${status === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-xs font-bold text-ink-200">You</div>
+                      <div className="min-w-0 flex-1"><p className="text-xs font-semibold text-ink-100">You</p><p className="text-[10px] text-ink-500">{muted ? 'Microphone muted' : microphoneReady ? 'Microphone active' : 'Microphone unavailable'}</p></div>
+                      {muted ? <MicOff size={14} className="text-red-300" /> : <Mic size={14} className="text-emerald-300" />}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/[0.07] bg-ink-900/70 p-3 text-left">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-ink-500">Audio devices</p>
+                    <label className="block space-y-1 text-[10px] font-semibold text-ink-400">Microphone
+                      <select value={selectedInputId} onChange={(event) => setSelectedInputId(event.target.value)} disabled={microphoneReady || audioInputs.length === 0} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2 py-2 text-xs text-ink-200 disabled:opacity-50">
+                        {audioInputs.length === 0 ? <option value="">Default microphone</option> : audioInputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
+                      </select>
+                    </label>
+                    <label className="mt-3 block space-y-1 text-[10px] font-semibold text-ink-400">Speaker
+                      <select value={selectedOutputId} onChange={(event) => setSelectedOutputId(event.target.value)} disabled={audioOutputs.length === 0 || !('setSinkId' in HTMLMediaElement.prototype)} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2 py-2 text-xs text-ink-200 disabled:opacity-50">
+                        {audioOutputs.length === 0 ? <option value="">Browser default</option> : audioOutputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </aside>
+              </div>
+
+              {error ? <p role="alert" className="mx-4 mb-2 rounded-lg bg-red-400/10 p-2 text-xs text-red-300 sm:mx-5">{error}</p> : null}
+              {audioPlaybackBlocked ? <button type="button" onClick={() => { const audio = audioRef.current; if (!audio) return; void audio.play().then(() => { setAudioPlaybackBlocked(false); setError(''); }).catch(() => setError('Audio is still blocked. Check your browser sound permissions.')); }} className="mx-4 mb-2 rounded-lg border border-primary-400/30 bg-primary-500/10 px-3 py-2 text-xs font-semibold text-primary-200 sm:mx-5">Enable audio</button> : null}
+
+              <footer className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/[0.08] bg-ink-900/90 px-3 py-4 sm:gap-3">
+                <button type="button" onClick={toggleRemoteAudio} aria-label={remoteAudioMuted ? 'Unmute remote audio' : 'Mute remote audio'} title={remoteAudioMuted ? 'Unmute remote audio' : 'Mute remote audio'} className={`flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 ${remoteAudioMuted ? 'bg-red-500/15 text-red-300' : 'text-ink-200 hover:bg-white/[0.06]'}`}>{remoteAudioMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+                <button type="button" onClick={toggleMute} disabled={!microphoneReady} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'} title={muted ? 'Unmute microphone' : 'Mute microphone'} className={`flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 ${muted ? 'bg-red-500/15 text-red-300' : 'text-ink-200 hover:bg-white/[0.06]'} disabled:opacity-40`}>{muted ? <MicOff size={18} /> : <Mic size={18} />}</button>
+                <button type="button" onClick={() => void toggleCamera()} disabled={status !== 'connected' || sharingScreen} aria-label={cameraEnabled ? 'Turn camera off' : 'Turn camera on'} title={cameraEnabled ? 'Turn camera off' : 'Turn camera on'} className={`flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 ${cameraEnabled ? 'bg-primary-500/15 text-primary-200' : 'text-ink-200 hover:bg-white/[0.06]'} disabled:opacity-40`}>{cameraEnabled ? <CameraOff size={18} /> : <Camera size={18} />}</button>
+                <button type="button" onClick={() => void toggleScreenShare()} disabled={status !== 'connected'} aria-label={sharingScreen ? 'Stop screen sharing' : 'Share screen'} title={sharingScreen ? 'Stop screen sharing' : 'Share screen'} className={`flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 ${sharingScreen ? 'bg-primary-500/15 text-primary-200' : 'text-ink-200 hover:bg-white/[0.06]'} disabled:opacity-40`}>{sharingScreen ? <MonitorUp size={18} /> : <MonitorUp size={18} />}</button>
+                <button type="button" onClick={() => void hangUp()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-red-500 px-5 text-sm font-semibold text-white transition hover:bg-red-400"><PhoneOff size={17} /> End call</button>
+              </footer>
+            </section>
+          </div>
+        )
       ) : null}
       {error && status === 'idle' && !incomingCall ? <div role="status" className="fixed bottom-5 right-5 z-[95] max-w-sm rounded-xl border border-red-400/20 bg-ink-900 px-4 py-3 text-xs text-red-300 shadow-xl"><div className="flex items-start gap-2"><X size={14} className="mt-0.5 shrink-0" /><span>{error}</span></div></div> : null}
     </>
