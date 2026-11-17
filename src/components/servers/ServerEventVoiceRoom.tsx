@@ -32,6 +32,9 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const [mutedParticipants, setMutedParticipants] = useState<Record<string, boolean>>({});
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedVideoInputId, setSelectedVideoInputId] = useState('');
+  const [cameraQuality, setCameraQuality] = useState<'480p' | '720p' | '1080p'>('720p');
   const [selectedInputId, setSelectedInputId] = useState('');
   const [selectedOutputId, setSelectedOutputId] = useState('');
   const [stageLayout, setStageLayout] = useState<'grid' | 'focus'>('grid');
@@ -55,8 +58,11 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       const devices = await navigator.mediaDevices.enumerateDevices();
       const inputs = devices.filter((device) => device.kind === 'audioinput');
       const outputs = devices.filter((device) => device.kind === 'audiooutput');
+      const cameras = devices.filter((device) => device.kind === 'videoinput');
       setAudioInputs(inputs);
       setAudioOutputs(outputs);
+      setVideoInputs(cameras);
+      setSelectedVideoInputId((current) => current || cameras[0]?.deviceId || '');
       setSelectedInputId((current) => current || inputs[0]?.deviceId || '');
       setSelectedOutputId((current) => current || outputs.find((device) => device.deviceId === 'default')?.deviceId || outputs[0]?.deviceId || '');
     } catch {
@@ -419,7 +425,16 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }, audio: false });
+      const quality = cameraQuality === '480p' ? { width: 854, height: 480 } : cameraQuality === '1080p' ? { width: 1920, height: 1080 } : { width: 1280, height: 720 };
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          ...(selectedVideoInputId ? { deviceId: { exact: selectedVideoInputId } } : {}),
+          width: { ideal: quality.width },
+          height: { ideal: quality.height },
+          frameRate: { ideal: 24, max: 30 },
+        },
+        audio: false,
+      });
       const track = stream.getVideoTracks()[0];
       if (!track) throw new Error('No camera was found.');
       await Promise.all(senders.map((sender) => sender.replaceTrack(track)));
@@ -527,7 +542,21 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
               {audioOutputs.length === 0 ? <option value="">Browser default</option> : audioOutputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Speaker ${index + 1}`}</option>)}
             </select>
           </label>
-          {!joined && <p className="text-[10px] text-ink-500 sm:col-span-2">Microphone selection is applied when you join. Speaker switching depends on browser support.</p>}
+          <label className="min-w-0 space-y-1">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">Camera</span>
+            <select value={selectedVideoInputId} onChange={(event) => setSelectedVideoInputId(event.target.value)} disabled={cameraEnabled || videoInputs.length === 0} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-200 outline-none focus:border-primary-400 disabled:opacity-50">
+              {videoInputs.length === 0 ? <option value="">Default camera</option> : videoInputs.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}
+            </select>
+          </label>
+          <label className="min-w-0 space-y-1">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-500">Camera quality</span>
+            <select value={cameraQuality} onChange={(event) => setCameraQuality(event.target.value as '480p' | '720p' | '1080p')} disabled={cameraEnabled} className="w-full rounded-lg border border-white/10 bg-ink-950 px-2.5 py-2 text-xs text-ink-200 outline-none focus:border-primary-400 disabled:opacity-50">
+              <option value="480p">480p · Data saver</option>
+              <option value="720p">720p · Balanced</option>
+              <option value="1080p">1080p · High quality</option>
+            </select>
+          </label>
+          <p className="text-[10px] text-ink-500 sm:col-span-2">Microphone selection is applied when you join. Camera and quality settings apply when you turn your camera on. Available resolutions depend on your camera and connection.</p>
         </div>
         {error ? <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-[10px] text-red-300">{error}</p> : null}
         <div className="flex justify-center gap-2">
