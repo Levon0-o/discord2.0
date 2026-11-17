@@ -53,6 +53,7 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
   const [editTopic, setEditTopic] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editRestricted, setEditRestricted] = useState(false);
+  const [editChannelType, setEditChannelType] = useState<'text' | 'announcement'>('text');
   const [editSlowmode, setEditSlowmode] = useState(0);
   const [editBusy, setEditBusy] = useState(false);
   const [permissionsChannel, setPermissionsChannel] = useState<Channel | null>(null);
@@ -106,14 +107,14 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
 
   function openEditor(channel: Channel) {
     setEditingChannel(channel); setEditName(channel.name); setEditTopic(channel.topic); setEditCategory(channel.category);
-    setEditRestricted(channel.is_restricted); setEditSlowmode(channel.slowmode_seconds ?? 0); setError('');
+    setEditRestricted(channel.is_restricted); setEditChannelType(channel.channel_type ?? 'text'); setEditSlowmode(channel.slowmode_seconds ?? 0); setError('');
   }
 
   async function saveChannel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!editingChannel || editBusy) return;
     setEditBusy(true); setError('');
     try {
-      await updateChannel(editingChannel.id, { name: editName, topic: editTopic, category: editCategory, is_restricted: editRestricted, slowmode_seconds: editSlowmode });
+      await updateChannel(editingChannel.id, { name: editName, topic: editTopic, category: editCategory, is_restricted: editRestricted, slowmode_seconds: editSlowmode, channel_type: editChannelType });
       syncChannels(await fetchChannels(server.id)); setEditingChannel(null); setNotice('Channel updated.');
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not update channel.'); }
     finally { setEditBusy(false); }
