@@ -6,7 +6,9 @@
 
 -- Prevent clients from bypassing the RPC validation by inserting conversations or members directly.
 REVOKE INSERT ON public.conversations FROM authenticated;
+REVOKE INSERT (kind, title, created_by) ON public.conversations FROM authenticated;
 REVOKE INSERT ON public.conversation_members FROM authenticated;
+REVOKE INSERT (conversation_id, user_id) ON public.conversation_members FROM authenticated;
 
 DROP POLICY IF EXISTS "conversation_members_insert_by_members_or_creator" ON public.conversation_members;
 DROP POLICY IF EXISTS "conversation_members_delete_own" ON public.conversation_members;
