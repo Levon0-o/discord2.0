@@ -98,6 +98,7 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Voice rooms detect active speakers from live audio levels and highlight participants while they speak; detection gracefully disables when Web Audio is unavailable.
 - Voice rooms expose camera-device selection and 480p, 720p or 1080p quality preferences; settings apply when the camera is next enabled, subject to device and browser capabilities.
 - Multiparty voice rooms monitor WebRTC peer connection states, show a reconnecting indicator and attempt up to three ICE-restart renegotiations with backoff; failed recovery is surfaced to participants instead of silently dropping the peer.
+- Server channel chat reports Realtime connection interruptions, shows a reconnecting banner and reconciles recent messages, reactions, pins, saved messages, polls, announcements and the open thread after the subscription recovers.
 - The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
 - Group DM voice rooms reuse the multiparty WebRTC room UI and have conversation-members-only Realtime signaling. One-to-one incoming call invitations remain separate.
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
