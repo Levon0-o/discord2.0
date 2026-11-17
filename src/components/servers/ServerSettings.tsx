@@ -73,10 +73,13 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
 
   useEffect(() => {
     let active = true;
-    void fetchChannels(server.id).then((rows) => {
-      if (active) { setLocalChannels(rows); onChannelsChanged(rows); }
+    void Promise.all([fetchChannels(server.id), fetchChannelCategories(server.id)]).then(([rows, categories]) => {
+      if (!active) return;
+      setLocalChannels(rows);
+      onChannelsChanged(rows);
+      setChannelCategories(categories as ChannelCategory[]);
     }).catch((err) => {
-      if (active) setError(err instanceof Error ? err.message : 'Could not load channels.');
+      if (active) setError(err instanceof Error ? err.message : 'Could not load channels and categories.');
     });
     return () => { active = false; };
   }, [server.id]);
