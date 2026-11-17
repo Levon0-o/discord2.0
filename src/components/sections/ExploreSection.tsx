@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { MentionTextarea } from '@/components/shared/MentionTextarea';
 import { MentionText } from '@/components/shared/MentionText';
+import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
 import { searchUsers, sendFriendRequest } from '@/lib/friendsApi';
 import type { ProfileLite } from '@/types/servers';
 
@@ -652,6 +653,14 @@ export function ExploreSection() {
                       return <div key={comment.id} className="space-y-2">
                         <div className="flex gap-2.5">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[10px] font-bold text-ink-300">{comment.author?.avatar_url ? <img src={comment.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(commentAuthor)}</div>
+                          <LongPressContextMenu actions={[
+                            { label: 'Reply', onSelect: () => setReplyingTo(comment.id) },
+                            { label: 'Copy comment', onSelect: () => void navigator.clipboard?.writeText(comment.body) },
+                            ...(comment.author_id === userId ? [
+                              { label: 'Edit comment', onSelect: () => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); } },
+                              { label: 'Delete comment', danger: true, onSelect: () => void deleteComment(post.id, comment.id) },
+                            ] : []),
+                          ]}>
                           <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
                             <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(comment.author_id)} className="transition hover:text-primary-300">{commentAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(comment.created_at)}</span></p>
                             {editingCommentId === comment.id ? <div className="mt-2 space-y-2">
@@ -667,11 +676,19 @@ export function ExploreSection() {
                               <button type="button" onClick={() => void publishReply(post.id, comment.id)} disabled={!(replyDrafts[comment.id] ?? '').trim() || commentBusy === comment.id} aria-label="Send reply" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-white hover:bg-primary-400 disabled:opacity-40"><Send size={14} /></button>
                             </div>}
                           </div>
+                          </LongPressContextMenu>
                         </div>
                         {replies.map((reply) => {
                           const replyAuthor = authorName(reply.author);
                           return <div key={reply.id} className="ml-9 flex gap-2 border-l border-primary-400/20 pl-3">
                             <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[9px] font-bold text-ink-300">{reply.author?.avatar_url ? <img src={reply.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(replyAuthor)}</div>
+                            <LongPressContextMenu actions={[
+                              { label: 'Copy reply', onSelect: () => void navigator.clipboard?.writeText(reply.body) },
+                              ...(reply.author_id === userId ? [
+                                { label: 'Edit reply', onSelect: () => { setEditingCommentId(reply.id); setCommentEditDraft(reply.body); } },
+                                { label: 'Delete reply', danger: true, onSelect: () => void deleteComment(post.id, reply.id) },
+                              ] : []),
+                            ]}>
                             <div className="min-w-0 flex-1 rounded-xl bg-white/[0.025] px-3 py-2">
                               <p className="text-xs font-semibold text-ink-200"><button type="button" onClick={() => void openProfile(reply.author_id)} className="transition hover:text-primary-300">{replyAuthor}</button><span className="ml-1 font-normal text-ink-500">{age(reply.created_at)}</span></p>
                               {editingCommentId === reply.id ? <div className="mt-2 space-y-2">
@@ -680,6 +697,7 @@ export function ExploreSection() {
                               </div> : <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-300"><MentionText>{reply.body}</MentionText></p>}
                               {reply.author_id === userId && <div className="mt-2 flex gap-3"><button type="button" onClick={() => { setEditingCommentId(reply.id); setCommentEditDraft(reply.body); }} className="text-[11px] text-ink-500 hover:text-primary-300">Edit</button><button type="button" onClick={() => void deleteComment(post.id, reply.id)} disabled={contentBusy === reply.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button></div>}
                             </div>
+                            </LongPressContextMenu>
                           </div>;
                         })}
                       </div>;
