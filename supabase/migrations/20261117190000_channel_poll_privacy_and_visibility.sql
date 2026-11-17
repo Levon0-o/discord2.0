@@ -16,7 +16,8 @@ returns table (
   option_id text,
   vote_count bigint,
   voted_by_me boolean,
-  total_votes bigint
+  total_votes bigint,
+  has_votes boolean
 )
 language sql
 stable
