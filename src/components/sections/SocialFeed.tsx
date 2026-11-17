@@ -23,6 +23,20 @@ interface FeedComment {
   author: FeedAuthor | null;
 }
 
+interface PollOption {
+  id: string;
+  label: string;
+  position: number;
+}
+
+interface SocialPoll {
+  id: string;
+  post_id: string;
+  ends_at: string | null;
+  options: PollOption[];
+  votes: { option_id: string; user_id: string }[];
+}
+
 interface FeedPost {
   id: string;
   author_id: string;
@@ -60,6 +74,11 @@ export function SocialFeed() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
+  const [polls, setPolls] = useState<Record<string, SocialPoll>>({});
+  const [showPollComposer, setShowPollComposer] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollBusy, setPollBusy] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
@@ -91,7 +110,42 @@ export function SocialFeed() {
     if (queryError) {
       setError(queryError.message);
     } else {
-      setPosts((data ?? []) as unknown as FeedPost[]);
+      const loadedPosts = (data ?? []) as unknown as FeedPost[];
+      setPosts(loadedPosts);
+      const postIds = loadedPosts.map((post) => post.id);
+      if (postIds.length) {
+        const { data: pollRows, error: pollError } = await supabase
+          .from('social_polls')
+          .select('id, post_id, ends_at')
+          .in('post_id', postIds);
+        if (pollError) {
+          setError(pollError.message);
+          setPolls({});
+        } else if (pollRows?.length) {
+          const pollIds = pollRows.map((poll) => poll.id);
+          const [{ data: optionRows, error: optionError }, { data: voteRows, error: voteError }] = await Promise.all([
+            supabase.from('social_poll_options').select('id, poll_id, label, position').in('poll_id', pollIds).order('position'),
+            supabase.from('social_poll_votes').select('poll_id, option_id, user_id').in('poll_id', pollIds),
+          ]);
+          if (optionError || voteError) {
+            setError(optionError?.message || voteError?.message || 'Could not load poll results.');
+          } else {
+            const nextPolls: Record<string, SocialPoll> = {};
+            for (const poll of pollRows) {
+              nextPolls[poll.post_id] = {
+                ...poll,
+                options: (optionRows ?? []).filter((option) => option.poll_id === poll.id),
+                votes: (voteRows ?? []).filter((vote) => vote.poll_id === poll.id),
+              };
+            }
+            setPolls(nextPolls);
+          }
+        } else {
+          setPolls({});
+        }
+      } else {
+        setPolls({});
+      }
     }
     if (userId) {
       const { data: savedRows, error: savedError } = await supabase.from('saved_posts').select('post_id').eq('user_id', userId);
@@ -153,6 +207,41 @@ export function SocialFeed() {
       await loadPosts(true);
     }
     setPublishing(false);
+  };
+
+  const createPoll = async () => {
+    const question = pollQuestion.trim();
+    const options = pollOptions.map((option) => option.trim()).filter(Boolean);
+    if (!userId || pollBusy || question.length < 1 || options.length < 2 || options.length > 6) return;
+    setPollBusy(true);
+    setError('');
+    const { error: createError } = await supabase.rpc('create_social_poll', {
+      p_question: question,
+      p_options: options,
+      p_ends_at: null,
+    });
+    if (createError) {
+      setError(createError.message);
+    } else {
+      setPollQuestion('');
+      setPollOptions(['', '']);
+      setShowPollComposer(false);
+      await loadPosts(true);
+    }
+    setPollBusy(false);
+  };
+
+  const voteInPoll = async (poll: SocialPoll, optionId: string) => {
+    if (!userId || pollBusy || (poll.ends_at && new Date(poll.ends_at).getTime() <= Date.now())) return;
+    setPollBusy(true);
+    setError('');
+    const { error: voteError } = await supabase.rpc('cast_social_poll_vote', {
+      p_poll_id: poll.id,
+      p_option_id: optionId,
+    });
+    if (voteError) setError(voteError.message);
+    else await loadPosts(true);
+    setPollBusy(false);
   };
 
   const toggleLike = async (post: FeedPost) => {
@@ -322,6 +411,26 @@ export function SocialFeed() {
             </div>
           </div>
         </div>
+        <div className="mt-3 flex justify-end">
+          <button type="button" onClick={() => setShowPollComposer((value) => !value)} className="rounded-lg border border-primary-400/20 px-3 py-2 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/10">
+            {showPollComposer ? 'Close poll creator' : 'Create a poll'}
+          </button>
+        </div>
+        {showPollComposer && <div className="mt-3 space-y-3 rounded-xl border border-primary-400/20 bg-ink-950/50 p-3">
+          <p className="text-sm font-semibold text-ink-100">New poll</p>
+          <input value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value.slice(0, 200))} maxLength={200} placeholder="Ask a question…" className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2.5 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+          <div className="space-y-2">
+            {pollOptions.map((option, index) => <div key={index} className="flex gap-2">
+              <input value={option} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value.slice(0, 100) : item))} maxLength={100} placeholder={`Option ${index + 1}`} className="min-w-0 flex-1 rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-primary-400/40" />
+              {pollOptions.length > 2 && <button type="button" onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove option ${index + 1}`} className="rounded-lg px-2 text-ink-400 hover:bg-white/5 hover:text-red-300"><X size={15} /></button>}
+            </div>)}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button type="button" onClick={() => setPollOptions((current) => current.length < 6 ? [...current, ''] : current)} disabled={pollOptions.length >= 6} className="text-xs font-semibold text-primary-200 hover:text-primary-100 disabled:opacity-40">+ Add option</button>
+            <button type="button" onClick={() => void createPoll()} disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{pollBusy ? 'Creating…' : 'Publish poll'}</button>
+          </div>
+          <p className="text-[11px] text-ink-500">2–6 options. You can change your vote later.</p>
+        </div>}
       </div>
 
       {error && <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
@@ -367,6 +476,28 @@ export function SocialFeed() {
                     <button type="button" onClick={() => void savePostEdit(post.id)} disabled={!postEditDraft.trim() || contentBusy === post.id} className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Save</button>
                   </div></div>
                 </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5"><MentionText>{post.body}</MentionText></p>}
+                {polls[post.id] && <div className="mx-4 mb-3 rounded-xl border border-white/[0.08] bg-ink-950/45 p-3 sm:mx-5 sm:p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-primary-200">Poll</p>
+                    <span className="text-[11px] text-ink-500">{polls[post.id].votes.length} {polls[post.id].votes.length === 1 ? 'vote' : 'votes'}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {polls[post.id].options.map((option) => {
+                      const poll = polls[post.id];
+                      const count = poll.votes.filter((vote) => vote.option_id === option.id).length;
+                      const percentage = poll.votes.length ? Math.round((count / poll.votes.length) * 100) : 0;
+                      const selected = Boolean(userId && poll.votes.some((vote) => vote.user_id === userId && vote.option_id === option.id));
+                      const hasVoted = Boolean(userId && poll.votes.some((vote) => vote.user_id === userId));
+                      const isClosed = Boolean(poll.ends_at && new Date(poll.ends_at).getTime() <= Date.now());
+                      return <button key={option.id} type="button" onClick={() => void voteInPoll(poll, option.id)} disabled={pollBusy || isClosed} className={`relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-lg border px-3 py-2.5 text-left text-sm transition disabled:cursor-default ${selected ? 'border-primary-400/50 text-primary-100' : 'border-white/[0.08] text-ink-200 hover:border-primary-400/30 hover:bg-white/[0.025]'}`}>
+                        <span className="absolute inset-y-0 left-0 bg-primary-500/10 transition-all" style={{ width: `${hasVoted || isClosed ? percentage : 0}%` }} />
+                        <span className="relative z-10 flex min-w-0 items-center gap-2"><span className={`h-3.5 w-3.5 shrink-0 rounded-full border ${selected ? 'border-primary-300 bg-primary-400 shadow-[inset_0_0_0_3px_rgba(15,23,42,1)]' : 'border-ink-500'}`} /><span className="truncate">{option.label}</span></span>
+                        {(hasVoted || isClosed) && <span className="relative z-10 shrink-0 text-xs tabular-nums text-ink-400">{percentage}% · {count}</span>}
+                      </button>;
+                    })}
+                  </div>
+                  <p className="mt-2 text-[11px] text-ink-500">{polls[post.id].ends_at && new Date(polls[post.id].ends_at).getTime() <= Date.now() ? 'Poll closed' : userId && polls[post.id].votes.some((vote) => vote.user_id === userId) ? 'Your vote is recorded. Select another option to change it.' : 'Select an option to vote.'}</p>
+                </div>}
                 <div className="px-4 pb-2 sm:px-5"><SocialReactionBar entityType="post" entityId={post.id} /></div>
                 <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2 sm:px-4">
                   <button type="button" onClick={() => void toggleLike(post)} disabled={likeBusy === post.id} aria-pressed={liked} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition hover:bg-white/[0.05] ${liked ? 'text-rose-300' : 'text-ink-400 hover:text-ink-100'}`}>
