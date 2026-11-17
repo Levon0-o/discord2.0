@@ -255,6 +255,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
     setMuted(false);
     setParticipants([]);
     setRemoteStreams({});
+    setMutedParticipants({});
   }
 
   function toggleMute() {
