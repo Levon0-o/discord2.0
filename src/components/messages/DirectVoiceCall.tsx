@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Phone, PhoneCall, PhoneIncoming, PhoneOff, X } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, MonitorUp, Phone, PhoneCall, PhoneIncoming, PhoneOff, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface DirectVoiceCallProps {
@@ -29,6 +29,10 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const [channelReady, setChannelReady] = useState(false);
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
   const [microphoneReady, setMicrophoneReady] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [sharingScreen, setSharingScreen] = useState(false);
+  const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
+  const [localPreviewStream, setLocalPreviewStream] = useState<MediaStream | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
@@ -38,6 +42,11 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
   const callIdRef = useRef('');
   const statusRef = useRef<CallStatus>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const videoSenderRef = useRef<RTCRtpSender | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
   const callTimeoutRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
@@ -60,8 +69,19 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     pendingIceRef.current = [];
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    videoSenderRef.current = null;
+    setLocalPreviewStream(null);
+    setRemoteVideoStream(null);
+    setCameraEnabled(false);
+    setSharingScreen(false);
     setMicrophoneReady(false);
     if (audioRef.current) audioRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
     setAudioPlaybackBlocked(false);
     setMuted(false);
     setElapsed(0);
@@ -121,7 +141,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       ],
     });
     peerRef.current = peer;
-    stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+    stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream));
+    videoSenderRef.current = peer.addTransceiver('video', { direction: 'sendrecv' }).sender;
     peer.onicecandidate = (event) => {
       if (event.candidate) {
         void send('ice', {
@@ -133,16 +154,19 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
       }
     };
     peer.ontrack = (event) => {
-      if (!audioRef.current) return;
       const remoteStream = event.streams[0] ?? new MediaStream([event.track]);
-      audioRef.current.srcObject = remoteStream;
-      audioRef.current.volume = 1;
-      void audioRef.current.play().then(() => {
-        setAudioPlaybackBlocked(false);
-      }).catch(() => {
-        setAudioPlaybackBlocked(true);
-        setError('Your browser blocked incoming audio. Use Enable audio below.');
-      });
+      if (audioRef.current) {
+        audioRef.current.srcObject = remoteStream;
+        audioRef.current.volume = 1;
+        void audioRef.current.play().then(() => setAudioPlaybackBlocked(false)).catch(() => {
+          setAudioPlaybackBlocked(true);
+          setError('Your browser blocked incoming audio. Use Enable audio below.');
+        });
+      }
+      if (event.track.kind === 'video') {
+        setRemoteVideoStream(remoteStream);
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+      }
     };
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
@@ -419,11 +443,73 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
     setMuted(next);
   }
 
+  async function toggleCamera() {
+    if (!peerRef.current || !videoSenderRef.current) return;
+    if (cameraEnabled) {
+      await videoSenderRef.current.replaceTrack(null);
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+      setLocalPreviewStream(null);
+      setCameraEnabled(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }, audio: false });
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error('No camera was found.');
+      await videoSenderRef.current.replaceTrack(track);
+      cameraStreamRef.current?.getTracks().forEach((item) => item.stop());
+      cameraStreamRef.current = stream;
+      setLocalPreviewStream(stream);
+      setCameraEnabled(true);
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not access the camera.');
+    }
+  }
+
+  async function toggleScreenShare() {
+    if (!peerRef.current || !videoSenderRef.current) return;
+    if (sharingScreen) {
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+      const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
+      await videoSenderRef.current.replaceTrack(cameraTrack);
+      setSharingScreen(false);
+      if (localVideoRef.current) localVideoRef.current.srcObject = cameraStreamRef.current;
+      return;
+    }
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen sharing is not supported by this browser.');
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false });
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error('No screen source was selected.');
+      await videoSenderRef.current.replaceTrack(track);
+      screenStreamRef.current = stream;
+      setSharingScreen(true);
+      setLocalPreviewStream(stream);
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      track.onended = () => { void (async () => {
+        const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
+        await videoSenderRef.current?.replaceTrack(cameraTrack);
+        screenStreamRef.current?.getTracks().forEach((item) => item.stop());
+        screenStreamRef.current = null;
+        setSharingScreen(false);
+        setLocalPreviewStream(cameraStreamRef.current);
+        if (localVideoRef.current) localVideoRef.current.srcObject = cameraStreamRef.current;
+      })(); };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not share your screen.');
+    }
+  }
+
   const timeLabel = `${Math.floor(elapsed / 60).toString().padStart(2, '0')}:${(elapsed % 60).toString().padStart(2, '0')}`;
 
   return (
     <>
       <audio ref={audioRef} autoPlay />
+      <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
+      <video ref={localVideoRef} autoPlay muted playsInline className="hidden" />
       <button
         type="button"
         onClick={() => void startCall()}
@@ -473,8 +559,14 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
                 Enable audio
               </button>
             ) : null}
-            <div className="mt-6 flex justify-center gap-3">
+            {remoteVideoStream || localPreviewStream ? <div className="mt-4 grid grid-cols-2 gap-2">
+              {remoteVideoStream ? <video ref={(element) => { if (element && element.srcObject !== remoteVideoStream) element.srcObject = remoteVideoStream; }} autoPlay playsInline className="aspect-video w-full rounded-lg bg-black object-cover" /> : <div className="flex aspect-video items-center justify-center rounded-lg bg-black/30 text-xs text-ink-500">Camera off</div>}
+              {localPreviewStream ? <video ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} autoPlay muted playsInline className="aspect-video w-full rounded-lg bg-black object-cover" /> : <div className="flex aspect-video items-center justify-center rounded-lg bg-black/30 text-xs text-ink-500">Your camera is off</div>}
+            </div> : null}
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
               <button type="button" onClick={toggleMute} disabled={!microphoneReady} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{muted ? <MicOff size={16} /> : <Mic size={16} />}{muted ? 'Unmute' : 'Mute'}</button>
+              <button type="button" onClick={() => void toggleCamera()} disabled={status !== 'connected'} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{cameraEnabled ? <CameraOff size={16} /> : <Camera size={16} />}{cameraEnabled ? 'Camera off' : 'Camera on'}</button>
+              <button type="button" onClick={() => void toggleScreenShare()} disabled={status !== 'connected'} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-3 text-sm font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40"><MonitorUp size={16} />{sharingScreen ? 'Stop sharing' : 'Share screen'}</button>
               <button type="button" onClick={() => void hangUp()} className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-400"><PhoneOff size={16} /> End call</button>
             </div>
           </section>
