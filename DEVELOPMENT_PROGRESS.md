@@ -84,9 +84,10 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Direct one-to-one WebRTC calls now include optional camera activation during a connected call.
 - Direct calls support browser screen/window sharing, local preview, remote video and restoration of the camera after sharing ends.
 - Existing server event voice rooms now support optional camera video and screen sharing for connected participants.
+- Servers now support dedicated voice channel types. Selecting one opens a persistent live room with audio, camera and screen sharing; Realtime signaling is restricted to members who can view that channel.
 - Video is negotiated as a WebRTC transceiver so camera and screen tracks can be switched without restarting the call.
 - Camera and screen permissions are requested only when the user activates those controls.
-- Current server-side implementation extends event voice rooms; dedicated always-available voice channels inside ordinary server channel lists are still future work.
+- The new migration `supabase/migrations/20261119150000_server_voice_channels.sql` must be applied before creating or joining dedicated voice channels.
 - The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
 - This frontend work has not yet been build-tested or deployed; the Vercel daily deployment quota was previously reached.
 
