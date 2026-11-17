@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, CalendarDays, Hash, Link2, Search, Settings, Shield, Users, X, Plus, Pencil, Trash2, SlidersHorizontal, Lock, Server as ServerIconGlyph } from 'lucide-react';
+import { ArrowLeft, Hash, Link2, Search, Settings, Shield, Users, X, Plus, Pencil, Trash2, SlidersHorizontal, Lock, Server as ServerIconGlyph } from 'lucide-react';
 import { ServerIcon } from '@/components/servers/ServerIcon';
 import { RoleManager } from '@/components/servers/RoleManager';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
@@ -8,7 +8,7 @@ import { InviteManager } from '@/components/servers/InviteManager';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 import { fetchChannels, createChannel, updateChannel, deleteChannel, updateServer } from '@/lib/serversApi';
-import type { Channel, CreateChannelInput, MemberWithProfile, Server, ServerWithMeta } from '@/types/servers';
+import type { Channel, CreateChannelInput, MemberWithProfile, ServerWithMeta } from '@/types/servers';
 
 type SettingsTab = 'overview' | 'members' | 'roles' | 'auto-roles' | 'channels' | 'invites';
 
@@ -194,7 +194,7 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
             </section>
           )}
 
-          {tab === 'invites' && <section className="space-y-3"><h2 className="text-2xl font-bold text-ink-50">Invites</h2><p className="text-sm text-ink-400">Create, copy and revoke invitation links for this server.</p><button type="button" onClick={() => setNotice('Invite manager opened.')} className="inline-flex items-center gap-2 rounded-xl border border-primary-400/25 bg-primary-500/10 px-4 py-2.5 text-xs font-semibold text-primary-200"><Link2 size={14} />Manage invitations</button><InviteManager serverId={server.id} serverName={server.name} onClose={() => setTab('overview')} /></section>}
+          {tab === 'invites' && <section className="space-y-3"><header><h2 className="text-2xl font-bold text-ink-50">Invites</h2><p className="mt-1 text-sm text-ink-400">Create, copy and revoke invitation links for this server.</p></header><InviteManager serverId={server.id} serverName={server.name} embedded onClose={() => setTab('overview')} /></section>}
         </main>
       </div>
 
