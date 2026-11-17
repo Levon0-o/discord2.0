@@ -23,6 +23,7 @@ import { FriendsPanel } from '@/components/messages/FriendsPanel';
 import { DirectVoiceCall } from '@/components/messages/DirectVoiceCall';
 import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
 import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
+import { MediaEmbed } from '@/components/shared/MediaEmbed';
 import {
   fetchMyConversations,
   fetchConversationMembers,
@@ -1472,6 +1473,7 @@ const isGrouped =
                           message.body ? (
                             <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300 sm:text-[15px]">
                               {renderLinkifiedBody(message.body)}
+                              <MediaEmbed text={message.body} />
                               {message.updated_at && new Date(message.updated_at).getTime() > new Date(message.created_at).getTime() + 1000 && (
                                 <span className="ml-2 text-[10px] text-ink-600">(edited)</span>
                               )}
