@@ -30,6 +30,9 @@ AFTERDARK is a dark, blue-accented social and community platform built with Reac
 - Message attachments, edits, deletes, reactions, pins and read receipts.
 - Typing indicators, unread counts and WebRTC voice calls.
 
+### Moderation
+- Server-level moderation dashboard for event-chat reports, with open/resolved/dismissed filters, search, and report review actions.
+
 ### Notifications and account settings
 - Notification center with read/unread management.
 - Notification preferences for social activity and server events.
@@ -59,7 +62,7 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 
 ## Known gaps / future work
 
-- Broader moderation tools and moderation dashboard.
+- Broader moderation tools beyond event-chat report review.
 - Global event discovery beyond individual server event calendars.
 - Spotify/YouTube playback integration.
 - Additional server settings and permission controls as the platform grows.
