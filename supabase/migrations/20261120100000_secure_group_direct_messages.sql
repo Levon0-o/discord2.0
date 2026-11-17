@@ -43,7 +43,7 @@ WITH CHECK (kind = 'group' AND created_by = (SELECT auth.uid()));
 
 -- Publish conversation metadata changes so group renames and creator handoffs
 -- propagate to every member without requiring a manual refresh.
-DO $
+DO $publication$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -55,7 +55,7 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
   END IF;
 END
-$;
+$publication$;
 
 CREATE OR REPLACE FUNCTION public.create_group_conversation(
   p_member_ids uuid[],
