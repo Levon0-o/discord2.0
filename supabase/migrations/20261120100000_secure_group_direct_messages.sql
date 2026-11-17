@@ -41,6 +41,22 @@ FOR UPDATE TO authenticated
 USING (kind = 'group' AND created_by = (SELECT auth.uid()))
 WITH CHECK (kind = 'group' AND created_by = (SELECT auth.uid()));
 
+-- Publish conversation metadata changes so group renames and creator handoffs
+-- propagate to every member without requiring a manual refresh.
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'conversations'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.conversations;
+  END IF;
+END
+$;
+
 CREATE OR REPLACE FUNCTION public.create_group_conversation(
   p_member_ids uuid[],
   p_title text DEFAULT NULL
