@@ -364,6 +364,26 @@ export function DirectMessagesSection({
     };
   }, [userId, loadConversations]);
 
+  // Group titles and creator handoffs are conversation-row updates visible
+  // only to current members under the conversations SELECT policy.
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel('dm-conversation-updates:' + userId)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'conversations',
+      }, () => {
+        void loadConversations(true);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId, loadConversations]);
+
   useEffect(() => {
     if (!initialConversationId || loading) return;
 
