@@ -102,7 +102,7 @@ export function GlobalEventsSection() {
         if (item.id !== event.id) return item;
         const wasGoing = item.my_rsvp === 'going';
         const wasInterested = item.my_rsvp === 'interested';
-        const nextStatus = item.my_rsvp === status ? null : status;
+        const nextStatus = status;
         return {
           ...item,
           is_member: true,
