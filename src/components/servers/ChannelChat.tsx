@@ -59,6 +59,9 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
   const [pollExpiresIn, setPollExpiresIn] = useState('never');
+  const [pollCustomEnd, setPollCustomEnd] = useState('');
+  const [pollAnonymous, setPollAnonymous] = useState(false);
+  const [pollResultsVisibility, setPollResultsVisibility] = useState<'always' | 'after_vote'>('always');
   const [pollBusy, setPollBusy] = useState(false);
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
@@ -423,13 +426,21 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         '24h': 86400000,
         '7d': 604800000,
       };
-      const expiresAt = pollExpiresIn === 'never' ? null : new Date(Date.now() + durations[pollExpiresIn]).toISOString();
-      if (editingPollId) await updateChannelPoll({ pollId: editingPollId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt });
-      else await createChannelPoll({ channelId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt });
+      const expiresAt = pollExpiresIn === 'never' ? null
+        : pollExpiresIn === 'custom' ? (pollCustomEnd ? new Date(pollCustomEnd).toISOString() : null)
+        : new Date(Date.now() + durations[pollExpiresIn]).toISOString();
+      if (pollExpiresIn === 'custom' && (!pollCustomEnd || new Date(pollCustomEnd).getTime() <= Date.now())) {
+        throw new Error('Choose a closing date and time in the future.');
+      }
+      if (editingPollId) await updateChannelPoll({ pollId: editingPollId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt, isAnonymous: pollAnonymous, resultsVisibility: pollResultsVisibility });
+      else await createChannelPoll({ channelId, question: pollQuestion.trim(), options, allowMultiple: pollAllowMultiple, expiresAt, isAnonymous: pollAnonymous, resultsVisibility: pollResultsVisibility });
       setPollQuestion('');
       setPollOptions(['', '']);
       setPollAllowMultiple(false);
       setPollExpiresIn('never');
+      setPollCustomEnd('');
+      setPollAnonymous(false);
+      setPollResultsVisibility('always');
       setShowPollCreator(false);
       setEditingPollId(null);
       await loadMessages();
@@ -822,7 +833,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                       ))}
 
                       {polls.filter((poll) => poll.message_id === message.id).map((poll) => {
-                        const totalVotes = poll.votes.length;
+                        const totalVotes = poll.total_votes;
                         const isExpired = Boolean(poll.expires_at && new Date(poll.expires_at).getTime() <= Date.now());
                         const isClosed = Boolean(poll.closed_at || isExpired);
                         const hasVoted = poll.votes.some((vote) => vote.user_id === userId);
@@ -840,7 +851,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                             </div>
                             <div className="space-y-2">
                               {poll.options.map((option) => {
-                                const count = poll.votes.filter((vote) => vote.option_id === option.id).length;
+                                const count = option.vote_count;
                                 const percent = totalVotes ? Math.round((count / totalVotes) * 100) : 0;
                                 const selected = poll.votes.some((vote) => vote.user_id === userId && vote.option_id === option.id);
                                 return (
@@ -848,15 +859,15 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                                     <span className="absolute inset-y-0 left-0 bg-primary-500/10 transition-all" style={{ width: percent + '%' }} />
                                     <span className="relative flex items-center justify-between gap-3 text-xs">
                                       <span className={selected ? 'font-semibold text-primary-200' : 'text-ink-200'}>{option.label}</span>
-                                      <span className="shrink-0 tabular-nums text-ink-500">{count} · {percent}%</span>
+                                      {((poll.results_visibility === 'always' || hasVoted || isClosed) ? <span className="shrink-0 tabular-nums text-ink-500">{count} · {percent}%</span> : null)}
                                     </span>
                                   </button>
                                 );
                               })}
                             </div>
                             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-[10px] text-ink-500">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} · {poll.allow_multiple ? 'Multiple choices' : hasVoted ? 'Vote locked' : 'One choice'}{poll.expires_at && !isExpired ? ' · Ends ' + new Date(poll.expires_at).toLocaleString() : ''}</span>
-                              {canEdit ? <button type="button" onClick={() => { setEditingPollId(poll.id); setPollQuestion(poll.question); setPollOptions(poll.options.map((option) => option.label)); setPollAllowMultiple(poll.allow_multiple); setPollExpiresIn(poll.expires_at ? '24h' : 'never'); setShowPollCreator(true); }} className="rounded-md px-2 py-1 text-[10px] font-medium text-primary-300 transition hover:bg-primary-500/10">Edit</button> : null}{canClose && !isClosed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded-md px-2 py-1 text-[10px] font-medium text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100">Close poll</button> : null}
+                              <span className="text-[10px] text-ink-500">{poll.is_anonymous ? 'Anonymous · ' : ''}{poll.results_visibility === 'after_vote' && !hasVoted && !isClosed ? 'Results after your vote' : `${totalVotes} ${totalVotes === 1 ? 'vote' : 'votes'}`} · {poll.allow_multiple ? 'Multiple choices' : hasVoted ? 'Vote locked' : 'One choice'}{poll.expires_at && !isExpired ? ' · Ends ' + new Date(poll.expires_at).toLocaleString() : ''}</span>
+                              {canEdit ? <button type="button" onClick={() => { setEditingPollId(poll.id); setPollQuestion(poll.question); setPollOptions(poll.options.map((option) => option.label)); setPollAllowMultiple(poll.allow_multiple); setPollExpiresIn(poll.expires_at ? 'custom' : 'never'); setPollCustomEnd(poll.expires_at ? new Date(new Date(poll.expires_at).getTime() - new Date(poll.expires_at).getTimezoneOffset() * 60000).toISOString().slice(0,16) : ''); setPollAnonymous(poll.is_anonymous); setPollResultsVisibility(poll.results_visibility); setShowPollCreator(true); }} className="rounded-md px-2 py-1 text-[10px] font-medium text-primary-300 transition hover:bg-primary-500/10">Edit</button> : null}{canClose && !isClosed ? <button type="button" onClick={() => void handleClosePoll(poll.id)} className="rounded-md px-2 py-1 text-[10px] font-medium text-ink-400 transition hover:bg-white/[0.06] hover:text-ink-100">Close poll</button> : null}
                             </div>
                           </div>
                         );
@@ -1048,8 +1059,12 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-xs text-ink-300"><input type="checkbox" checked={pollAllowMultiple} onChange={(event) => setPollAllowMultiple(event.target.checked)} className="accent-primary-400" /> Allow multiple choices</label>
-              <label className="space-y-1"><span className="block text-xs font-medium text-ink-300">Close after</span><select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-xs text-ink-200"><option value="never">Never</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label>
+              <label className="space-y-1"><span className="block text-xs font-medium text-ink-300">Close after</span><select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-xs text-ink-200"><option value="never">No limit</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="custom">Custom date & time</option></select></label>
+              {pollExpiresIn === 'custom' ? <label className="space-y-1 sm:col-span-2"><span className="block text-xs font-medium text-ink-300">Close at</span><input type="datetime-local" value={pollCustomEnd} min={new Date(Date.now() + 60000).toISOString().slice(0,16)} onChange={(event) => setPollCustomEnd(event.target.value)} className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-xs text-ink-200" /></label> : null}
+              <label className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-ink-900 px-3 py-2.5 text-xs text-ink-300"><input type="checkbox" checked={pollAnonymous} onChange={(event) => setPollAnonymous(event.target.checked)} className="accent-primary-400" /> Anonymous voting</label>
+              <label className="space-y-1"><span className="block text-xs font-medium text-ink-300">Results visibility</span><select value={pollResultsVisibility} onChange={(event) => setPollResultsVisibility(event.target.value as 'always' | 'after_vote')} className="w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-xs text-ink-200"><option value="always">Always visible</option><option value="after_vote">After you vote</option></select></label>
             </div>
+            <p className="text-[10px] leading-relaxed text-ink-500">Anonymous polls hide voter identities. Results can stay hidden until each member votes. Poll settings cannot be changed after the first vote, and polls automatically close at the selected time.</p>
             <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-3">
               <button type="button" onClick={() => setShowPollCreator(false)} className="rounded-lg px-3 py-2 text-xs text-ink-400 hover:bg-white/[0.05]">Cancel</button>
               <button type="submit" disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-400 disabled:opacity-40">{pollBusy ? <RefreshCw size={14} className="animate-spin" /> : <BarChart3 size={14} />} {editingPollId ? 'Save changes' : 'Create poll'}</button>
