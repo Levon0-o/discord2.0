@@ -13,6 +13,7 @@ CREATE INDEX IF NOT EXISTS social_reactions_entity_idx
   ON public.social_reactions (entity_type, entity_id, created_at);
 
 ALTER TABLE public.social_reactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.social_reactions REPLICA IDENTITY FULL;
 GRANT SELECT ON public.social_reactions TO authenticated;
 GRANT INSERT (entity_type, entity_id, user_id, emoji) ON public.social_reactions TO authenticated;
 GRANT DELETE ON public.social_reactions TO authenticated;
