@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ListMusic, Loader2, Music2, Plus, SkipForward, Users, X } from 'lucide-react';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
 import { supabase } from '@/lib/supabase';
@@ -18,7 +18,6 @@ import {
 interface SharedListeningProps {
   roomType: SharedListeningRoomType;
   roomId: string;
-  userId: string;
 }
 
 function getProvider(urlValue: string): SharedListeningProvider | null {
@@ -44,7 +43,7 @@ function getProvider(urlValue: string): SharedListeningProvider | null {
   }
 }
 
-export function SharedListening({ roomType, roomId, userId }: SharedListeningProps) {
+export function SharedListening({ roomType, roomId }: SharedListeningProps) {
   const [expanded, setExpanded] = useState(false);
   const [room, setRoom] = useState<SharedListeningRoom | null>(null);
   const [queue, setQueue] = useState<SharedListeningQueueItem[]>([]);
@@ -111,7 +110,7 @@ export function SharedListening({ roomType, roomId, userId }: SharedListeningPro
     }
   }
 
-  async function addToQueue(event: React.FormEvent<HTMLFormElement>) {
+  async function addToQueue(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!room || busy) return;
     const trimmed = url.trim();
