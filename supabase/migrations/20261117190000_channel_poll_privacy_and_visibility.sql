@@ -32,7 +32,7 @@ as $$
   totals as (
     select v.poll_id, v.option_id, count(*)::bigint as vote_count,
            bool_or(v.user_id = auth.uid()) as voted_by_me,
-           count(*) over (partition by v.poll_id)::bigint as total_votes
+           sum(count(*)) over (partition by v.poll_id)::bigint as total_votes
     from public.channel_poll_votes v
     join requested p on p.id = v.poll_id
     group by v.poll_id, v.option_id
