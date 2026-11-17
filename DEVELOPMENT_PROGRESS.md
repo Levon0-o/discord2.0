@@ -29,6 +29,7 @@ AFTERDARK is a dark, blue-accented social and community platform built with Reac
 ### Messaging
 - Direct conversations, friends and friend requests.
 - Spotify and YouTube link embeds in direct messages, server channels and event chats, with click-to-load playback.
+- Shared Listening rooms in DMs, server channels and event chats, with a persistent realtime queue and synchronized current-item selection.
 - Message attachments, edits, deletes, reactions, pins and read receipts.
 - Typing indicators, unread counts and WebRTC voice calls.
 
@@ -73,6 +74,11 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 
 ## Global Events database setup
 - Apply `supabase/migrations/20261119100000_global_public_event_discovery.sql` to expose only upcoming events from public servers through a restricted discovery RPC.
+
+## Shared Listening
+- Persistent per-chat rooms for DMs, channels and event chats, protected by chat membership checks.
+- Collaborative Spotify/YouTube queue, realtime queue updates and shared current-item selection.
+- Each member loads the official provider embed locally; synchronized playback position, automatic play/pause and provider-account controls are not available in this implementation.
 
 ## Media embeds
 - Recognizes supported Spotify track, album, playlist, episode and show links, plus YouTube videos, Shorts and live links.
