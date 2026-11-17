@@ -27,6 +27,7 @@ interface PollOption {
   id: string;
   label: string;
   position: number;
+  vote_count?: number;
 }
 
 interface SocialPoll {
@@ -34,6 +35,9 @@ interface SocialPoll {
   post_id: string;
   ends_at: string | null;
   allow_multiple: boolean;
+  is_anonymous: boolean;
+  results_visibility: 'always' | 'after_vote';
+  total_votes: number;
   options: PollOption[];
   votes: { option_id: string; user_id: string }[];
 }
@@ -81,6 +85,9 @@ export function SocialFeed() {
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [pollAllowMultiple, setPollAllowMultiple] = useState(false);
   const [pollExpiresIn, setPollExpiresIn] = useState('never');
+  const [pollCustomEnd, setPollCustomEnd] = useState('');
+  const [pollAnonymous, setPollAnonymous] = useState(false);
+  const [pollResultsVisibility, setPollResultsVisibility] = useState<'always' | 'after_vote'>('always');
   const [pollBusy, setPollBusy] = useState(false);
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -120,26 +127,29 @@ export function SocialFeed() {
       if (postIds.length) {
         const { data: pollRows, error: pollError } = await supabase
           .from('social_polls')
-          .select('id, post_id, ends_at, allow_multiple')
+          .select('id, post_id, ends_at, allow_multiple, is_anonymous, results_visibility')
           .in('post_id', postIds);
         if (pollError) {
           setError(pollError.message);
           setPolls({});
         } else if (pollRows?.length) {
           const pollIds = pollRows.map((poll) => poll.id);
-          const [{ data: optionRows, error: optionError }, { data: voteRows, error: voteError }] = await Promise.all([
+          const [{ data: optionRows, error: optionError }, { data: resultRows, error: resultError }] = await Promise.all([
             supabase.from('social_poll_options').select('id, poll_id, label, position').in('poll_id', pollIds).order('position'),
-            supabase.from('social_poll_votes').select('poll_id, option_id, user_id').in('poll_id', pollIds),
+            supabase.rpc('get_social_poll_results', { p_poll_ids: pollIds }),
           ]);
-          if (optionError || voteError) {
-            setError(optionError?.message || voteError?.message || 'Could not load poll results.');
+          if (optionError || resultError) {
+            setError(optionError?.message || resultError?.message || 'Could not load poll results.');
           } else {
             const nextPolls: Record<string, SocialPoll> = {};
             for (const poll of pollRows) {
+              const results = (resultRows ?? []).filter((row: { poll_id: string }) => row.poll_id === poll.id);
+              const ownVotes = results.filter((row: { voted_by_me: boolean }) => row.voted_by_me).map((row: { option_id: string }) => ({ option_id: row.option_id, user_id: userId ?? '' }));
               nextPolls[poll.post_id] = {
                 ...poll,
-                options: (optionRows ?? []).filter((option) => option.poll_id === poll.id),
-                votes: (voteRows ?? []).filter((vote) => vote.poll_id === poll.id),
+                total_votes: Number(results[0]?.total_votes ?? 0),
+                options: (optionRows ?? []).filter((option) => option.poll_id === poll.id).map((option) => ({ ...option, vote_count: Number(results.find((row: { option_id: string }) => row.option_id === option.id)?.vote_count ?? 0) })),
+                votes: ownVotes,
               };
             }
             setPolls(nextPolls);
@@ -220,9 +230,10 @@ export function SocialFeed() {
     setPollBusy(true);
     setError('');
     const durations: Record<string, number> = { '1h': 3600000, '24h': 86400000, '7d': 604800000 };
-    const endsAt = pollExpiresIn === 'never' ? null : new Date(Date.now() + durations[pollExpiresIn]).toISOString();
+    const endsAt = pollExpiresIn === 'custom' ? (pollCustomEnd ? new Date(pollCustomEnd).toISOString() : null) : pollExpiresIn === 'never' ? null : new Date(Date.now() + durations[pollExpiresIn]).toISOString();
+    if (pollExpiresIn === 'custom' && (!pollCustomEnd || new Date(pollCustomEnd).getTime() <= Date.now())) { setError('Choose a future date and time.'); setPollBusy(false); return; }
     const { error: createError } = editingPollId
-      ? await supabase.rpc('update_social_poll', { p_poll_id: editingPollId, p_question: question, p_options: options, p_ends_at: endsAt, p_allow_multiple: pollAllowMultiple })
+      ? await supabase.rpc('update_social_poll', { p_poll_id: editingPollId, p_question: question, p_options: options, p_ends_at: endsAt, p_allow_multiple: pollAllowMultiple, p_is_anonymous: pollAnonymous, p_results_visibility: pollResultsVisibility })
       : await supabase.rpc('create_social_poll', { p_question: question, p_options: options, p_ends_at: endsAt, p_allow_multiple: pollAllowMultiple });
     if (createError) {
       setError(createError.message);
@@ -231,6 +242,9 @@ export function SocialFeed() {
       setPollOptions(['', '']);
       setPollAllowMultiple(false);
       setPollExpiresIn('never');
+      setPollCustomEnd('');
+      setPollAnonymous(false);
+      setPollResultsVisibility('always');
       setShowPollComposer(false);
       setEditingPollId(null);
       await loadPosts(true);
@@ -436,7 +450,10 @@ export function SocialFeed() {
           </div>
           <div className="grid gap-3 rounded-lg border border-white/[0.07] bg-ink-900/60 p-3 sm:grid-cols-2">
             <label className="flex items-center justify-between gap-3 text-xs text-ink-300"><span><span className="block font-semibold text-ink-100">Voting type</span><span className="text-[11px] text-ink-500">Choose how many options each person can select</span></span><select value={pollAllowMultiple ? 'multiple' : 'single'} onChange={(event) => setPollAllowMultiple(event.target.value === 'multiple')} className="rounded-lg border border-white/10 bg-ink-950 px-2 py-2 text-xs text-ink-100"><option value="single">One vote per user</option><option value="multiple">Multiple choices</option></select></label>
-            <label className="flex items-center justify-between gap-3 text-xs text-ink-300"><span><span className="block font-semibold text-ink-100">Poll duration</span><span className="text-[11px] text-ink-500">Automatically close the poll</span></span><select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="rounded-lg border border-white/10 bg-ink-950 px-2 py-2 text-xs text-ink-100"><option value="never">No limit</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option></select></label>
+            <label className="flex items-center justify-between gap-3 text-xs text-ink-300"><span><span className="block font-semibold text-ink-100">Poll duration</span><span className="text-[11px] text-ink-500">Automatically close the poll</span></span><select value={pollExpiresIn} onChange={(event) => setPollExpiresIn(event.target.value)} className="rounded-lg border border-white/10 bg-ink-950 px-2 py-2 text-xs text-ink-100"><option value="never">No limit</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="custom">Custom date & time</option></select></label>
+            {pollExpiresIn === 'custom' && <label className="flex flex-col gap-1 text-xs text-ink-300 sm:col-span-2"><span className="font-semibold text-ink-100">Close poll at</span><input type="datetime-local" value={pollCustomEnd} min={new Date(Date.now() + 60000).toISOString().slice(0,16)} onChange={(event) => setPollCustomEnd(event.target.value)} className="rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-xs text-ink-100" /></label>}
+            <label className="flex items-center justify-between gap-3 text-xs text-ink-300"><span><span className="block font-semibold text-ink-100">Anonymous voting</span><span className="text-[11px] text-ink-500">Hide individual voter identities</span></span><input type="checkbox" checked={pollAnonymous} onChange={(event) => setPollAnonymous(event.target.checked)} className="h-4 w-4 accent-primary-500" /></label>
+            <label className="flex items-center justify-between gap-3 text-xs text-ink-300"><span><span className="block font-semibold text-ink-100">Results visibility</span><span className="text-[11px] text-ink-500">When should results appear?</span></span><select value={pollResultsVisibility} onChange={(event) => setPollResultsVisibility(event.target.value as 'always' | 'after_vote')} className="rounded-lg border border-white/10 bg-ink-950 px-2 py-2 text-xs text-ink-100"><option value="always">Always visible</option><option value="after_vote">After you vote</option></select></label>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <button type="button" onClick={() => setPollOptions((current) => current.length < 6 ? [...current, ''] : current)} disabled={pollOptions.length >= 6} className="text-xs font-semibold text-primary-200 hover:text-primary-100 disabled:opacity-40">+ Add option</button>
@@ -491,21 +508,21 @@ export function SocialFeed() {
                 </div> : post.body && <p className="whitespace-pre-wrap break-words px-4 py-4 text-sm leading-6 text-ink-200 sm:px-5"><MentionText>{post.body}</MentionText></p>}
                 {polls[post.id] && <div className="mx-4 mb-3 rounded-xl border border-white/[0.08] bg-ink-950/45 p-3 sm:mx-5 sm:p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-primary-200">Poll</p>{post.author_id === userId && polls[post.id].votes.length === 0 && !(polls[post.id].ends_at && new Date(polls[post.id].ends_at).getTime() <= Date.now()) && <button type="button" onClick={() => { setEditingPollId(polls[post.id].id); setPollQuestion(post.body); setPollOptions(polls[post.id].options.map((option) => option.label)); setPollAllowMultiple(polls[post.id].allow_multiple); setPollExpiresIn(polls[post.id].ends_at ? '24h' : 'never'); setShowPollComposer(true); }} className="rounded-md px-2 py-1 text-[10px] font-semibold text-primary-300 hover:bg-primary-500/10">Edit</button>}</div>
-                    <span className="text-[11px] text-ink-500">{polls[post.id].votes.length} {polls[post.id].votes.length === 1 ? 'vote' : 'votes'}</span>
+                    <div className="flex items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-primary-200">Poll</p>{polls[post.id].is_anonymous && <span className="text-[10px] text-ink-500">Anonymous</span>}{post.author_id === userId && polls[post.id].total_votes === 0 && !(polls[post.id].ends_at && new Date(polls[post.id].ends_at).getTime() <= Date.now()) && <button type="button" onClick={() => { setEditingPollId(polls[post.id].id); setPollQuestion(post.body); setPollOptions(polls[post.id].options.map((option) => option.label)); setPollAllowMultiple(polls[post.id].allow_multiple); setPollExpiresIn(polls[post.id].ends_at ? 'custom' : 'never'); setPollCustomEnd(polls[post.id].ends_at ? new Date(new Date(polls[post.id].ends_at).getTime() - new Date(polls[post.id].ends_at).getTimezoneOffset() * 60000).toISOString().slice(0,16) : ''); setPollAnonymous(polls[post.id].is_anonymous); setPollResultsVisibility(polls[post.id].results_visibility); setShowPollComposer(true); }} className="rounded-md px-2 py-1 text-[10px] font-semibold text-primary-300 hover:bg-primary-500/10">Edit</button>}</div>
+                    <span className="text-[11px] text-ink-500">{polls[post.id].votes.length} {polls[post.id].total_votes === 1 ? 'vote' : 'votes'}</span>
                   </div>
                   <div className="space-y-2">
                     {polls[post.id].options.map((option) => {
                       const poll = polls[post.id]!;
-                      const count = poll.votes.filter((vote) => vote.option_id === option.id).length;
-                      const percentage = poll.votes.length ? Math.round((count / poll.votes.length) * 100) : 0;
+                      const count = option.vote_count ?? 0;
+                      const percentage = poll.total_votes ? Math.round((count / poll.total_votes) * 100) : 0;
                       const selected = Boolean(userId && poll.votes.some((vote) => vote.user_id === userId && vote.option_id === option.id));
                       const hasVoted = Boolean(userId && poll.votes.some((vote) => vote.user_id === userId));
                       const isClosed = Boolean(poll.ends_at && new Date(poll.ends_at).getTime() <= Date.now());
                       return <button key={option.id} type="button" onClick={() => void voteInPoll(poll, option.id)} disabled={pollBusy || isClosed || (!poll.allow_multiple && hasVoted)} className={`relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-lg border px-3 py-2.5 text-left text-sm transition disabled:cursor-default ${selected ? 'border-primary-400/50 text-primary-100' : 'border-white/[0.08] text-ink-200 hover:border-primary-400/30 hover:bg-white/[0.025]'}`}>
                         <span className="absolute inset-y-0 left-0 bg-primary-500/10 transition-all" style={{ width: `${hasVoted || isClosed ? percentage : 0}%` }} />
                         <span className="relative z-10 flex min-w-0 items-center gap-2"><span className={`h-3.5 w-3.5 shrink-0 rounded-full border ${selected ? 'border-primary-300 bg-primary-400 shadow-[inset_0_0_0_3px_rgba(15,23,42,1)]' : 'border-ink-500'}`} /><span className="truncate">{option.label}</span></span>
-                        {(hasVoted || isClosed) && <span className="relative z-10 shrink-0 text-xs tabular-nums text-ink-400">{percentage}% · {count}</span>}
+                        {(hasVoted || isClosed || poll.results_visibility === 'always') && <span className="relative z-10 shrink-0 text-xs tabular-nums text-ink-400">{percentage}% · {count}</span>}
                       </button>;
                     })}
                   </div>
