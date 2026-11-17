@@ -57,10 +57,10 @@ export function LongPressContextMenu({ actions, children, className = '', disabl
     >
       {children}
       {menu && (
-        <div className="fixed inset-0 z-[100] touch-none" onPointerDown={() => setMenu(null)} onContextMenu={(event) => { event.preventDefault(); setMenu(null); }}>
+        <div className="fixed inset-0 z-[100]" onPointerDown={() => setMenu(null)} onContextMenu={(event) => { event.preventDefault(); setMenu(null); }}>
           <div
             role="menu"
-            className="absolute max-h-[min(70vh,320px)] w-52 overflow-y-auto rounded-xl border border-white/10 bg-ink-900 p-1.5 shadow-2xl shadow-black/50"
+            className="absolute max-h-[min(70vh,320px)] w-52 touch-pan-y overscroll-contain overflow-y-auto rounded-xl border border-white/10 bg-ink-900 p-1.5 shadow-2xl shadow-black/50"
             style={{ left: menu.x, top: menu.y }}
             onPointerDown={(event) => event.stopPropagation()}
           >
