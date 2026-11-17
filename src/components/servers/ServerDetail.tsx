@@ -618,22 +618,13 @@ export function ServerDetail({
             </div>
 
             <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-3">
-              <h2 className="text-[10px] font-bold uppercase tracking-widest text-ink-500">
-                Channels
-              </h2>
+              <h2 className="text-[10px] font-bold uppercase tracking-widest text-ink-500">Channels</h2>
 
               {canManageChannelsPermission && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateError('');
-                    setCreateOpen(true);
-                  }}
-                  className="rounded-md p-1 text-ink-500 transition hover:bg-white/[0.06] hover:text-primary-300"
-                  title="Create channel"
-                >
-                  <Plus size={15} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => void handleCreateCategory()} className="rounded-md p-1 text-ink-500 transition hover:bg-white/[0.06] hover:text-primary-300" title="Create category"><Plus size={13} /></button>
+                  <button type="button" onClick={() => { setCreateError(''); setCreateOpen(true); }} className="rounded-md p-1 text-ink-500 transition hover:bg-white/[0.06] hover:text-primary-300" title="Create channel"><Hash size={15} /></button>
+                </div>
               )}
             </div>
 
@@ -659,17 +650,19 @@ export function ServerDetail({
                 </div>
               ) : (
                 channelsByCategory.map(([category, list]) => (
-                  <div key={category}>
-                    <p className="mb-1 px-2 text-[9px] font-bold uppercase tracking-widest text-ink-600">
-                      {category}
-                    </p>
+                  <div key={category} onDragOver={(event) => { if (canManageChannelsPermission) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); const dragged = channels.find((item) => item.id === draggedChannelId); if (dragged) void handleMoveChannelToCategory(dragged, category); }}>
+                    <button type="button" onClick={() => setCollapsedCategories((current) => current.includes(category) ? current.filter((item) => item !== category) : [...current, category])} className="mb-1 flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[9px] font-bold uppercase tracking-widest text-ink-600 transition hover:bg-white/[0.04] hover:text-ink-300">
+                      {collapsedCategories.includes(category) ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                      <span className="truncate">{category}</span>
+                      <span className="ml-auto text-ink-700">{list.length}</span>
+                    </button>
 
-                    <ul className="space-y-0.5">
+                    {!collapsedCategories.includes(category) && <ul className="space-y-0.5">
                       {list.map((channel) => {
                         const active = channel.id === activeChannelId;
 
                         return (
-                          <li key={channel.id} className="flex items-center">
+                          <li key={channel.id} draggable={canManageChannelsPermission} onDragStart={() => setDraggedChannelId(channel.id)} onDragEnd={() => setDraggedChannelId(null)} className={cn('flex items-center rounded-md', draggedChannelId === channel.id && 'opacity-40')}>
                             <button
                               type="button"
                               onClick={() => {
@@ -756,7 +749,7 @@ export function ServerDetail({
                           </li>
                         );
                       })}
-                    </ul>
+                    </ul>}
                   </div>
                 ))
               )}
