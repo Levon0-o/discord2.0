@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, Clock3, Flag, RefreshCw, Search, ShieldAlert, X } from 'lucide-react';
 
 import { fetchServerEventChatReportsForServer, reviewServerEventChatReport, type ServerEventChatReport, type ServerEventChatReportStatus } from '@/lib/serverEventChatApi';
@@ -40,7 +40,7 @@ export function ServerModerationDashboard({ server, members, onClose }: ServerMo
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  async function loadReports(isRefresh = false) {
+  const loadReports = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
@@ -57,11 +57,11 @@ export function ServerModerationDashboard({ server, members, onClose }: ServerMo
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, [server.id]);
 
   useEffect(() => {
     void loadReports();
-  }, [server.id]);
+  }, [loadReports]);
 
   const eventNames = useMemo(() => new Map(events.map((event) => [event.id, event.title])), [events]);
   const counts = useMemo(() => ({
