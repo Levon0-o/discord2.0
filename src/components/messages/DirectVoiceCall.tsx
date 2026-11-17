@@ -255,7 +255,8 @@ export function DirectVoiceCall({ conversationId, currentUserId, otherUserId, ot
             to: remoteUserId,
             sdp: peer.localDescription ?? offer,
           });
-          // If the attempt does not recover, connectionstatechange schedules the next retry.
+          // Keep retrying with backoff unless the peer reports a recovered connection.
+          scheduleIceRestart(Math.min(2000 * reconnectAttemptsRef.current, 6000));
         } catch {
           scheduleIceRestart(Math.min(2000 * reconnectAttemptsRef.current, 6000));
         }
