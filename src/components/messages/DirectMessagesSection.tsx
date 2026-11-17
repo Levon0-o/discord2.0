@@ -22,6 +22,7 @@ import { supabase } from '@/lib/supabase';
 import { FriendsPanel } from '@/components/messages/FriendsPanel';
 import { DirectVoiceCall } from '@/components/messages/DirectVoiceCall';
 import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
+import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
 import {
   fetchMyConversations,
   fetchConversationMembers,
@@ -1355,6 +1356,18 @@ const isGrouped =
                       </div>
                     )}
 
+                    <LongPressContextMenu
+                      actions={[
+                        { label: 'Reply', onSelect: () => setReplyingTo(message) },
+                        { label: 'Copy message', onSelect: () => void handleCopyMessage(message) },
+                        { label: pinnedMessages.some((item) => item.message_id === message.id) ? 'Unpin message' : 'Pin message', onSelect: () => void handleTogglePinnedMessage(message.id) },
+                        ...QUICK_REACTIONS.map((emoji) => ({ label: 'React ' + emoji, onSelect: () => void handleToggleReaction(message.id, emoji) })),
+                        ...(mine ? [
+                          { label: 'Edit message', onSelect: () => startEditingMessage(message) },
+                          { label: 'Delete message', danger: true, onSelect: () => void handleDeleteMessage(message.id) },
+                        ] : []),
+                      ]}
+                    >
                     <article
                       className={`group relative flex min-w-0 gap-3 rounded-lg px-2 py-1 transition hover:bg-white/[0.035] ${
                         isGrouped ? 'mt-0' : 'mt-3'
@@ -1592,6 +1605,7 @@ const isGrouped =
                           )}
                       </div>
                     </article>
+                    </LongPressContextMenu>
                   </div>
                 );
               })}
