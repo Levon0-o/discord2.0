@@ -176,3 +176,6 @@ revoke all on function public.cast_social_poll_vote(uuid, uuid, boolean) from pu
 grant execute on function public.cast_social_poll_vote(uuid, uuid, boolean) to authenticated;
 revoke all on function public.update_social_poll(uuid, text, text[], timestamptz, boolean) from public, anon;
 grant execute on function public.update_social_poll(uuid, text, text[], timestamptz, boolean) to authenticated;
+
+-- All voting writes must go through the RPC so vote limits cannot be bypassed.
+revoke insert, delete on public.social_poll_votes from authenticated;
