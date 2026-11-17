@@ -1164,6 +1164,15 @@ export function ServerDetail({
         />
       )}
 
+      {rolePermissionsChannel && (
+        <ChannelRolePermissionsModal
+          serverId={server.id}
+          channelId={rolePermissionsChannel.id}
+          channelName={rolePermissionsChannel.name}
+          onClose={() => setRolePermissionsChannel(null)}
+        />
+      )}
+
       {deletingChannel && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
           <div role="alertdialog" aria-modal="true" className="w-full max-w-sm space-y-4 rounded-2xl border border-red-400/20 bg-ink-900 p-5 shadow-2xl">
@@ -1204,7 +1213,7 @@ export function ServerDetail({
             </label>
             <label className="flex items-start gap-2 rounded-lg border border-white/[0.07] p-3 text-xs text-ink-300">
               <input type="checkbox" checked={editRestricted} onChange={(event) => setEditRestricted(event.target.checked)} className="mt-0.5" />
-              <span><strong className="block text-ink-100">Restricted channel</strong>Only moderators and above can view this channel.</span>
+              <span><strong className="block text-ink-100">Restricted channel</strong>Hidden from regular members by default. You can grant access to selected custom roles in Role permissions.</span>
             </label>
             <label className="block text-xs font-medium text-ink-300">Slowmode
               <select value={editSlowmode} onChange={(event) => setEditSlowmode(Number(event.target.value))} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60">
