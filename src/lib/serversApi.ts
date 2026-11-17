@@ -394,3 +394,50 @@ export async function setChannelMemberPermission(
   if (error) throw error;
   return data as ChannelMemberPermission;
 }
+
+
+export async function fetchChannelCategories(serverId: string) {
+  const { data, error } = await supabase
+    .from('server_channel_categories')
+    .select('*')
+    .eq('server_id', serverId)
+    .order('position', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createChannelCategory(serverId: string, name: string) {
+  const normalized = name.trim();
+  if (!normalized || normalized.length > 40) throw new Error('Category name must be 1–40 characters.');
+  const { data: existing, error: readError } = await supabase
+    .from('server_channel_categories')
+    .select('position')
+    .eq('server_id', serverId)
+    .order('position', { ascending: false })
+    .limit(1);
+  if (readError) throw readError;
+  const { data, error } = await supabase
+    .from('server_channel_categories')
+    .insert({ server_id: serverId, name: normalized, position: (existing?.[0]?.position ?? -1) + 1 })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function renameChannelCategory(serverId: string, oldName: string, newName: string) {
+  const normalized = newName.trim();
+  if (!normalized || normalized.length > 40) throw new Error('Category name must be 1–40 characters.');
+  const { error: channelsError } = await supabase.from('channels').update({ category: normalized }).eq('server_id', serverId).eq('category', oldName);
+  if (channelsError) throw channelsError;
+  const { error } = await supabase.from('server_channel_categories').update({ name: normalized }).eq('server_id', serverId).eq('name', oldName);
+  if (error) throw error;
+}
+
+export async function deleteChannelCategory(serverId: string, name: string) {
+  const { error: channelsError } = await supabase.from('channels').update({ category: 'General' }).eq('server_id', serverId).eq('category', name);
+  if (channelsError) throw channelsError;
+  const { error } = await supabase.from('server_channel_categories').delete().eq('server_id', serverId).eq('name', name);
+  if (error) throw error;
+}
