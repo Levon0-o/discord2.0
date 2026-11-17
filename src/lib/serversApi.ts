@@ -110,6 +110,29 @@ export async function fetchServerById(serverId: string, userId: string): Promise
   );
 }
 
+export async function updateServer(
+  serverId: string,
+  changes: Partial<Pick<Server, 'name' | 'description' | 'visibility' | 'theme_color' | 'icon_url' | 'banner_url'>>,
+): Promise<Server> {
+  const payload = {
+    ...changes,
+    ...(changes.name !== undefined ? { name: changes.name.trim() } : {}),
+    ...(changes.description !== undefined ? { description: changes.description.trim() } : {}),
+    ...(changes.icon_url !== undefined ? { icon_url: changes.icon_url?.trim() || null } : {}),
+    ...(changes.banner_url !== undefined ? { banner_url: changes.banner_url?.trim() || null } : {}),
+  };
+
+  const { data, error } = await supabase
+    .from('servers')
+    .update(payload)
+    .eq('id', serverId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data as Server;
+}
+
 export async function createServer(input: CreateServerInput, userId: string): Promise<Server> {
   const payload = {
     owner_id: userId,
