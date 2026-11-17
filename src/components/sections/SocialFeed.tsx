@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { MentionTextarea } from '@/components/shared/MentionTextarea';
 import { MentionText } from '@/components/shared/MentionText';
+import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
 
 interface FeedAuthor {
   username: string;
@@ -381,6 +382,13 @@ export function SocialFeed() {
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-800 text-[10px] font-bold text-ink-300">
                             {comment.author?.avatar_url ? <img src={comment.author.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(displayName(comment.author))}
                           </div>
+                          <LongPressContextMenu actions={[
+                            { label: 'Copy comment', onSelect: () => void navigator.clipboard?.writeText(comment.body) },
+                            ...(comment.author_id === userId ? [
+                              { label: 'Edit comment', onSelect: () => { setEditingCommentId(comment.id); setCommentEditDraft(comment.body); } },
+                              { label: 'Delete comment', danger: true, onSelect: () => void deleteComment(post.id, comment.id) },
+                            ] : []),
+                          ]}>
                           <div className="min-w-0 flex-1 rounded-xl bg-white/[0.035] px-3 py-2">
                             <p className="text-xs font-semibold text-ink-200">{displayName(comment.author)} <span className="ml-1 font-normal text-ink-500">{timeAgo(comment.created_at)}</span></p>
                             {editingCommentId === comment.id ? <div className="mt-2 space-y-2">
@@ -392,6 +400,7 @@ export function SocialFeed() {
                               <button type="button" onClick={() => void deleteComment(post.id, comment.id)} disabled={contentBusy === comment.id} className="text-[11px] text-ink-500 hover:text-red-300">Delete</button>
                             </div>}
                           </div>
+                          </LongPressContextMenu>
                         </div>
                       ))}
                     </div>
