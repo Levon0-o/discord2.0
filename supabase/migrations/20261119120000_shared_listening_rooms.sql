@@ -99,13 +99,7 @@ using (public.can_access_shared_listening_room(room_type, room_id))
 with check (
   updated_by = auth.uid()
   and public.can_access_shared_listening_room(room_type, room_id)
-  and (
-    current_item_id is null
-    or exists (
-      select 1 from public.shared_listening_queue q
-      where q.id = current_item_id and q.room_id = shared_listening_rooms.id
-    )
-  )
+  and true
 );
 
 drop policy if exists shared_listening_queue_select_members on public.shared_listening_queue;
