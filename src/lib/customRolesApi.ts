@@ -146,3 +146,49 @@ export function hasPermission(
 ): boolean {
   return permissions?.[permission] === true;
 }
+
+
+export type CreateAutoRoleRuleInput = Omit<AutoRoleRule, 'id' | 'created_at'>;
+
+export async function createAutoRoleRule(
+  input: CreateAutoRoleRuleInput,
+): Promise<AutoRoleRule> {
+  const { data, error } = await supabase
+    .from('auto_role_rules')
+    .insert({
+      server_id: input.server_id,
+      role_id: input.role_id,
+      event_type: input.event_type,
+      conditions: input.conditions ?? {},
+      is_enabled: input.is_enabled ?? true,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data as AutoRoleRule;
+}
+
+export async function updateAutoRoleRule(
+  ruleId: string,
+  changes: Partial<Pick<AutoRoleRule, 'conditions' | 'is_enabled'>>,
+): Promise<AutoRoleRule> {
+  const { data, error } = await supabase
+    .from('auto_role_rules')
+    .update(changes)
+    .eq('id', ruleId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data as AutoRoleRule;
+}
+
+export async function deleteAutoRoleRule(ruleId: string): Promise<void> {
+  const { error } = await supabase
+    .from('auto_role_rules')
+    .delete()
+    .eq('id', ruleId);
+
+  if (error) throw error;
+}
