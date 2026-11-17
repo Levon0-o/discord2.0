@@ -404,6 +404,25 @@ export function DirectMessagesSection({
     onInitialConversationHandled,
   ]);
 
+  useEffect(() => {
+    if (!activeId || !userId) return;
+    const channel = supabase
+      .channel('dm-active-members:' + activeId)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conversation_members',
+        filter: 'conversation_id=eq.' + activeId,
+      }, () => {
+        void loadConversations(true);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeId, userId, loadConversations]);
+
   const activeConversation = conversations.find(
     (conversation) => conversation.id === activeId
   );
@@ -425,6 +444,7 @@ export function DirectMessagesSection({
     (message) => message.author_id === userId
   );
   const latestOwnMessageIsSeen = Boolean(
+    activeConversation?.kind !== 'group' &&
     lastOwnMessage &&
     otherLastReadAt >= new Date(lastOwnMessage.created_at).getTime()
   );
