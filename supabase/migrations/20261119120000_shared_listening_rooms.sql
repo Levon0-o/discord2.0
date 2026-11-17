@@ -72,11 +72,50 @@ begin
 end;
 $$;
 
+create or replace function public.set_shared_listening_current_item(p_room_id uuid, p_item_id uuid)
+returns public.shared_listening_rooms
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_room public.shared_listening_rooms;
+begin
+  if auth.uid() is null then raise exception 'You must be logged in.'; end if;
+
+  select * into v_room
+  from public.shared_listening_rooms
+  where id = p_room_id;
+
+  if not found or not public.can_access_shared_listening_room(v_room.room_type, v_room.room_id) then
+    raise exception 'You do not have access to this listening room.';
+  end if;
+
+  if p_item_id is not null and not exists (
+    select 1 from public.shared_listening_queue q
+    where q.id = p_item_id and q.room_id = p_room_id
+  ) then
+    raise exception 'The selected item is not in this queue.';
+  end if;
+
+  update public.shared_listening_rooms
+  set current_item_id = p_item_id,
+      updated_by = auth.uid(),
+      updated_at = now()
+  where id = p_room_id
+  returning * into v_room;
+
+  return v_room;
+end;
+$;
+
+revoke all on function public.set_shared_listening_current_item(uuid, uuid) from public, anon;
+grant execute on function public.set_shared_listening_current_item(uuid, uuid) to authenticated;
+
 alter table public.shared_listening_rooms enable row level security;
 alter table public.shared_listening_queue enable row level security;
 
 grant select, insert on public.shared_listening_rooms to authenticated;
-grant update (current_item_id, updated_by, updated_at) on public.shared_listening_rooms to authenticated;
 grant select, insert, delete on public.shared_listening_queue to authenticated;
 
 drop policy if exists shared_listening_rooms_select_members on public.shared_listening_rooms;
