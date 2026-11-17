@@ -147,7 +147,7 @@ export function SocialFeed() {
               const ownVotes = results.filter((row: { voted_by_me: boolean }) => row.voted_by_me).map((row: { option_id: string }) => ({ option_id: row.option_id, user_id: userId ?? '' }));
               nextPolls[poll.post_id] = {
                 ...poll,
-                total_votes: Number(results[0]?.total_votes ?? 0),
+                total_votes: results.reduce((sum: number, row: { vote_count: number | string }) => sum + Number(row.vote_count ?? 0), 0),
                 options: (optionRows ?? []).filter((option) => option.poll_id === poll.id).map((option) => ({ ...option, vote_count: Number(results.find((row: { option_id: string }) => row.option_id === option.id)?.vote_count ?? 0) })),
                 votes: ownVotes,
               };
@@ -234,7 +234,7 @@ export function SocialFeed() {
     if (pollExpiresIn === 'custom' && (!pollCustomEnd || new Date(pollCustomEnd).getTime() <= Date.now())) { setError('Choose a future date and time.'); setPollBusy(false); return; }
     const { error: createError } = editingPollId
       ? await supabase.rpc('update_social_poll', { p_poll_id: editingPollId, p_question: question, p_options: options, p_ends_at: endsAt, p_allow_multiple: pollAllowMultiple, p_is_anonymous: pollAnonymous, p_results_visibility: pollResultsVisibility })
-      : await supabase.rpc('create_social_poll', { p_question: question, p_options: options, p_ends_at: endsAt, p_allow_multiple: pollAllowMultiple });
+      : await supabase.rpc('create_social_poll', { p_question: question, p_options: options, p_ends_at: endsAt, p_allow_multiple: pollAllowMultiple, p_is_anonymous: pollAnonymous, p_results_visibility: pollResultsVisibility });
     if (createError) {
       setError(createError.message);
     } else {
