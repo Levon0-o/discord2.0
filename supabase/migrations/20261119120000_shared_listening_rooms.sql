@@ -76,7 +76,7 @@ alter table public.shared_listening_rooms enable row level security;
 alter table public.shared_listening_queue enable row level security;
 
 grant select, insert on public.shared_listening_rooms to authenticated;
-grant update (current_item_id, updated_by) on public.shared_listening_rooms to authenticated;
+grant update (current_item_id, updated_by, updated_at) on public.shared_listening_rooms to authenticated;
 grant select, insert, delete on public.shared_listening_queue to authenticated;
 
 drop policy if exists shared_listening_rooms_select_members on public.shared_listening_rooms;
@@ -99,8 +99,7 @@ using (public.can_access_shared_listening_room(room_type, room_id))
 with check (
   updated_by = auth.uid()
   and public.can_access_shared_listening_room(room_type, room_id)
-  and true
-);
+ );
 
 drop policy if exists shared_listening_queue_select_members on public.shared_listening_queue;
 create policy shared_listening_queue_select_members on public.shared_listening_queue
