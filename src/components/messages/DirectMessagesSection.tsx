@@ -1042,11 +1042,9 @@ export function DirectMessagesSection({
 
     const profile = other ? profiles[other.user_id] : undefined;
 
-    const name =
-      profile?.display_name ||
-      profile?.username ||
-      conversation.title ||
-      '';
+    const name = conversation.kind === 'group'
+      ? conversation.title || 'Group conversation'
+      : profile?.display_name || profile?.username || '';
 
     return name.toLowerCase().includes(search.toLowerCase());
   });
@@ -1155,15 +1153,9 @@ export function DirectMessagesSection({
                 }`}
               >
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-base font-bold text-primary-200">
-                  {profile?.avatar_url ? (
-                    <img
-                      src={profile.avatar_url}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    name.slice(0, 1).toUpperCase()
-                  )}
+                  {conversation.kind === 'group' ? <Users size={21} /> : profile?.avatar_url ? (
+                    <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : name.slice(0, 1).toUpperCase()}
                 </div>
 
                 <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1251,7 +1243,7 @@ export function DirectMessagesSection({
                   {displayName}
                 </h3>
                 <p className={`mt-0.5 text-xs ${isOtherTyping ? 'text-primary-300' : 'text-ink-500'}`}>
-                  {isOtherTyping ? 'Typing…' : 'Direct message'}
+                  {isOtherTyping ? 'Typing…' : activeConversation.kind === 'group' ? `Group conversation · ${activeMembers.length} members` : 'Direct message'}
                 </p>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
