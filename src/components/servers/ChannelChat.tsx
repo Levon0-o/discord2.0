@@ -16,6 +16,7 @@ import {
 } from '@/lib/messagesApi';
 import type { Message } from '@/types/messages';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
+import { SharedListening } from '@/components/shared/SharedListening';
 import type { Channel, MemberWithProfile } from '@/types/servers';
 
 interface ChannelChatProps {
@@ -695,6 +696,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
           </button>
         </div>
       </header>
+
+      <SharedListening roomType="channel" roomId={channelId} />
 
       {showSearch ? (
         <div className="shrink-0 border-b border-white/[0.06] bg-ink-950/40 p-3">
