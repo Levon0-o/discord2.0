@@ -93,6 +93,7 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
 - Direct calls and multiparty voice rooms expose microphone selection before joining and speaker selection where the browser supports `setSinkId`; available device names are refreshed when devices change.
 - One-to-one calls use an expanded call panel with participant status, video stage, device controls, call actions and a compact minimized call bar.
+- Multiparty voice rooms now offer responsive Grid and Focus stage layouts, participant selection for the focus stage, participant labels, camera-off placeholders, local mute indicators and fullscreen controls.
 - The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
 - Group DM voice rooms reuse the multiparty WebRTC room UI and have conversation-members-only Realtime signaling. One-to-one incoming call invitations remain separate.
 - Participants can locally mute another participant's incoming audio without muting that person for anyone else; video tiles support fullscreen.
