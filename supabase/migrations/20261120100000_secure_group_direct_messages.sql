@@ -8,29 +8,62 @@
 -- while preventing ordinary members from adding arbitrary participants.
 DROP POLICY IF EXISTS "conversation_members_insert_by_members_or_creator" ON public.conversation_members;
 DROP POLICY IF EXISTS "conversation_members_insert_by_creator" ON public.conversation_members;
-CREATE POLICY "conversation_members_insert_by_creator" ON public.conversation_members
-FOR INSERT TO authenticated
-WITH CHECK (
-  EXISTS (
+
+CREATE OR REPLACE FUNCTION public.can_insert_conversation_member(
+  p_conversation_id uuid,
+  p_user_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $
+  SELECT EXISTS (
     SELECT 1
     FROM public.conversations c
-    WHERE c.id = conversation_members.conversation_id
-      AND c.created_by = (SELECT auth.uid())
+    WHERE c.id = p_conversation_id
+      AND c.created_by = auth.uid()
       AND (
-        c.kind = 'direct'
+        (
+          c.kind = 'direct'
+          AND (
+            SELECT count(*)
+            FROM public.conversation_members cm
+            WHERE cm.conversation_id = c.id
+          ) < 2
+        )
         OR (
           c.kind = 'group'
+          AND p_user_id <> auth.uid()
+          AND (
+            SELECT count(*)
+            FROM public.conversation_members cm
+            WHERE cm.conversation_id = c.id
+          ) < 25
           AND EXISTS (
             SELECT 1
             FROM public.friend_requests fr
             WHERE fr.status = 'accepted'
               AND (
-                (fr.sender_id = (SELECT auth.uid()) AND fr.receiver_id = conversation_members.user_id)
-                OR (fr.sender_id = conversation_members.user_id AND fr.receiver_id = (SELECT auth.uid()))
+                (fr.sender_id = auth.uid() AND fr.receiver_id = p_user_id)
+                OR (fr.sender_id = p_user_id AND fr.receiver_id = auth.uid())
               )
           )
         )
       )
+  );
+$;
+
+REVOKE EXECUTE ON FUNCTION public.can_insert_conversation_member(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_insert_conversation_member(uuid, uuid) TO authenticated;
+
+CREATE POLICY "conversation_members_insert_by_creator" ON public.conversation_members
+FOR INSERT TO authenticated
+WITH CHECK (
+  public.can_insert_conversation_member(
+    conversation_members.conversation_id,
+    conversation_members.user_id
   )
 );
 DROP POLICY IF EXISTS "conversation_members_delete_own" ON public.conversation_members;
