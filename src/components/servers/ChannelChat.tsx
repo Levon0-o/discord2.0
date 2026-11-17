@@ -817,7 +817,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                             <button type="button" onClick={() => { setEditingId(null); setEditingText(''); }} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-ink-400 hover:bg-white/[0.05]"><X size={12} /> Cancel</button>
                           </div>
                         </div>
-                      ) : message.body ? (
+                      ) : message.body && !polls.some((poll) => poll.message_id === message.id) ? (
                         <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink-300">
                           {!announcements.some((announcement) => announcement.message_id === message.id) && message.body.split(/(@[a-zA-Z0-9_]+)/g).map((part, partIndex) =>
                             part.startsWith('@')
