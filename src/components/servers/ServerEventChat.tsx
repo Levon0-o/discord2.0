@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { deleteServerEventChatMessage, editServerEventChatMessage, fetchServerEventChatMessages, fetchServerEventChatPins, fetchServerEventChatReactions, fetchServerEventChatReadReceipts, fetchServerEventChatSavedMessages, getServerEventChatAttachmentUrl, markServerEventChatRead, removeServerEventChatAttachment, searchServerEventChatMessages, sendServerEventChatMessage, setServerEventChatPin, toggleServerEventChatReaction, toggleServerEventChatSavedMessage, uploadServerEventChatAttachment, fetchServerEventChatReports, submitServerEventChatReport, reviewServerEventChatReport, fetchServerEventChatNotificationPreference, setServerEventChatNotificationsMuted, type ServerEventChatMessage, type ServerEventChatPin, type ServerEventChatReaction, type ServerEventChatReadReceipt, type ServerEventChatSavedMessage, type ServerEventChatReport, type ServerEventChatReportReason, type ServerEventChatNotificationPreference, fetchServerEventChatPolls, createServerEventChatPoll, castServerEventChatPollVote, closeServerEventChatPoll, deleteServerEventChatPoll, updateServerEventChatPoll, uploadServerEventChatPollOptionImage, saveServerEventChatPollOptionImages, type ServerEventChatPoll, type ServerEventChatPollVote } from '@/lib/serverEventChatApi';
 import type { MemberWithProfile } from '@/types/servers';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
+import { SharedListening } from '@/components/shared/SharedListening';
 
 interface ServerEventChatProps {
   eventId: string;
@@ -761,6 +762,8 @@ export function ServerEventChat({ eventId, eventTitle, userId, members, onClose 
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-500 hover:bg-white/[0.06] hover:text-ink-100" aria-label="Close event chat"><X size={14} /></button>
         </div>
       </div>
+
+      <SharedListening roomType="event" roomId={eventId} />
 
       {polls.length > 0 ? <div className="border-b border-white/[0.07] bg-primary-500/[0.035] p-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
