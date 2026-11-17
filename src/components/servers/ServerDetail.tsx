@@ -41,6 +41,7 @@ import { CategoryRolePermissionsModal } from '@/components/servers/CategoryRoleP
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
 import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
 import { ServerSettings } from '@/components/servers/ServerSettings';
+import { ServerModerationDashboard } from '@/components/servers/ServerModerationDashboard';
 
 import { cn } from '@/lib/cn';
 
@@ -163,6 +164,7 @@ export function ServerDetail({
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [moderationOpen, setModerationOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
     useState<MemberWithProfile | null>(null);
 
@@ -171,6 +173,7 @@ export function ServerDetail({
   const hasCustomPermission = (permission: ServerPermission) =>
     Boolean(currentMember?.custom_roles?.some((role) => role.permissions?.[permission] === true));
   const canModerateMessages = ['owner', 'admin', 'moderator'].includes(server.my_role ?? '') || hasCustomPermission('moderate_messages');
+  const canReviewReports = ['owner', 'admin', 'moderator'].includes(server.my_role ?? '');
   const canManageChannelsPermission = isAdminOrOwner || hasCustomPermission('manage_channels');
   const filteredEvents = useMemo(() => {
     const query = eventSearch.trim().toLocaleLowerCase();
@@ -596,6 +599,16 @@ export function ServerDetail({
     }
   }
 
+  if (moderationOpen && canReviewReports && !loading) {
+    return (
+      <ServerModerationDashboard
+        server={server}
+        members={members}
+        onClose={() => setModerationOpen(false)}
+      />
+    );
+  }
+
   if (settingsOpen && isAdminOrOwner && !loading) {
     return (
       <ServerSettings
@@ -700,6 +713,17 @@ export function ServerDetail({
                 <CalendarDays size={14} />
                 Server events
               </button>
+
+              {canReviewReports && (
+                <button
+                  type="button"
+                  onClick={() => setModerationOpen(true)}
+                  className="mt-2 flex w-full items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-2.5 py-2 text-left text-xs font-semibold text-amber-200 transition hover:border-amber-400/40 hover:bg-amber-400/[0.12]"
+                >
+                  <Shield size={14} />
+                  Moderation
+                </button>
+              )}
 
               {isAdminOrOwner && (
                 <button
