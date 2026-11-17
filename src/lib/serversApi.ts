@@ -263,7 +263,7 @@ export interface UpdateChannelInput {
   category: string;
   is_restricted: boolean;
   slowmode_seconds: number;
-  channel_type: 'text' | 'announcement';
+  channel_type?: 'text' | 'announcement';
 }
 
 export async function updateChannel(
@@ -285,7 +285,7 @@ export async function updateChannel(
 
   const { data, error } = await supabase
     .from('channels')
-    .update({ name, topic, category, channel_type: input.channel_type, is_restricted: input.is_restricted, slowmode_seconds: input.slowmode_seconds })
+    .update({ name, topic, category, channel_type: input.channel_type ?? 'text', is_restricted: input.is_restricted, slowmode_seconds: input.slowmode_seconds })
     .eq('id', channelId)
     .select('*')
     .single();
