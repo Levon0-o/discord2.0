@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Headphones, Mic, MicOff, PhoneOff, Users, X } from 'lucide-react';
+import { Camera, CameraOff, Headphones, Mic, MicOff, MonitorUp, PhoneOff, Users, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
 import type { MemberWithProfile } from '@/types/servers';
@@ -26,10 +26,16 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
   const [participants, setParticipants] = useState<string[]>([]);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [error, setError] = useState('');
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [sharingScreen, setSharingScreen] = useState(false);
+  const [localPreviewStream, setLocalPreviewStream] = useState<MediaStream | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const joinedRef = useRef(false);
 
   useEffect(() => {
@@ -38,6 +44,8 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
       peersRef.current.forEach((peer) => peer.close());
       peersRef.current.clear();
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
       if (channelRef.current) void supabase.removeChannel(channelRef.current);
     };
   }, []);
@@ -68,19 +76,24 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
         });
         peersRef.current.set(peerId, peer);
-        stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+        stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream));
+        const videoTransceiver = peer.addTransceiver('video', { direction: 'sendrecv' });
+        videoSendersRef.current.set(peerId, videoTransceiver.sender);
+        const activeVideoTrack = screenStreamRef.current?.getVideoTracks()[0] ?? cameraStreamRef.current?.getVideoTracks()[0];
+        if (activeVideoTrack) void videoTransceiver.sender.replaceTrack(activeVideoTrack);
         peer.onicecandidate = (event) => {
           if (event.candidate) void sendSignal('ice', { from: userId, to: peerId, candidate: event.candidate.toJSON() });
         };
         peer.ontrack = (event) => {
-          const remote = event.streams[0];
-          if (remote) setRemoteStreams((current) => ({ ...current, [peerId]: remote }));
+          const remote = event.streams[0] ?? new MediaStream([event.track]);
+          setRemoteStreams((current) => ({ ...current, [peerId]: remote }));
         };
         peer.onconnectionstatechange = () => {
           if (peer.connectionState === 'failed' || peer.connectionState === 'closed' || peer.connectionState === 'disconnected') {
             if (peer.connectionState !== 'disconnected') {
               peer.close();
               peersRef.current.delete(peerId);
+              videoSendersRef.current.delete(peerId);
               setRemoteStreams((current) => {
                 const next = { ...current };
                 delete next[peerId];
@@ -159,6 +172,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
             if (!ids.includes(peerId)) {
               peersRef.current.get(peerId)?.close();
               peersRef.current.delete(peerId);
+              videoSendersRef.current.delete(peerId);
               setRemoteStreams((current) => {
                 const next = { ...current };
                 delete next[peerId];
@@ -205,9 +219,17 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
     joinedRef.current = false;
     peersRef.current.forEach((peer) => peer.close());
     peersRef.current.clear();
+    videoSendersRef.current.clear();
     pendingIceRef.current.clear();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setLocalPreviewStream(null);
+    setCameraEnabled(false);
+    setSharingScreen(false);
     if (channelRef.current) {
       await supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -222,6 +244,65 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
     const next = !muted;
     localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next; });
     setMuted(next);
+  }
+
+  async function toggleCamera() {
+    if (!joinedRef.current) return;
+    const senders = [...videoSendersRef.current.values()];
+    if (cameraEnabled) {
+      await Promise.all(senders.map((sender) => sender.replaceTrack(null)));
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+      setLocalPreviewStream(null);
+      setCameraEnabled(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } }, audio: false });
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error('No camera was found.');
+      await Promise.all(senders.map((sender) => sender.replaceTrack(track)));
+      cameraStreamRef.current?.getTracks().forEach((item) => item.stop());
+      cameraStreamRef.current = stream;
+      setLocalPreviewStream(stream);
+      setCameraEnabled(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not access the camera.');
+    }
+  }
+
+  async function toggleScreenShare() {
+    if (!joinedRef.current) return;
+    const senders = [...videoSendersRef.current.values()];
+    if (sharingScreen) {
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+      const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
+      await Promise.all(senders.map((sender) => sender.replaceTrack(cameraTrack)));
+      setSharingScreen(false);
+      setLocalPreviewStream(cameraStreamRef.current);
+      return;
+    }
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen sharing is not supported by this browser.');
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false });
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error('No screen source was selected.');
+      await Promise.all(senders.map((sender) => sender.replaceTrack(track)));
+      screenStreamRef.current = stream;
+      setLocalPreviewStream(stream);
+      setSharingScreen(true);
+      track.onended = () => { void (async () => {
+        const cameraTrack = cameraStreamRef.current?.getVideoTracks()[0] ?? null;
+        await Promise.all([...videoSendersRef.current.values()].map((sender) => sender.replaceTrack(cameraTrack)));
+        screenStreamRef.current?.getTracks().forEach((item) => item.stop());
+        screenStreamRef.current = null;
+        setSharingScreen(false);
+        setLocalPreviewStream(cameraStreamRef.current);
+      })(); };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not share your screen.');
+    }
   }
 
   return (
@@ -251,11 +332,16 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
             })}
           </div>
         ) : <p className="text-center text-xs text-ink-500">Join to talk with other server members. Your microphone is requested only after you press Join.</p>}
-        {Object.entries(remoteStreams).map(([id, remoteStream]) => <audio key={id} autoPlay ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} />)}
+        {joined ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {localPreviewStream ? <video autoPlay muted playsInline ref={(element) => { if (element && element.srcObject !== localPreviewStream) element.srcObject = localPreviewStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" /> : null}
+          {Object.entries(remoteStreams).map(([id, remoteStream]) => <video key={id} autoPlay playsInline ref={(element) => { if (element && element.srcObject !== remoteStream) element.srcObject = remoteStream; }} className="aspect-video w-full rounded-lg bg-black object-cover" />)}
+        </div> : null}
         {error ? <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-[10px] text-red-300">{error}</p> : null}
         <div className="flex justify-center gap-2">
           {!joined ? <button type="button" onClick={() => void joinRoom()} disabled={connecting} className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-50"><Headphones size={14} />{connecting ? 'Connecting…' : 'Join voice'}</button> : <>
             <button type="button" onClick={toggleMute} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-ink-200 hover:bg-white/[0.06]">{muted ? <MicOff size={14} /> : <Mic size={14} />}{muted ? 'Unmute' : 'Mute'}</button>
+            <button type="button" onClick={() => void toggleCamera()} disabled={sharingScreen} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-ink-200 hover:bg-white/[0.06] disabled:opacity-40">{cameraEnabled ? <CameraOff size={14} /> : <Camera size={14} />}{cameraEnabled ? 'Camera off' : 'Camera on'}</button>
+            <button type="button" onClick={() => void toggleScreenShare()} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-ink-200 hover:bg-white/[0.06]"><MonitorUp size={14} />{sharingScreen ? 'Stop sharing' : 'Share screen'}</button>
             <button type="button" onClick={() => void leaveRoom()} className="inline-flex items-center gap-2 rounded-lg bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/25"><PhoneOff size={14} />Leave</button>
           </>}
         </div>
