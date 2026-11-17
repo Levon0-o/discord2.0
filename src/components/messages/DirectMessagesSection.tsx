@@ -17,6 +17,7 @@ import {
   Image as ImageIcon,
   Pin,
   Headphones,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -27,6 +28,7 @@ import { PublicProfileModal } from '@/components/messages/PublicProfileModal';
 import { LongPressContextMenu } from '@/components/shared/LongPressContextMenu';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
 import { SharedListening } from '@/components/shared/SharedListening';
+import { GroupConversationModal } from '@/components/messages/GroupConversationModal';
 import {
   fetchMyConversations,
   fetchConversationMembers,
@@ -191,6 +193,7 @@ export function DirectMessagesSection({
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'reconnecting'>('connecting');
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [groupModalMode, setGroupModalMode] = useState<'create' | 'manage' | null>(null);
   const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -389,11 +392,9 @@ export function DirectMessagesSection({
     ? profiles[otherMember.user_id]
     : undefined;
 
-  const displayName =
-    otherProfile?.display_name ||
-    otherProfile?.username ||
-    activeConversation?.title ||
-    'Unknown user';
+  const displayName = activeConversation?.kind === 'group'
+    ? activeConversation.title || 'Group conversation'
+    : otherProfile?.display_name || otherProfile?.username || 'Unknown user';
 
   function membersForConversation(conversationId: string) {
     return members.filter(
@@ -1075,14 +1076,22 @@ export function DirectMessagesSection({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setFriendsOpen(true)}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary-500/15 px-4 py-3 text-sm font-semibold text-primary-200 transition hover:bg-primary-500/25"
-          >
-            <Users size={18} />
-            Find friends
-          </button>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setFriendsOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-xl bg-primary-500/15 px-3 py-3 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/25"
+            >
+              <Users size={16} /> Find friends
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupModalMode('create')}
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-xs font-semibold text-ink-200 transition hover:border-primary-400/30 hover:bg-primary-500/10 hover:text-primary-200"
+            >
+              <Users size={16} /> New group
+            </button>
+          </div>
         </div>
 
         <div className="p-4">
@@ -1118,11 +1127,9 @@ export function DirectMessagesSection({
               ? profiles[participant.user_id]
               : undefined;
 
-            const name =
-              profile?.display_name ||
-              profile?.username ||
-              conversation.title ||
-              'Unknown user';
+            const name = conversation.kind === 'group'
+              ? conversation.title || 'Group conversation'
+              : profile?.display_name || profile?.username || 'Unknown user';
 
             const selected = activeId === conversation.id;
             const lastMessage = lastMessages[conversation.id];
@@ -1234,15 +1241,9 @@ export function DirectMessagesSection({
               </button>
 
               <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/20 text-base font-bold text-primary-200">
-                {otherProfile?.avatar_url ? (
-                  <img
-                    src={otherProfile.avatar_url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  displayName.slice(0, 1).toUpperCase()
-                )}
+                {activeConversation.kind === 'group' ? <Users size={20} /> : otherProfile?.avatar_url ? (
+                  <img src={otherProfile.avatar_url} alt="" className="h-full w-full object-cover" />
+                ) : displayName.slice(0, 1).toUpperCase()}
               </div>
 
               <div className="min-w-0 flex-1">
@@ -1267,9 +1268,14 @@ export function DirectMessagesSection({
                     <Headphones size={17} />
                   </button>
                 ) : null}
+                {activeConversation.kind === 'group' && (
+                  <button type="button" onClick={() => setGroupModalMode('manage')} title="Group settings" aria-label="Group settings" className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 text-ink-400 transition hover:border-primary-400/40 hover:bg-primary-500/10 hover:text-primary-200">
+                    <Settings size={17} />
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setShowPinnedMessages((value) => !value)}
+                  onClick={() => setShowPinnedMessages((value) => !value)
                   className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs transition ${showPinnedMessages ? 'border-primary-400/40 bg-primary-500/15 text-primary-200' : 'border-white/10 text-ink-400 hover:bg-white/[0.05] hover:text-ink-100'}`}
                   aria-expanded={showPinnedMessages}
                 >
@@ -1925,6 +1931,31 @@ Images and files up to 15 MB · JPG, PNG, GIF, WEBP, PDF, TXT, CSV
         <FriendsPanel
           onClose={() => setFriendsOpen(false)}
           onMessage={handleMessageFriend}
+        />
+      )}
+
+      {groupModalMode && (
+        <GroupConversationModal
+          mode={groupModalMode}
+          conversation={groupModalMode === 'manage' ? activeConversation : undefined}
+          members={groupModalMode === 'manage' ? activeMembers : []}
+          profiles={profiles}
+          currentUserId={userId}
+          onClose={() => setGroupModalMode(null)}
+          onCreated={async (conversationId) => {
+            setGroupModalMode(null);
+            await loadConversations();
+            setActiveId(conversationId);
+            setMobileChatOpen(true);
+          }}
+          onUpdated={() => { void loadConversations(true); }}
+          onLeft={async () => {
+            setGroupModalMode(null);
+            setShowGroupVoiceRoom(false);
+            setMobileChatOpen(false);
+            setActiveId('');
+            await loadConversations();
+          }}
         />
       )}
     </div>
