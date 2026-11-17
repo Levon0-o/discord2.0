@@ -214,3 +214,55 @@ revoke all on function public.update_social_poll(uuid, text, text[], timestamptz
 grant execute on function public.update_social_poll(uuid, text, text[], timestamptz) to authenticated;
 revoke all on function public.update_channel_poll(uuid, text, text[], boolean, timestamptz) from public, anon;
 grant execute on function public.update_channel_poll(uuid, text, text[], boolean, timestamptz) to authenticated;
+
+-- Event-chat polls use a separate voting RPC; apply the same single-choice lock.
+create or replace function public.cast_server_event_chat_poll_vote(
+  p_poll_id uuid, p_option_id text, p_selected boolean default true
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_poll public.server_event_chat_polls%rowtype;
+  v_server_id uuid;
+begin
+  if v_user_id is null then raise exception 'You must be logged in.'; end if;
+  select * into v_poll from public.server_event_chat_polls where id = p_poll_id for update;
+  if not found then raise exception 'Poll not found.'; end if;
+  select e.server_id into v_server_id from public.server_events e where e.id = v_poll.event_id;
+  if not exists (
+    select 1 from public.server_members sm
+    where sm.server_id = v_server_id and sm.user_id = v_user_id
+  ) then raise exception 'Poll is not accessible.'; end if;
+  if v_poll.closed_at is not null or (v_poll.expires_at is not null and v_poll.expires_at <= now()) then
+    raise exception 'This poll is closed.';
+  end if;
+  if not exists (
+    select 1 from jsonb_array_elements(v_poll.options) o where o->>'id' = p_option_id
+  ) then raise exception 'Invalid poll option.'; end if;
+
+  if not v_poll.allow_multiple and exists (
+    select 1 from public.server_event_chat_poll_votes
+    where poll_id = p_poll_id and user_id = v_user_id
+  ) then raise exception 'You have already voted in this poll.'; end if;
+
+  if not coalesce(p_selected, true) then
+    if not v_poll.allow_multiple then
+      raise exception 'You cannot remove or change a single-choice vote.';
+    end if;
+    delete from public.server_event_chat_poll_votes
+    where poll_id = p_poll_id and option_id = p_option_id and user_id = v_user_id;
+    return;
+  end if;
+
+  insert into public.server_event_chat_poll_votes(poll_id, option_id, user_id)
+  values (p_poll_id, p_option_id, v_user_id)
+  on conflict (poll_id, option_id, user_id) do nothing;
+end;
+$$;
+
+revoke all on function public.cast_server_event_chat_poll_vote(uuid, text, boolean) from public, anon;
+grant execute on function public.cast_server_event_chat_poll_vote(uuid, text, boolean) to authenticated;
