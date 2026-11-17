@@ -319,7 +319,12 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         }
       })
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    // Vote rows are private under RLS, so other members' changes may not be broadcast to this client.
+    const pollRefreshInterval = window.setInterval(() => { void refreshPolls(); }, 15000);
+    return () => {
+      window.clearInterval(pollRefreshInterval);
+      void supabase.removeChannel(channel);
+    };
   }, [channelId, userId, activeThreadRoot?.id, refreshPolls, refreshAnnouncements]);
 
   useEffect(() => {
