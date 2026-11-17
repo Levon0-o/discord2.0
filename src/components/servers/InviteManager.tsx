@@ -12,6 +12,7 @@ interface InviteManagerProps {
   serverId: string;
   serverName: string;
   onClose: () => void;
+  embedded?: boolean;
 }
 
 function formatExpiry(value: string | null): string {
@@ -19,7 +20,7 @@ function formatExpiry(value: string | null): string {
   return new Date(value).toLocaleString();
 }
 
-export function InviteManager({ serverId, serverName, onClose }: InviteManagerProps) {
+export function InviteManager({ serverId, serverName, onClose, embedded = false }: InviteManagerProps) {
   const { session } = useAuth();
   const userId = session?.user?.id ?? '';
   const [invitations, setInvitations] = useState<ServerInvitation[]>([]);
@@ -97,8 +98,8 @@ export function InviteManager({ serverId, serverName, onClose }: InviteManagerPr
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <section role="dialog" aria-modal="true" aria-labelledby="invite-manager-title" className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl">
+    <div className={embedded ? "w-full" : "fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"}>
+      <section role="dialog" aria-modal={!embedded} aria-labelledby="invite-manager-title" className={embedded ? "flex w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950" : "flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl"}>
         <header className="flex items-center justify-between border-b border-white/[0.07] p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500/15 text-primary-200"><Link2 size={18} /></div>
