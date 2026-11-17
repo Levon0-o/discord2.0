@@ -29,7 +29,7 @@ AFTERDARK is a dark, blue-accented social and community platform built with Reac
 ### Messaging
 - Direct conversations, friends and friend requests.
 - Group direct-message creation with friend selection, optional group names, member management, creator-controlled invites/removals, member leave flow and creator handoff when the creator leaves.
-- Group DM lifecycle is protected by SECURITY DEFINER RPCs; direct client inserts into conversations/members are revoked and group membership changes refresh the recipient's conversation list through Realtime.
+- Group DM lifecycle is protected by SECURITY DEFINER RPCs; ordinary members cannot add participants, group invites are limited to accepted friends, and membership/title changes refresh conversations through Realtime.
 - Spotify and YouTube link embeds in direct messages, server channels and event chats, with click-to-load playback.
 - Shared Listening rooms in DMs, server channels and event chats, with a persistent realtime queue and synchronized current-item selection.
 - Message attachments, edits, deletes, reactions, pins and read receipts.
