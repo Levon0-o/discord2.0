@@ -454,7 +454,12 @@ export function DirectMessagesSection({
     : undefined;
 
   const displayName = activeConversation?.kind === 'group'
-    ? activeConversation.title || 'Group conversation'
+    ? activeConversation.title || activeMembers
+        .filter((member) => member.user_id !== userId)
+        .map((member) => profiles[member.user_id]?.display_name || profiles[member.user_id]?.username)
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(', ') || 'Group conversation'
     : otherProfile?.display_name || otherProfile?.username || 'Unknown user';
 
   function membersForConversation(conversationId: string) {
@@ -1187,7 +1192,12 @@ export function DirectMessagesSection({
               : undefined;
 
             const name = conversation.kind === 'group'
-              ? conversation.title || 'Group conversation'
+              ? conversation.title || conversationMembers
+                  .filter((member) => member.user_id !== userId)
+                  .map((member) => profiles[member.user_id]?.display_name || profiles[member.user_id]?.username)
+                  .filter(Boolean)
+                  .slice(0, 3)
+                  .join(', ') || 'Group conversation'
               : profile?.display_name || profile?.username || 'Unknown user';
 
             const selected = activeId === conversation.id;
@@ -1195,7 +1205,9 @@ export function DirectMessagesSection({
             const unreadCount = unreadCounts[conversation.id] ?? 0;
 
             const preview = lastMessage
-              ? `${lastMessage.author_id === userId ? 'You: ' : ''}${lastMessage.body}`
+              ? `${conversation.kind === 'group' && lastMessage.author_id !== userId
+                  ? (profiles[lastMessage.author_id]?.display_name || profiles[lastMessage.author_id]?.username || 'Member') + ': '
+                  : lastMessage.author_id === userId ? 'You: ' : ''}${lastMessage.body}`
               : 'No messages yet';
 
             return (
