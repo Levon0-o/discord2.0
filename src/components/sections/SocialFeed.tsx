@@ -442,7 +442,7 @@ export function SocialFeed() {
             <button type="button" onClick={() => setPollOptions((current) => current.length < 6 ? [...current, ''] : current)} disabled={pollOptions.length >= 6} className="text-xs font-semibold text-primary-200 hover:text-primary-100 disabled:opacity-40">+ Add option</button>
             <button type="button" onClick={() => void createPoll()} disabled={pollBusy || !pollQuestion.trim() || pollOptions.filter((option) => option.trim()).length < 2} className="rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-40">{pollBusy ? 'Saving…' : editingPollId ? 'Save changes' : 'Publish poll'}</button>
           </div>
-          <p className="text-[11px] text-ink-500">2–6 options. You can change your vote later.</p>
+          <p className="text-[11px] text-ink-500">2–6 options. Voting rules and duration are fixed when the poll is published.</p>
         </div>}
       </div>
 
