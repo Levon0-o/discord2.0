@@ -63,7 +63,8 @@ as $$
                    and not m.voted_by_me
                    and m.closed_at is null
                    and (m.expires_at is null or m.expires_at > now())
-              then 0 else m.total_votes end
+              then 0 else m.total_votes end,
+         m.total_votes > 0
   from merged m;
 $$;
 
