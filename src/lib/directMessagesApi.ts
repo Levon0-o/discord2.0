@@ -418,3 +418,72 @@ export async function removeMessageReaction(
 
   if (error) throw error;
 }
+
+
+export async function createGroupConversation(
+  memberIds: string[],
+  title: string,
+): Promise<string> {
+  const uniqueMemberIds = [...new Set(memberIds)];
+  if (uniqueMemberIds.length < 2) {
+    throw new Error('Select at least two friends to create a group.');
+  }
+  const cleanTitle = title.trim();
+  if (cleanTitle.length > 80) {
+    throw new Error('Group names must be 80 characters or fewer.');
+  }
+
+  const { data, error } = await supabase.rpc('create_group_conversation', {
+    p_member_ids: uniqueMemberIds,
+    p_title: cleanTitle || null,
+  });
+  if (error) throw error;
+  if (!data) throw new Error('Could not create the group conversation.');
+  return data as string;
+}
+
+export async function renameGroupConversation(
+  conversationId: string,
+  title: string,
+): Promise<void> {
+  const cleanTitle = title.trim();
+  if (!cleanTitle || cleanTitle.length > 80) {
+    throw new Error('Group names must contain 1–80 characters.');
+  }
+  const { error } = await supabase.rpc('rename_group_conversation', {
+    p_conversation_id: conversationId,
+    p_title: cleanTitle,
+  });
+  if (error) throw error;
+}
+
+export async function addGroupConversationMember(
+  conversationId: string,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('add_group_conversation_member', {
+    p_conversation_id: conversationId,
+    p_user_id: userId,
+  });
+  if (error) throw error;
+}
+
+export async function removeGroupConversationMember(
+  conversationId: string,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('remove_group_conversation_member', {
+    p_conversation_id: conversationId,
+    p_user_id: userId,
+  });
+  if (error) throw error;
+}
+
+export async function leaveGroupConversation(
+  conversationId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('leave_group_conversation', {
+    p_conversation_id: conversationId,
+  });
+  if (error) throw error;
+}
