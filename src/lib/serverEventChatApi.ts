@@ -306,6 +306,24 @@ export interface ServerEventChatReport {
   created_at: string;
 }
 
+export async function fetchServerEventChatReportsForServer(serverId: string): Promise<ServerEventChatReport[]> {
+  const { data: events, error: eventsError } = await supabase
+    .from('server_events')
+    .select('id')
+    .eq('server_id', serverId);
+  if (eventsError) throw eventsError;
+  const eventIds = (events ?? []).map((event) => event.id as string);
+  if (eventIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('server_event_chat_reports')
+    .select('id, event_id, message_id, reporter_id, reported_user_id, reason, details, message_body, status, reviewed_by, reviewed_at, created_at')
+    .in('event_id', eventIds)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as ServerEventChatReport[];
+}
+
 export async function fetchServerEventChatReports(eventId: string): Promise<ServerEventChatReport[]> {
   const { data, error } = await supabase
     .from('server_event_chat_reports')
