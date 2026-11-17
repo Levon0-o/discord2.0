@@ -441,3 +441,12 @@ export async function deleteChannelCategory(serverId: string, name: string) {
   const { error } = await supabase.from('server_channel_categories').delete().eq('server_id', serverId).eq('name', name);
   if (error) throw error;
 }
+
+
+export async function reorderChannelCategory(categoryId: string, position: number) {
+  const { error } = await supabase
+    .from('server_channel_categories')
+    .update({ position })
+    .eq('id', categoryId);
+  if (error) throw error;
+}
