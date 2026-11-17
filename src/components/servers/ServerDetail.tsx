@@ -35,7 +35,7 @@ import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 import { ServerEventChat } from '@/components/servers/ServerEventChat';
 import { ServerEventVoiceRoom } from '@/components/servers/ServerEventVoiceRoom';
-import { InviteManager } from '@/components/servers/InviteManager';
+import { ServerSettings } from '@/components/servers/ServerSettings';
 
 import { cn } from '@/lib/cn';
 
@@ -65,6 +65,7 @@ interface ServerDetailProps {
   userId: string;
   onBack: () => void;
   onLeft: () => void;
+  onServerUpdated: (server: ServerWithMeta) => void;
 }
 
 const ROLE_ORDER: Record<string, number> = {
@@ -88,6 +89,7 @@ export function ServerDetail({
   userId,
   onBack,
   onLeft,
+  onServerUpdated,
 }: ServerDetailProps) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -142,7 +144,7 @@ export function ServerDetail({
   });
 
   const [rolesOpen, setRolesOpen] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedMember, setSelectedMember] =
     useState<MemberWithProfile | null>(null);
 
@@ -506,6 +508,26 @@ export function ServerDetail({
     }
   }
 
+  if (settingsOpen && isAdminOrOwner && !loading) {
+    return (
+      <ServerSettings
+        server={server}
+        members={members}
+        channels={channels}
+        onClose={() => setSettingsOpen(false)}
+        onServerUpdated={onServerUpdated}
+        onChannelsChanged={(rows) => {
+          setChannels(rows);
+          setActiveChannelId((current) => current && rows.some((channel) => channel.id === current) ? current : rows[0]?.id ?? null);
+        }}
+        onSelectChannel={(channelId) => {
+          setActiveChannelId(channelId);
+          setSettingsOpen(false);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {error && (
@@ -591,28 +613,14 @@ export function ServerDetail({
                 Server events
               </button>
 
-              {canManageInvites && (
+              {isAdminOrOwner && (
                 <button
                   type="button"
-                  onClick={() => setInviteOpen(true)}
-                  className="mt-2 flex w-full items-center gap-2 rounded-lg border border-white/[0.07] px-2.5 py-2 text-left text-xs text-ink-300 transition hover:border-primary-400/30 hover:bg-primary-500/[0.07] hover:text-primary-200"
-                >
-                  <Link2 size={14} />
-                  Invite people
-                </button>
-              )}
-
-              {canManageRoles && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMember(null);
-                    setRolesOpen(true);
-                  }}
-                  className="mt-3 flex w-full items-center gap-2 rounded-lg border border-white/[0.07] px-2.5 py-2 text-left text-xs text-ink-300 transition hover:border-primary-400/30 hover:bg-primary-500/[0.07] hover:text-primary-200"
+                  onClick={() => setSettingsOpen(true)}
+                  className="mt-2 flex w-full items-center gap-2 rounded-lg border border-primary-400/20 bg-primary-500/[0.07] px-2.5 py-2 text-left text-xs font-semibold text-primary-200 transition hover:border-primary-400/40 hover:bg-primary-500/[0.13]"
                 >
                   <Settings2 size={14} />
-                  Manage roles
+                  Server Settings
                 </button>
               )}
             </div>
@@ -1150,7 +1158,6 @@ export function ServerDetail({
         </div>
       )}
 
-      {inviteOpen ? <InviteManager serverId={server.id} serverName={server.name} onClose={() => setInviteOpen(false)} /> : null}
 
       {canManageChannelsPermission && (
         <CreateChannelModal
