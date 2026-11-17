@@ -509,7 +509,7 @@ export function SocialFeed() {
                 {polls[post.id] && <div className="mx-4 mb-3 rounded-xl border border-white/[0.08] bg-ink-950/45 p-3 sm:mx-5 sm:p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2"><p className="text-xs font-semibold uppercase tracking-wider text-primary-200">Poll</p>{polls[post.id].is_anonymous && <span className="text-[10px] text-ink-500">Anonymous</span>}{post.author_id === userId && polls[post.id].total_votes === 0 && !(polls[post.id].ends_at && new Date(polls[post.id].ends_at).getTime() <= Date.now()) && <button type="button" onClick={() => { setEditingPollId(polls[post.id].id); setPollQuestion(post.body); setPollOptions(polls[post.id].options.map((option) => option.label)); setPollAllowMultiple(polls[post.id].allow_multiple); setPollExpiresIn(polls[post.id].ends_at ? 'custom' : 'never'); setPollCustomEnd(polls[post.id].ends_at ? new Date(new Date(polls[post.id].ends_at).getTime() - new Date(polls[post.id].ends_at).getTimezoneOffset() * 60000).toISOString().slice(0,16) : ''); setPollAnonymous(polls[post.id].is_anonymous); setPollResultsVisibility(polls[post.id].results_visibility); setShowPollComposer(true); }} className="rounded-md px-2 py-1 text-[10px] font-semibold text-primary-300 hover:bg-primary-500/10">Edit</button>}</div>
-                    <span className="text-[11px] text-ink-500">{polls[post.id].votes.length} {polls[post.id].total_votes === 1 ? 'vote' : 'votes'}</span>
+                    <span className="text-[11px] text-ink-500">{polls[post.id].total_votes} {polls[post.id].total_votes === 1 ? 'vote' : 'votes'}</span>
                   </div>
                   <div className="space-y-2">
                     {polls[post.id].options.map((option) => {
@@ -526,7 +526,7 @@ export function SocialFeed() {
                       </button>;
                     })}
                   </div>
-                  <p className="mt-2 text-[11px] text-ink-500">{polls[post.id].ends_at && new Date(polls[post.id].ends_at).getTime() <= Date.now() ? 'Poll closed' : userId && polls[post.id].votes.some((vote) => vote.user_id === userId) ? (polls[post.id].allow_multiple ? 'You can select or remove multiple choices.' : 'Your vote is recorded and locked.') : (polls[post.id].allow_multiple ? 'Select any options that apply.' : 'One vote per user.')}</p>
+                  <p className="mt-2 text-[11px] text-ink-500">{polls[post.id].ends_at && new Date(polls[post.id].ends_at).getTime() <= Date.now() ? 'Poll closed' : userId && polls[post.id].votes.some((vote) => vote.user_id === userId) ? (polls[post.id].allow_multiple ? 'You can select or remove multiple choices.' : 'Your vote is recorded and locked.') : (polls[post.id].results_visibility === 'after_vote' ? 'Vote to reveal the results.' : polls[post.id].allow_multiple ? 'Select any options that apply.' : 'One vote per user.')}</p>
                 </div>}
                 <div className="px-4 pb-2 sm:px-5"><SocialReactionBar entityType="post" entityId={post.id} /></div>
                 <div className="flex items-center gap-2 border-t border-white/[0.05] px-3 py-2 sm:px-4">
