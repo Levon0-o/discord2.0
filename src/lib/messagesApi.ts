@@ -383,6 +383,7 @@ export interface ChannelPoll {
   is_anonymous: boolean;
   results_visibility: 'always' | 'after_vote';
   total_votes: number;
+  has_votes: boolean;
   votes: ChannelPollVote[];
 }
 
@@ -405,7 +406,7 @@ export async function fetchChannelPolls(channelId: string): Promise<ChannelPoll[
   });
   if (resultError) throw resultError;
   const results = (resultRows ?? []) as Array<{
-    poll_id: string; option_id: string; vote_count: number; voted_by_me: boolean; total_votes: number;
+    poll_id: string; option_id: string; vote_count: number; voted_by_me: boolean; total_votes: number; has_votes: boolean;
   }>;
 
   return polls.map((poll) => {
@@ -414,12 +415,13 @@ export async function fetchChannelPolls(channelId: string): Promise<ChannelPoll[
       poll_id: poll.id, option_id: row.option_id, user_id: user.id,
     }));
     return {
-      ...(poll as Omit<ChannelPoll, 'votes' | 'options' | 'total_votes'>),
+      ...(poll as Omit<ChannelPoll, 'votes' | 'options' | 'total_votes' | 'has_votes'>),
       options: (Array.isArray(poll.options) ? poll.options : []).map((option: { id: string; label: string }) => {
         const result = pollResults.find((row) => row.option_id === option.id);
         return { ...option, vote_count: Number(result?.vote_count ?? 0), voted_by_me: Boolean(result?.voted_by_me) };
       }),
       total_votes: Number(pollResults[0]?.total_votes ?? 0),
+      has_votes: Boolean(pollResults[0]?.has_votes),
       votes: ownVotes,
     };
   });
