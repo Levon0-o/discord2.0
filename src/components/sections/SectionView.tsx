@@ -1,4 +1,5 @@
 import { Hammer } from 'lucide-react';
+import { GlobalEventsSection } from '@/components/sections/GlobalEventsSection';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Dashboard } from '@/components/sections/Dashboard';
 import { ServersSection } from '@/components/servers/ServersSection';
@@ -36,6 +37,10 @@ export function SectionView({
 
   if (section.id === 'explore') {
     return <ExploreSection />;
+  }
+
+  if (section.id === 'events') {
+    return <GlobalEventsSection />;
   }
 
   if (section.id === 'servers') {
