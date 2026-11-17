@@ -343,6 +343,27 @@ export function DirectMessagesSection({
     void loadConversations();
   }, [loadConversations]);
 
+  // Keep the conversation list in sync when a group is created, joined,
+  // or when the current user is removed/chooses to leave.
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel('dm-memberships:' + userId)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conversation_members',
+        filter: 'user_id=eq.' + userId,
+      }, () => {
+        void loadConversations(true);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId, loadConversations]);
+
   useEffect(() => {
     if (!initialConversationId || loading) return;
 
