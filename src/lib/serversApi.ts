@@ -215,6 +215,7 @@ export async function createChannel(input: CreateChannelInput): Promise<Channel>
       name,
       topic,
       category,
+      channel_type: input.channel_type ?? 'text',
       position,
       is_restricted,
     })
@@ -262,6 +263,7 @@ export interface UpdateChannelInput {
   category: string;
   is_restricted: boolean;
   slowmode_seconds: number;
+  channel_type: 'text' | 'announcement';
 }
 
 export async function updateChannel(
@@ -283,7 +285,7 @@ export async function updateChannel(
 
   const { data, error } = await supabase
     .from('channels')
-    .update({ name, topic, category, is_restricted: input.is_restricted, slowmode_seconds: input.slowmode_seconds })
+    .update({ name, topic, category, channel_type: input.channel_type, is_restricted: input.is_restricted, slowmode_seconds: input.slowmode_seconds })
     .eq('id', channelId)
     .select('*')
     .single();
@@ -326,6 +328,35 @@ export async function reorderChannel(
       .eq('server_id', serverId);
     if (updateError) throw updateError;
   }
+}
+
+export async function duplicateChannel(channel: Channel): Promise<Channel> {
+  const baseName = channel.name.slice(0, 44);
+  const { data: existing, error: readError } = await supabase
+    .from('channels')
+    .select('name')
+    .eq('server_id', channel.server_id)
+    .like('name', baseName + '-copy%');
+  if (readError) throw readError;
+  const names = new Set((existing ?? []).map((row) => row.name));
+  let name = baseName + '-copy';
+  let suffix = 2;
+  while (names.has(name)) {
+    const ending = '-copy-' + suffix++;
+    name = channel.name.slice(0, 50 - ending.length) + ending;
+  }
+  const { data, error } = await supabase.from('channels').insert({
+    server_id: channel.server_id,
+    name,
+    topic: channel.topic,
+    category: channel.category,
+    channel_type: channel.channel_type ?? 'text',
+    position: channel.position + 1,
+    is_restricted: channel.is_restricted,
+    slowmode_seconds: channel.slowmode_seconds ?? 0,
+  }).select('*').single();
+  if (error) throw error;
+  return data as Channel;
 }
 
 export async function deleteChannel(channelId: string): Promise<void> {
