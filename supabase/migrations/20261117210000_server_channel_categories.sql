@@ -27,7 +27,7 @@ USING (public.server_rank(server_id) >= 1);
 DROP POLICY IF EXISTS server_channel_categories_insert_admins ON public.server_channel_categories;
 CREATE POLICY server_channel_categories_insert_admins
 ON public.server_channel_categories FOR INSERT TO authenticated
-WITH CHECK (public.server_rank(server_id) >= 3);
+WITH CHECK (public.server_has_permission(server_id, 'manage_channels'));
 
 DROP POLICY IF EXISTS server_channel_categories_update_admins ON public.server_channel_categories;
 CREATE POLICY server_channel_categories_update_admins
@@ -38,7 +38,7 @@ WITH CHECK (public.server_rank(server_id) >= 3);
 DROP POLICY IF EXISTS server_channel_categories_delete_admins ON public.server_channel_categories;
 CREATE POLICY server_channel_categories_delete_admins
 ON public.server_channel_categories FOR DELETE TO authenticated
-USING (public.server_rank(server_id) >= 3);
+USING (public.server_has_permission(server_id, 'manage_channels'));
 
 INSERT INTO public.server_channel_categories (server_id, name, position)
 SELECT grouped.server_id, grouped.category, row_number() OVER (PARTITION BY grouped.server_id ORDER BY grouped.category) - 1
