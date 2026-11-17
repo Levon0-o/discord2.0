@@ -92,15 +92,10 @@ export async function setSharedListeningCurrentItem(
   roomId: string,
   itemId: string | null,
 ): Promise<SharedListeningRoom> {
-  const { data: authData, error: authError } = await supabase.auth.getUser();
-  if (authError) throw authError;
-  if (!authData.user) throw new Error('You must be logged in.');
-  const { data, error } = await supabase
-    .from('shared_listening_rooms')
-    .update({ current_item_id: itemId, updated_by: authData.user.id, updated_at: new Date().toISOString() })
-    .eq('id', roomId)
-    .select('*')
-    .single();
+  const { data, error } = await supabase.rpc('set_shared_listening_current_item', {
+    p_room_id: roomId,
+    p_item_id: itemId,
+  });
   if (error) throw error;
   return data as SharedListeningRoom;
 }
