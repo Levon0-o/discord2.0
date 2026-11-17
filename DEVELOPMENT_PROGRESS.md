@@ -80,6 +80,16 @@ The migration `supabase/migrations/20261117150000_complete_auto_roles.sql` must 
 - Collaborative Spotify/YouTube queue, realtime queue updates and shared current-item selection.
 - Each member loads the official provider embed locally; synchronized playback position, automatic play/pause and provider-account controls are not available in this implementation.
 
+## Video calls and screen sharing
+- Direct one-to-one WebRTC calls now include optional camera activation during a connected call.
+- Direct calls support browser screen/window sharing, local preview, remote video and restoration of the camera after sharing ends.
+- Existing server event voice rooms now support optional camera video and screen sharing for connected participants.
+- Video is negotiated as a WebRTC transceiver so camera and screen tracks can be switched without restarting the call.
+- Camera and screen permissions are requested only when the user activates those controls.
+- Current server-side implementation extends event voice rooms; dedicated always-available voice channels inside ordinary server channel lists are still future work.
+- The existing peer-to-peer mesh is suitable for small rooms only. Larger rooms will need an SFU/media server rather than one peer connection per participant.
+- This frontend work has not yet been build-tested or deployed; the Vercel daily deployment quota was previously reached.
+
 ## Media embeds
 - Recognizes supported Spotify track, album, playlist, episode and show links, plus YouTube videos, Shorts and live links.
 - Uses official provider embed players and click-to-load behavior; playback and account restrictions remain controlled by Spotify and YouTube.
