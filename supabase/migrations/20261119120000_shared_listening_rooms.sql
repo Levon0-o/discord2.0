@@ -16,7 +16,7 @@ create table if not exists public.shared_listening_queue (
   provider text not null check (provider in ('spotify', 'youtube')),
   external_url text not null check (
     char_length(external_url) between 12 and 2048
-    and external_url ~ '^https://(open\\.spotify\\.com/|youtu\\.be/|([a-z0-9-]+\\.)?youtube\\.com/|music\\.youtube\\.com/)'
+    and external_url ~ '^https://(open\.spotify\.com/|youtu\.be/|([a-z0-9-]+\.)?youtube\.com/|music\.youtube\.com/)'
   ),
   added_by uuid not null references public.profiles(id) on delete cascade default auth.uid(),
   created_at timestamptz not null default now()
