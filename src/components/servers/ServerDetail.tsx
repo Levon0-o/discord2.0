@@ -124,7 +124,7 @@ export function ServerDetail({
   const [editTopic, setEditTopic] = useState('');
   const [editCategory, setEditCategory] = useState('General');
   const [editRestricted, setEditRestricted] = useState(false);
-  const [editChannelType, setEditChannelType] = useState<'text' | 'announcement'>('text');
+  const [editChannelType, setEditChannelType] = useState<'text' | 'announcement' | 'voice'>('text');
   const [editSlowmode, setEditSlowmode] = useState(0);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
@@ -805,16 +805,10 @@ export function ServerDetail({
                             >
                               {channel.channel_type === 'announcement' ? (
                                 <Megaphone size={13} className={cn('shrink-0', active ? 'text-primary-300' : 'text-amber-300/70')} />
+                              ) : channel.channel_type === 'voice' ? (
+                                <Headphones size={13} className={cn('shrink-0', active ? 'text-primary-300' : 'text-emerald-300/70')} />
                               ) : (
-                                <Hash
-                                  size={13}
-                                  className={cn(
-                                    'shrink-0',
-                                    active
-                                      ? 'text-primary-300'
-                                      : 'text-ink-600',
-                                  )}
-                                />
+                                <Hash size={13} className={cn('shrink-0', active ? 'text-primary-300' : 'text-ink-600')} />
                               )}
 
                               <span className="min-w-0 flex-1 truncate">
@@ -866,6 +860,17 @@ export function ServerDetail({
                   void refreshMemberRoles();
                 }}
               />
+            ) : activeChannel?.channel_type === 'voice' ? (
+              <div className="h-full overflow-y-auto p-3 sm:p-5">
+                <ServerEventVoiceRoom
+                  eventId={activeChannel.id}
+                  eventTitle={activeChannel.name}
+                  userId={userId}
+                  members={members}
+                  roomType="channel"
+                  onClose={() => setActiveChannelId(null)}
+                />
+              </div>
             ) : activeChannel ? (
               <ChannelChat
                 channelId={activeChannel.id}
@@ -1239,8 +1244,8 @@ export function ServerDetail({
               <input value={editTopic} onChange={(event) => setEditTopic(event.target.value)} maxLength={200} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
             </label>
             <label className="block text-xs font-medium text-ink-300">Channel type
-              <select value={editChannelType} onChange={(event) => setEditChannelType(event.target.value as 'text' | 'announcement')} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60">
-                <option value="text">Text</option><option value="announcement">Announcement</option>
+              <select value={editChannelType} onChange={(event) => setEditChannelType(event.target.value as 'text' | 'announcement' | 'voice')} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60">
+                <option value="text">Text</option><option value="announcement">Announcement</option><option value="voice">Voice</option>
               </select>
             </label>
             <label className="block text-xs font-medium text-ink-300">Category
