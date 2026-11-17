@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, Hash, Link2, Search, Settings, Shield, Users, X, Plus, Pencil, Trash2, SlidersHorizontal, Lock, Megaphone, Server as ServerIconGlyph } from 'lucide-react';
+import { ArrowLeft, Hash, Link2, Search, Settings, Shield, Users, X, Plus, Pencil, Trash2, SlidersHorizontal, Lock, Megaphone, Server as ServerIconGlyph, Folder, FolderPlus } from 'lucide-react';
 import { ServerIcon } from '@/components/servers/ServerIcon';
 import { RoleManager } from '@/components/servers/RoleManager';
 import { MemberRoleManager } from '@/components/servers/MemberRoleManager';
@@ -8,10 +8,13 @@ import { InviteManager } from '@/components/servers/InviteManager';
 import { CreateChannelModal } from '@/components/servers/CreateChannelModal';
 import { ChannelPermissionsModal } from '@/components/servers/ChannelPermissionsModal';
 import { ChannelRolePermissionsModal } from '@/components/servers/ChannelRolePermissionsModal';
-import { fetchChannels, createChannel, updateChannel, deleteChannel, updateServer } from '@/lib/serversApi';
+import { CategoryPermissionsModal } from '@/components/servers/CategoryPermissionsModal';
+import { CategoryRolePermissionsModal } from '@/components/servers/CategoryRolePermissionsModal';
+import { fetchChannels, createChannel, updateChannel, deleteChannel, updateServer, fetchChannelCategories, createChannelCategory, renameChannelCategory, deleteChannelCategory } from '@/lib/serversApi';
 import type { Channel, CreateChannelInput, MemberWithProfile, ServerWithMeta } from '@/types/servers';
 
 type SettingsTab = 'overview' | 'members' | 'roles' | 'auto-roles' | 'channels' | 'invites';
+type ChannelCategory = { id: string; name: string; position: number };
 
 interface ServerSettingsProps {
   server: ServerWithMeta;
@@ -28,13 +31,19 @@ const NAV: { id: SettingsTab; label: string; icon: typeof Settings; group: strin
   { id: 'members', label: 'Members', icon: Users, group: 'SERVER' },
   { id: 'roles', label: 'Roles & Permissions', icon: Shield, group: 'ACCESS' },
   { id: 'auto-roles', label: 'Auto Roles', icon: SlidersHorizontal, group: 'ACCESS' },
-  { id: 'channels', label: 'Channels', icon: Hash, group: 'CONTENT' },
+  { id: 'channels', label: 'Channels & Categories', icon: Folder, group: 'CONTENT' },
   { id: 'invites', label: 'Invites', icon: Link2, group: 'CONTENT' },
 ];
 
 export function ServerSettings({ server, members, channels: initialChannels, onClose, onServerUpdated, onChannelsChanged, onSelectChannel }: ServerSettingsProps) {
   const [tab, setTab] = useState<SettingsTab>('overview');
   const [localChannels, setLocalChannels] = useState(initialChannels);
+  const [channelCategories, setChannelCategories] = useState<ChannelCategory[]>([]);
+  const [categoryName, setCategoryName] = useState('');
+  const [editingCategory, setEditingCategory] = useState<ChannelCategory | null>(null);
+  const [categoryBusy, setCategoryBusy] = useState(false);
+  const [categoryPermissions, setCategoryPermissions] = useState<ChannelCategory | null>(null);
+  const [categoryRolePermissions, setCategoryRolePermissions] = useState<ChannelCategory | null>(null);
   const [selectedMember, setSelectedMember] = useState<MemberWithProfile | null>(null);
   const [search, setSearch] = useState('');
   const [name, setName] = useState(server.name);
@@ -131,7 +140,30 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
     finally { setDeleteBusyId(null); }
   }
 
-  const categories = [...new Set(localChannels.map((channel) => channel.category))];
+  const categories = [...new Set([...channelCategories.map((category) => category.name), ...localChannels.map((channel) => channel.category)])];
+
+  async function saveCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (categoryBusy) return;
+    setCategoryBusy(true); setError(''); setNotice('');
+    try {
+      if (editingCategory) await renameChannelCategory(server.id, editingCategory.name, categoryName);
+      else await createChannelCategory(server.id, categoryName);
+      const [nextCategories, nextChannels] = await Promise.all([fetchChannelCategories(server.id), fetchChannels(server.id)]);
+      setChannelCategories(nextCategories as ChannelCategory[]); syncChannels(nextChannels); setEditingCategory(null); setCategoryName(''); setNotice(editingCategory ? 'Category renamed.' : 'Category created.');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save category.'); }
+    finally { setCategoryBusy(false); }
+  }
+
+  async function removeCategory(category: ChannelCategory) {
+    if (!window.confirm('Delete category “' + category.name + '”? Its channels will be moved to General.')) return;
+    setCategoryBusy(true); setError('');
+    try {
+      await deleteChannelCategory(server.id, category.name);
+      const [nextCategories, nextChannels] = await Promise.all([fetchChannelCategories(server.id), fetchChannels(server.id)]);
+      setChannelCategories(nextCategories as ChannelCategory[]); syncChannels(nextChannels); setNotice('Category deleted.');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not delete category.'); }
+    finally { setCategoryBusy(false); }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-ink-950">
@@ -191,8 +223,8 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
 
           {tab === 'channels' && (
             <section className="space-y-4">
-              <header className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-ink-50">Channels</h2><p className="mt-1 text-sm text-ink-400">Create, organize and configure your server channels.</p></div><button type="button" onClick={() => { setCreateError(''); setCreateOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-3 py-2.5 text-xs font-semibold text-white hover:bg-primary-400"><Plus size={14} />Create channel</button></header>
-              {categories.map((category) => <div key={category} className="space-y-2"><p className="px-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">{category}</p>{localChannels.filter((channel) => channel.category === category).map((channel) => <article key={channel.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.04] text-ink-400">{channel.is_restricted ? <Lock size={16} /> : channel.channel_type === 'announcement' ? <Megaphone size={16} /> : <Hash size={16} />}</div><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-ink-100">#{channel.name}</p><p className="mt-0.5 truncate text-xs text-ink-500">{channel.topic || 'No channel topic'} · {channel.channel_type === 'announcement' ? 'Announcement' : 'Text'} · Slowmode: {channel.slowmode_seconds || 'Off'}</p></div><button type="button" onClick={() => onSelectChannel(channel.id)} className="rounded-lg border border-white/[0.08] px-3 py-2 text-[10px] font-semibold text-ink-300 hover:bg-white/[0.05]">Open</button><button type="button" onClick={() => setPermissionsChannel(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Member permissions"><SlidersHorizontal size={15} /></button><button type="button" onClick={() => setRolePermissionsChannel(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Role permissions"><Shield size={15} /></button><button type="button" onClick={() => openEditor(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Edit channel"><Pencil size={15} /></button><button type="button" disabled={deleteBusyId === channel.id} onClick={() => void removeChannel(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-red-400/10 hover:text-red-300 disabled:opacity-50" title="Delete channel"><Trash2 size={15} /></button></article>)}</div>)}
+              <header className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-ink-50">Channels &amp; Categories</h2><p className="mt-1 text-sm text-ink-400">Manage channels, category structure and inherited permissions in one place.</p></div><button type="button" onClick={() => { setCreateError(''); setCreateOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-primary-500 px-3 py-2.5 text-xs font-semibold text-white hover:bg-primary-400"><Plus size={14} />Create channel</button></header>
+              <div className="space-y-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-bold text-ink-100">Categories</h3><p className="mt-0.5 text-xs text-ink-500">Organize channels and configure category-wide access.</p></div><button type="button" onClick={() => { setEditingCategory(null); setCategoryName(''); setError(''); }} className="inline-flex items-center gap-2 rounded-lg border border-primary-400/20 px-3 py-2 text-xs font-semibold text-primary-200 hover:bg-primary-500/10"><FolderPlus size={14}/>Add category</button></div>{channelCategories.map((category) => <div key={category.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-ink-950/60 p-3"><Folder size={16} className="text-primary-300"/><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-ink-100">{category.name}</p><p className="text-[11px] text-ink-500">{localChannels.filter((channel) => channel.category === category.name).length} channels</p></div><button type="button" onClick={() => setCategoryPermissions(category)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Member permissions"><Users size={15}/></button><button type="button" onClick={() => setCategoryRolePermissions(category)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Role permissions"><Shield size={15}/></button><button type="button" onClick={() => { setEditingCategory(category); setCategoryName(category.name); }} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Rename category"><Pencil size={15}/></button><button type="button" disabled={categoryBusy} onClick={() => void removeCategory(category)} className="rounded-lg p-2 text-ink-500 hover:bg-red-400/10 hover:text-red-300 disabled:opacity-50" title="Delete category"><Trash2 size={15}/></button></div>)}{channelCategories.length === 0 && <p className="rounded-lg border border-dashed border-white/10 p-4 text-center text-xs text-ink-500">No categories yet. Add one to organize your channels.</p>}</div>{editingCategory !== null || categoryName !== '' ? <form onSubmit={(event) => void saveCategory(event)} className="flex flex-wrap items-end gap-2 rounded-xl border border-primary-400/20 bg-primary-500/[0.04] p-3"><label className="min-w-[180px] flex-1 space-y-1 text-xs text-ink-400">{editingCategory ? 'Category name' : 'New category name'}<input autoFocus value={categoryName} onChange={(event) => setCategoryName(event.target.value)} required maxLength={40} placeholder="e.g. Community" className="w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100 outline-none focus:border-primary-400/50"/></label><button type="submit" disabled={categoryBusy} className="rounded-lg bg-primary-500 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">{categoryBusy ? 'Saving…' : editingCategory ? 'Save name' : 'Create category'}</button><button type="button" onClick={() => { setEditingCategory(null); setCategoryName(''); }} className="rounded-lg border border-white/10 px-3 py-2.5 text-xs text-ink-300">Cancel</button></form>}{categories.map((category) => <div key={category} className="space-y-2"><p className="px-1 text-[10px] font-bold uppercase tracking-widest text-ink-500">{category}</p>{localChannels.filter((channel) => channel.category === category).map((channel) => <article key={channel.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/[0.04] text-ink-400">{channel.is_restricted ? <Lock size={16} /> : channel.channel_type === 'announcement' ? <Megaphone size={16} /> : <Hash size={16} />}</div><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-ink-100">#{channel.name}</p><p className="mt-0.5 truncate text-xs text-ink-500">{channel.topic || 'No channel topic'} · {channel.channel_type === 'announcement' ? 'Announcement' : 'Text'} · Slowmode: {channel.slowmode_seconds || 'Off'}</p></div><button type="button" onClick={() => onSelectChannel(channel.id)} className="rounded-lg border border-white/[0.08] px-3 py-2 text-[10px] font-semibold text-ink-300 hover:bg-white/[0.05]">Open</button><button type="button" onClick={() => setPermissionsChannel(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Member permissions"><SlidersHorizontal size={15} /></button><button type="button" onClick={() => setRolePermissionsChannel(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Role permissions"><Shield size={15} /></button><button type="button" onClick={() => openEditor(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-white/[0.05] hover:text-primary-300" title="Edit channel"><Pencil size={15} /></button><button type="button" disabled={deleteBusyId === channel.id} onClick={() => void removeChannel(channel)} className="rounded-lg p-2 text-ink-500 hover:bg-red-400/10 hover:text-red-300 disabled:opacity-50" title="Delete channel"><Trash2 size={15} /></button></article>)}</div>)}
               {localChannels.length === 0 && <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-ink-500">No channels yet. Create your first channel.</div>}
             </section>
           )}
@@ -205,6 +237,8 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
       {editingChannel && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4"><form onSubmit={(event) => void saveChannel(event)} className="w-full max-w-md space-y-4 rounded-2xl border border-white/[0.08] bg-ink-900 p-5"><div><h3 className="text-lg font-semibold text-ink-50">Edit channel</h3><p className="mt-1 text-xs text-ink-500">Update channel details and behavior.</p></div><label className="block space-y-1 text-xs text-ink-400">Channel name<input value={editName} onChange={(event) => setEditName(event.target.value.toLowerCase())} required maxLength={50} className="mt-1 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100" /></label><label className="block space-y-1 text-xs text-ink-400">Topic<input value={editTopic} onChange={(event) => setEditTopic(event.target.value)} maxLength={200} className="mt-1 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100" /></label><label className="block space-y-1 text-xs text-ink-400">Channel type<select value={editChannelType} onChange={(event) => setEditChannelType(event.target.value as 'text' | 'announcement')} className="mt-1 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100"><option value="text">Text</option><option value="announcement">Announcement</option></select></label><label className="block space-y-1 text-xs text-ink-400">Category<input value={editCategory} onChange={(event) => setEditCategory(event.target.value)} required maxLength={40} className="mt-1 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100" /></label><label className="flex items-center gap-2 text-xs text-ink-300"><input type="checkbox" checked={editRestricted} onChange={(event) => setEditRestricted(event.target.checked)} />Restricted channel — hidden from regular members by default; custom roles can be granted access</label><label className="block space-y-1 text-xs text-ink-400">Slowmode<select value={editSlowmode} onChange={(event) => setEditSlowmode(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2.5 text-sm text-ink-100"><option value={0}>Off</option><option value={5}>5 seconds</option><option value={10}>10 seconds</option><option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={300}>5 minutes</option><option value={3600}>1 hour</option></select></label><div className="flex gap-2"><button type="button" onClick={() => setEditingChannel(null)} className="flex-1 rounded-lg border border-white/10 px-3 py-2 text-sm text-ink-300">Cancel</button><button type="submit" disabled={editBusy} className="flex-1 rounded-lg bg-primary-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{editBusy ? 'Saving…' : 'Save changes'}</button></div></form></div>}
       {permissionsChannel && <ChannelPermissionsModal channelId={permissionsChannel.id} channelName={permissionsChannel.name} members={members} onClose={() => setPermissionsChannel(null)} />}
       {rolePermissionsChannel && <ChannelRolePermissionsModal serverId={server.id} channelId={rolePermissionsChannel.id} channelName={rolePermissionsChannel.name} onClose={() => setRolePermissionsChannel(null)} />}
+      {categoryPermissions && <CategoryPermissionsModal categoryId={categoryPermissions.id} categoryName={categoryPermissions.name} members={members} onClose={() => setCategoryPermissions(null)} />}
+      {categoryRolePermissions && <CategoryRolePermissionsModal serverId={server.id} categoryId={categoryRolePermissions.id} categoryName={categoryRolePermissions.name} onClose={() => setCategoryRolePermissions(null)} />}
     </div>
   );
 }
