@@ -5,6 +5,9 @@ import {
   ArrowDown,
   ArrowUp,
   Hash,
+  Megaphone,
+  MoreHorizontal,
+  Copy,
   Lock,
   LogOut,
   Plus,
@@ -47,6 +50,7 @@ import {
   updateChannel,
   reorderChannel,
   deleteChannel,
+  duplicateChannel,
   fetchChannels,
   fetchServerMembers,
   leaveServer,
@@ -117,6 +121,8 @@ export function ServerDetail({
   const [editTopic, setEditTopic] = useState('');
   const [editCategory, setEditCategory] = useState('General');
   const [editRestricted, setEditRestricted] = useState(false);
+  const [editChannelType, setEditChannelType] = useState<'text' | 'announcement'>('text');
+  const [channelMenuId, setChannelMenuId] = useState<string | null>(null);
   const [editSlowmode, setEditSlowmode] = useState(0);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState('');
@@ -456,6 +462,7 @@ export function ServerDetail({
     setEditTopic(channel.topic);
     setEditCategory(channel.category);
     setEditRestricted(channel.is_restricted);
+    setEditChannelType(channel.channel_type ?? 'text');
     setEditSlowmode(channel.slowmode_seconds ?? 0);
     setEditError('');
   }
@@ -575,6 +582,7 @@ export function ServerDetail({
         category: editCategory,
         is_restricted: editRestricted,
         slowmode_seconds: editSlowmode,
+        channel_type: editChannelType,
       });
       setChannels(await fetchChannels(server.id));
       setEditingChannel(null);
@@ -790,53 +798,20 @@ export function ServerDetail({
                               )}
                             </button>
                             {canManageChannelsPermission && (
-                              <div className="ml-1 flex shrink-0 items-center">
-                                <button
-                                  type="button"
-                                  title="Move channel up in category"
-                                  disabled={reorderingChannelId !== null || list[0]?.id === channel.id}
-                                  onClick={() => void handleReorderChannel(channel, 'up')}
-                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300 disabled:opacity-25"
-                                >
-                                  <ArrowUp size={11} />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Move channel down in category"
-                                  disabled={reorderingChannelId !== null || list[list.length - 1]?.id === channel.id}
-                                  onClick={() => void handleReorderChannel(channel, 'down')}
-                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300 disabled:opacity-25"
-                                >
-                                  <ArrowDown size={11} />
-                                </button>
-                                <button
-                                  type="button"
-                                  title={`Edit #${channel.name}`}
-                                  onClick={() => openChannelEditor(channel)}
-                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300"
-                                >
-                                  <Pencil size={11} />
-                                </button>
-                                {isAdminOrOwner && <button
-                                  type="button"
-                                  title={`Permissions for #${channel.name}`}
-                                  onClick={() => setPermissionsChannel(channel)}
-                                  className="rounded p-1 text-ink-600 transition hover:bg-white/[0.06] hover:text-primary-300"
-                                >
-                                  <SlidersHorizontal size={11} />
-                                </button>}
-                                <button
-                                  type="button"
-                                  title={`Delete #${channel.name}`}
-                                  onClick={() => {
-                                    setDeleteError('');
-                                    setDeletingChannel(channel);
-                                  }}
-                                  className="rounded p-1 text-ink-600 transition hover:bg-red-400/10 hover:text-red-300"
-                                >
-                                  <Trash2 size={11} />
-                                </button>
-                              </div>
+                              <details className="group relative ml-1 shrink-0">
+                                <summary aria-label={`Manage #${channel.name}`} title="Channel actions" className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-md text-ink-600 transition hover:bg-white/[0.07] hover:text-ink-100 [&::-webkit-details-marker]:hidden">
+                                  <MoreHorizontal size={15} />
+                                </summary>
+                                <div className="absolute right-0 top-8 z-40 min-w-44 overflow-hidden rounded-xl border border-white/[0.1] bg-ink-900 p-1.5 shadow-2xl">
+                                  <button type="button" onClick={() => { openChannelEditor(channel); setChannelMenuId(null); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-200 hover:bg-white/[0.06]"><Pencil size={13} /> Edit channel</button>
+                                  <button type="button" onClick={() => void handleReorderChannel(channel, 'up')} disabled={reorderingChannelId !== null || list[0]?.id === channel.id} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06] disabled:opacity-30"><ArrowUp size={13} /> Move up</button>
+                                  <button type="button" onClick={() => void handleReorderChannel(channel, 'down')} disabled={reorderingChannelId !== null || list[list.length - 1]?.id === channel.id} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06] disabled:opacity-30"><ArrowDown size={13} /> Move down</button>
+                                  <button type="button" onClick={() => { void duplicateChannel(channel).then(() => fetchChannels(server.id)).then(setChannels).catch((err) => setError(err instanceof Error ? err.message : 'Could not duplicate channel.')); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06]"><Copy size={13} /> Duplicate channel</button>
+                                  {isAdminOrOwner && <button type="button" onClick={() => setPermissionsChannel(channel)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-300 hover:bg-white/[0.06]"><SlidersHorizontal size={13} /> Permissions</button>}
+                                  <div className="my-1 border-t border-white/[0.07]" />
+                                  <button type="button" onClick={() => { setDeleteError(''); setDeletingChannel(channel); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-red-300 hover:bg-red-400/10"><Trash2 size={13} /> Delete channel</button>
+                                </div>
+                              </details>
                             )}
                           </li>
                         );
@@ -1205,13 +1180,18 @@ export function ServerDetail({
           <form onSubmit={(event) => void handleUpdateChannel(event)} className="w-full max-w-md space-y-4 rounded-2xl border border-white/[0.08] bg-ink-900 p-5 shadow-2xl">
             <div>
               <h2 className="text-lg font-semibold text-ink-50">Edit channel</h2>
-              <p className="mt-1 text-xs text-ink-400">Update the channel name, topic, category and visibility.</p>
+              <p className="mt-1 text-xs text-ink-400">Configure the channel type, organization, visibility and message rate limits.</p>
             </div>
             <label className="block text-xs font-medium text-ink-300">Channel name
               <input value={editName} onChange={(event) => setEditName(event.target.value.toLowerCase())} maxLength={50} required className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
             </label>
             <label className="block text-xs font-medium text-ink-300">Topic
               <input value={editTopic} onChange={(event) => setEditTopic(event.target.value)} maxLength={200} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
+            </label>
+            <label className="block text-xs font-medium text-ink-300">Channel type
+              <select value={editChannelType} onChange={(event) => setEditChannelType(event.target.value as 'text' | 'announcement')} className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60">
+                <option value="text">Text</option><option value="announcement">Announcement</option>
+              </select>
             </label>
             <label className="block text-xs font-medium text-ink-300">Category
               <input value={editCategory} onChange={(event) => setEditCategory(event.target.value)} maxLength={40} required className="mt-1.5 w-full rounded-lg border border-white/[0.08] bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-primary-400/60" />
