@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Headphones, Maximize2, Mic, MicOff, MonitorUp, PhoneOff, Users, Volume2, VolumeX, X } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
+import { SharedListening } from '@/components/shared/SharedListening';
 
 interface ServerEventVoiceRoomProps {
   eventId: string;
@@ -642,6 +643,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           </>}
         </div>
       </div>
+      {roomType === 'channel' ? <SharedListening roomType="channel" roomId={eventId} /> : null}
     </section>
   );
 }
