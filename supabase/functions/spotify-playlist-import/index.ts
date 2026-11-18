@@ -84,10 +84,13 @@ function scoreMatch(track: SpotifyTrack, title: string, channel: string, duratio
   return Math.max(0, Math.min(1, score));
 }
 
-async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<SpotifyTrack[]> {
+async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<{ tracks: SpotifyTrack[]; truncated: boolean }> {
   const tracks: SpotifyTrack[] = [];
   let offset = 0;
-  while (offset < 100) {
+  let truncated = false;
+  // Each Spotify track can trigger a YouTube search.list request (100 quota units).
+  // Read at most the first 50 playlist entries to keep one import bounded.
+  while (offset < 50) {
     const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&offset=${offset}`, {
       headers: { Authorization: "Bearer " + accessToken },
     });
@@ -105,10 +108,11 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
       if (!raw || raw.type !== "track" || !raw.name || !Array.isArray(raw.artists)) continue;
       tracks.push({ name: raw.name, artists: raw.artists, duration_ms: raw.duration_ms ?? 0 });
     }
+    truncated = Boolean(data.next);
     if (!data.next || items.length === 0) break;
     offset += items.length;
   }
-  return tracks;
+  return { tracks, truncated };
 }
 
 async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string) {
@@ -204,7 +208,8 @@ serve(async (request) => {
     if (!spotifyId) return json({ error: "Paste a valid Spotify playlist link or a public YouTube playlist link." }, 400);
     if (!spotifyAccessToken || spotifyAccessToken.length > 4096) return json({ error: "Connect your Spotify account before importing this playlist." }, 401);
 
-    const tracks = await fetchSpotifyTracks(spotifyId, spotifyAccessToken);
+    const playlist = await fetchSpotifyTracks(spotifyId, spotifyAccessToken);
+    const tracks = playlist.tracks;
     if (!tracks.length) return json({ error: "No playable tracks were found. Make sure this playlist contains tracks and that you own it or collaborate on it." }, 422);
 
     const results = [];
@@ -224,7 +229,7 @@ serve(async (request) => {
         } : null,
       });
     }
-    return json({ source: "spotify", playlistId: spotifyId, total: tracks.length, matched: results.filter((item) => item.match).length, tracks: results });
+    return json({ source: "spotify", playlistId: spotifyId, total: tracks.length, matched: results.filter((item) => item.match).length, truncated: playlist.truncated, tracks: results });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Playlist import failed." }, 500);
   }
