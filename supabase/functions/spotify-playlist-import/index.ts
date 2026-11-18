@@ -84,10 +84,11 @@ function scoreMatch(track: SpotifyTrack, title: string, channel: string, duratio
   return Math.max(0, Math.min(1, score));
 }
 
-async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<{ tracks: SpotifyTrack[]; truncated: boolean }> {
+async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<{ tracks: SpotifyTrack[]; truncated: boolean; playlistTotal: number }> {
   const tracks: SpotifyTrack[] = [];
   let offset = 0;
   let truncated = false;
+  let playlistTotal = 0;
   // Each Spotify track can trigger a YouTube search.list request (100 quota units).
   // Read at most the first 50 playlist entries to keep one import bounded.
   while (offset < 50) {
@@ -103,6 +104,7 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
     }
     const data = await response.json();
     const items = Array.isArray(data.items) ? data.items : [];
+    playlistTotal = Number.isFinite(Number(data.total)) ? Number(data.total) : playlistTotal;
     for (const entry of items) {
       const raw = entry.item ?? entry.track;
       if (!raw || raw.type !== "track" || !raw.name || !Array.isArray(raw.artists)) continue;
@@ -112,10 +114,10 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
     if (!data.next || items.length === 0) break;
     offset += items.length;
   }
-  return { tracks, truncated };
+  return { tracks, truncated, playlistTotal };
 }
 
-async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string) {
+async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string): Promise<{ videos: Array<{ videoId: string; title: string; channelTitle: string }>; truncated: boolean }> {
   const videos: Array<{ videoId: string; title: string; channelTitle: string }> = [];
   let pageToken = "";
   while (videos.length < 100) {
@@ -140,7 +142,7 @@ async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string) {
     pageToken = data.nextPageToken ?? "";
     if (!pageToken || !(data.items ?? []).length) break;
   }
-  return videos;
+  return { videos, truncated: Boolean(pageToken) };
 }
 
 async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Match | null> {
@@ -187,9 +189,9 @@ serve(async (request) => {
     const url = String(body.url ?? "");
     const ytPlaylistId = youtubePlaylistId(url);
     if (ytPlaylistId) {
-      const videos = await fetchYouTubePlaylistVideos(ytPlaylistId, youtubeApiKey);
-      if (!videos.length) return json({ error: "No playable public videos were found in this YouTube playlist." }, 422);
-      const tracks = videos.map((video, index) => ({
+      const playlist = await fetchYouTubePlaylistVideos(ytPlaylistId, youtubeApiKey);
+      if (!playlist.videos.length) return json({ error: "No playable public videos were found in this YouTube playlist." }, 422);
+      const tracks = playlist.videos.map((video, index) => ({
         originalTitle: video.title,
         artist: video.channelTitle,
         order: index,
@@ -200,7 +202,7 @@ serve(async (request) => {
           score: 1,
         },
       }));
-      return json({ source: "youtube", playlistId: ytPlaylistId, total: tracks.length, matched: tracks.length, tracks });
+      return json({ source: "youtube", playlistId: ytPlaylistId, total: tracks.length, matched: tracks.length, truncated: playlist.truncated, tracks });
     }
 
     const spotifyId = spotifyPlaylistId(url);
@@ -229,7 +231,7 @@ serve(async (request) => {
         } : null,
       });
     }
-    return json({ source: "spotify", playlistId: spotifyId, total: tracks.length, matched: results.filter((item) => item.match).length, truncated: playlist.truncated, tracks: results });
+    return json({ source: "spotify", playlistId: spotifyId, total: tracks.length, playlistTotal: playlist.playlistTotal, matched: results.filter((item) => item.match).length, truncated: playlist.truncated, tracks: results });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Playlist import failed." }, 500);
   }
