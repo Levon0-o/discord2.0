@@ -303,7 +303,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
                 }
               })();
             }
-            if (nextAttempt < 3 && peer.connectionState !== 'connected') {
+            if (nextAttempt < 3 && (peer.connectionState as RTCPeerConnectionState) !== 'connected') {
               const retryDelay = Math.min(5000 * nextAttempt, 10000);
               const retryTimer = window.setTimeout(() => {
                 reconnectTimersRef.current.delete(peerId);
