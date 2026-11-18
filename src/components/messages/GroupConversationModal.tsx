@@ -49,6 +49,15 @@ export function GroupConversationModal({
   const availableFriends = friends.filter(({ profile }) => !memberIds.has(profile.id));
 
   useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !saving) onClose();
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, saving]);
+
+  useEffect(() => {
     let active = true;
     void fetchFriends()
       .then((rows) => { if (active) setFriends(rows); })
@@ -148,15 +157,24 @@ export function GroupConversationModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <section className="flex max-h-[88dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="group-conversation-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        className="flex max-h-[88dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950 shadow-2xl"
+      >
         <header className="flex items-center justify-between border-b border-white/[0.08] p-5">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500/15 text-primary-300">
               <Users size={19} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-ink-50">
+              <h2 id="group-conversation-modal-title" className="text-lg font-bold text-ink-50">
                 {mode === 'create' ? 'Create a group' : 'Group settings'}
               </h2>
               <p className="mt-0.5 text-xs text-ink-500">
