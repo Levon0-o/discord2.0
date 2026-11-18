@@ -116,7 +116,12 @@ export function ServerSettings({ server, members, channels: initialChannels, onC
       await createChannel(input);
       syncChannels(await fetchChannels(server.id));
       setCreateOpen(false);
-    } catch (err) { setCreateError(err instanceof Error ? err.message : 'Could not create channel.'); }
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+        ? err.message
+        : 'Could not create channel.';
+      setCreateError(message);
+    }
     finally { setCreateBusy(false); }
   }
 
