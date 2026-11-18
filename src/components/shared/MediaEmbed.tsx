@@ -138,7 +138,7 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
           origin: window.location.origin,
         },
         events: {
-          onReady: (event) => { event.target.setVolume(volumeRef.current); setSyncReady(true); if (syncRoomId) window.setTimeout(() => void syncChannelRef.current?.send({ type: 'broadcast', event: 'sync-request', payload: {} }), 300); },
+          onReady: (event) => { event.target.setVolume(volumeRef.current); setSyncReady(true); if (syncRoomId) window.setTimeout(() => { const player = playerRef.current; const channel = syncChannelRef.current; if (!player || !channel) return; if (canControl) void channel.send({ type: 'broadcast', event: 'command', payload: { action: player.getPlayerState() === 1 ? 'play' : 'pause', time: player.getCurrentTime(), sentAt: Date.now() } }); else void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} }); }, 300); },
           onStateChange: (event) => setPlaying(event.data === 1),
         },
       });
