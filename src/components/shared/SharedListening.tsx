@@ -229,7 +229,11 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
       }
       setUrl('');
       const unmatched = Math.max(0, Number(data.total ?? matches.length) - matches.length);
-      const quotaNote = data.truncated ? ' Only the first 50 Spotify playlist entries were checked to limit YouTube API quota usage.' : '';
+      const quotaNote = data.truncated
+        ? spotifyPlaylist
+          ? ` Only the first ${data.total} of ${data.playlistTotal ?? 'the'} Spotify playlist entries were checked to limit YouTube API quota usage.`
+          : ` Only the first ${data.total} available videos were imported; this importer currently caps YouTube playlists at 100 videos per request.`
+        : '';
       const skippedNote = unmatched ? ` ${unmatched} unavailable or unmatched videos were skipped.` : '';
       const failedNote = failedAdds ? ` ${failedAdds} matched videos could not be added to the queue.` : '';
       setNotice(`Imported ${added.length} of ${data.total ?? added.length} tracks.${skippedNote}${failedNote}${quotaNote}`);
