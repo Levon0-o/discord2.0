@@ -55,8 +55,8 @@ function getProvider(urlValue: string): SharedListeningProvider | null {
     if (host === 'open.spotify.com') {
       const parts = url.pathname.split('/').filter(Boolean);
       const localized = /^intl(?:-[a-z]{2})?$/i.test(parts[0] ?? '');
-      const type = localized ? parts[2] : parts[0];
-      const id = localized ? parts[3] : parts[1];
+      const type = localized ? parts[1] : parts[0];
+      const id = localized ? parts[2] : parts[1];
       return ['track', 'album', 'playlist', 'episode', 'show'].includes(type ?? '') && /^[a-zA-Z0-9]{10,64}$/.test(id ?? '') ? 'spotify' : null;
     }
     if (host === 'youtu.be') return /^[a-zA-Z0-9_-]{11}$/.test(url.pathname.split('/').filter(Boolean)[0] ?? '') ? 'youtube' : null;
