@@ -218,11 +218,14 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
         }
       }
       if (!added.length) throw new Error('The playlist was read, but none of its videos could be added to the shared queue. Check your connection and try again.');
-      const nextQueue = [...queue, ...added];
-      setQueue(nextQueue);
-      if (!room.current_item_id && added[0]) {
+      // Re-read shared state after inserts so concurrent listeners' changes are not overwritten locally.
+      await refreshQueue(room.id);
+      const latestRoom = await fetchSharedListeningRoom(roomType, roomId);
+      if (!latestRoom?.current_item_id && added[0]) {
         const updatedRoom = await setSharedListeningCurrentItem(room.id, added[0].id);
         setRoom(updatedRoom);
+      } else if (latestRoom) {
+        setRoom(latestRoom);
       }
       setUrl('');
       const unmatched = Math.max(0, Number(data.total ?? matches.length) - matches.length);
