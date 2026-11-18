@@ -16,7 +16,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function playlistIdFromUrl(value: string): string | null {
+function spotifyPlaylistId(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.hostname !== "open.spotify.com") return null;
@@ -25,6 +25,19 @@ function playlistIdFromUrl(value: string): string | null {
     const type = localized ? parts[1] : parts[0];
     const id = localized ? parts[2] : parts[1];
     return type === "playlist" && /^[A-Za-z0-9]{10,64}$/.test(id ?? "") ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function youtubePlaylistId(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    if (url.protocol !== "https:" || !["youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) return null;
+    if (url.pathname !== "/playlist") return null;
+    const id = url.searchParams.get("list") ?? "";
+    return /^[A-Za-z0-9_-]{10,100}$/.test(id) ? id : null;
   } catch {
     return null;
   }
@@ -56,15 +69,9 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
     const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&offset=${offset}`, {
       headers: { Authorization: "Bearer " + accessToken },
     });
-    if (response.status === 401) {
-      throw new Error("Your Spotify session expired. Disconnect and connect Spotify again.");
-    }
-    if (response.status === 403) {
-      throw new Error("Spotify only provides playlist tracks when you own the playlist or are a collaborator. Check that you connected the account that has access.");
-    }
-    if (response.status === 404) {
-      throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
-    }
+    if (response.status === 401) throw new Error("Your Spotify session expired. Connect Spotify again.");
+    if (response.status === 403) throw new Error("Spotify only exposes playlist tracks to the owner or a collaborator. For someone else's public playlist, paste its YouTube playlist link instead.");
+    if (response.status === 404) throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
     if (!response.ok) {
       const details = await response.text();
       throw new Error("Could not read Spotify playlist (" + response.status + "): " + details.slice(0, 180));
@@ -82,6 +89,37 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
   return tracks;
 }
 
+async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string) {
+  const videos: Array<{ videoId: string; title: string; channelTitle: string }> = [];
+  let pageToken = "";
+  while (videos.length < 100) {
+    const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+    url.searchParams.set("part", "snippet,contentDetails");
+    url.searchParams.set("playlistId", playlistId);
+    url.searchParams.set("maxResults", "50");
+    url.searchParams.set("key", apiKey);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url);
+    if (!response.ok) {
+      const details = await response.text();
+      throw new Error("Could not read this YouTube playlist. Make sure it is public and the YouTube API key is valid. " + details.slice(0, 120));
+    }
+    const data = await response.json();
+    for (const entry of data.items ?? []) {
+      const videoId = entry.contentDetails?.videoId ?? entry.snippet?.resourceId?.videoId;
+      const title = entry.snippet?.title ?? "";
+      const channelTitle = entry.snippet?.videoOwnerChannelTitle ?? entry.snippet?.channelTitle ?? "";
+      if (videoId && title && title !== "Deleted video" && title !== "Private video") {
+        videos.push({ videoId, title, channelTitle });
+      }
+      if (videos.length >= 100) break;
+    }
+    pageToken = data.nextPageToken ?? "";
+    if (!pageToken || !(data.items ?? []).length) break;
+  }
+  return videos;
+}
+
 async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Match | null> {
   const artist = track.artists.map((item) => item.name).join(" ");
   const query = encodeURIComponent(`${artist} ${track.name} official audio`);
@@ -94,7 +132,6 @@ async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Ma
     channelTitle: item.snippet?.channelTitle as string,
   })).filter((item: { videoId: string; title: string }) => item.videoId && item.title);
   if (!candidates.length) return null;
-
   const detailsUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
   detailsUrl.searchParams.set("part", "contentDetails");
   detailsUrl.searchParams.set("id", candidates.map((item: { videoId: string }) => item.videoId).join(","));
@@ -121,19 +158,34 @@ serve(async (request) => {
 
   try {
     const youtubeApiKey = Deno.env.get("YOUTUBE_DATA_API_KEY");
-    if (!youtubeApiKey) {
-      return json({ error: "Server setup required: configure YOUTUBE_DATA_API_KEY in Supabase Edge Function secrets." }, 503);
-    }
+    if (!youtubeApiKey) return json({ error: "Server setup required: configure YOUTUBE_DATA_API_KEY in Supabase Edge Function secrets." }, 503);
 
     const body = await request.json();
-    const playlistId = playlistIdFromUrl(String(body.url ?? ""));
-    const spotifyAccessToken = String(body.spotifyAccessToken ?? "");
-    if (!playlistId) return json({ error: "Paste a valid Spotify playlist URL." }, 400);
-    if (!spotifyAccessToken || spotifyAccessToken.length > 4096) {
-      return json({ error: "Connect your Spotify account before importing a playlist." }, 401);
+    const url = String(body.url ?? "");
+    const ytPlaylistId = youtubePlaylistId(url);
+    if (ytPlaylistId) {
+      const videos = await fetchYouTubePlaylistVideos(ytPlaylistId, youtubeApiKey);
+      if (!videos.length) return json({ error: "No playable public videos were found in this YouTube playlist." }, 422);
+      const tracks = videos.map((video, index) => ({
+        originalTitle: video.title,
+        artist: video.channelTitle,
+        order: index,
+        match: {
+          title: video.title,
+          videoId: video.videoId,
+          url: "https://www.youtube.com/watch?v=" + video.videoId,
+          score: 1,
+        },
+      }));
+      return json({ source: "youtube", playlistId: ytPlaylistId, total: tracks.length, matched: tracks.length, tracks });
     }
 
-    const tracks = await fetchSpotifyTracks(playlistId, spotifyAccessToken);
+    const spotifyId = spotifyPlaylistId(url);
+    const spotifyAccessToken = String(body.spotifyAccessToken ?? "");
+    if (!spotifyId) return json({ error: "Paste a valid Spotify playlist link or a public YouTube playlist link." }, 400);
+    if (!spotifyAccessToken || spotifyAccessToken.length > 4096) return json({ error: "Connect your Spotify account before importing this playlist." }, 401);
+
+    const tracks = await fetchSpotifyTracks(spotifyId, spotifyAccessToken);
     if (!tracks.length) return json({ error: "No playable tracks were found. Make sure this playlist contains tracks and that you own it or collaborate on it." }, 422);
 
     const results = [];
@@ -153,8 +205,7 @@ serve(async (request) => {
         } : null,
       });
     }
-
-    return json({ playlistId, total: tracks.length, matched: results.filter((item) => item.match).length, tracks: results });
+    return json({ source: "spotify", playlistId: spotifyId, total: tracks.length, matched: results.filter((item) => item.match).length, tracks: results });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Playlist import failed." }, 500);
   }
