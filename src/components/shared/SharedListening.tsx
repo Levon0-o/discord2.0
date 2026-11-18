@@ -24,7 +24,8 @@ interface SharedListeningProps {
 function isYouTubePlaylistUrl(value: string): boolean {
   try {
     const url = new URL(value.trim());
-    const host = url.hostname.toLowerCase().replace(/^www\\./, '');
+    const rawHost = url.hostname.toLowerCase();
+    const host = rawHost.startsWith('www.') ? rawHost.slice(4) : rawHost;
     return url.protocol === 'https:' && ['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)
       && url.pathname === '/playlist' && /^[a-zA-Z0-9_-]{10,100}$/.test(url.searchParams.get('list') ?? '');
   } catch {
@@ -33,7 +34,17 @@ function isYouTubePlaylistUrl(value: string): boolean {
 }
 
 function isSpotifyPlaylistUrl(value: string): boolean {
-  return value.includes('open.spotify.com/') && /\\/playlist\\//.test(value);
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'open.spotify.com') return false;
+    const parts = url.pathname.split('/').filter(Boolean);
+    const localized = /^intl(?:-[a-z]{2})?$/i.test(parts[0] ?? '');
+    const type = localized ? parts[1] : parts[0];
+    const id = localized ? parts[2] : parts[1];
+    return type === 'playlist' && /^[a-zA-Z0-9]{10,64}$/.test(id ?? '');
+  } catch {
+    return false;
+  }
 }
 
 function getProvider(urlValue: string): SharedListeningProvider | null {
@@ -195,7 +206,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
       if (importError) throw importError;
       if (data?.error) throw new Error(data.error);
       const matches = (data?.tracks ?? []).filter((track: { match?: { url?: string } | null }) => track.match?.url);
-      if (!matches.length) throw new Error('No confident YouTube matches were found. Try another playlist or check the API setup.');
+      if (!matches.length) throw new Error('No playable YouTube videos were found in this playlist.');
       const added: SharedListeningQueueItem[] = [];
       for (const track of matches) {
         const item = await addSharedListeningQueueItem(room.id, 'youtube', track.match.url);
@@ -208,9 +219,10 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
         setRoom(updatedRoom);
       }
       setUrl('');
-      setNotice(`Imported ${added.length} of ${data.total} tracks. ${data.total - added.length} tracks had no confident match and were skipped.`);
+      const skipped = Math.max(0, Number(data.total ?? matches.length) - added.length);
+      setNotice(`Imported ${added.length} of ${data.total ?? added.length} tracks.${skipped ? ` ${skipped} unavailable or unmatched videos were skipped.` : ''}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not import this Spotify playlist.');
+      setError(err instanceof Error ? err.message : 'Could not import this playlist.');
     } finally {
       setImporting(false);
     }
