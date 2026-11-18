@@ -52,6 +52,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [userId, setUserId] = useState('');
   const [importing, setImporting] = useState(false);
 
   const refreshQueue = useCallback(async (listeningRoomId: string) => {
@@ -76,6 +77,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
 
   useEffect(() => {
     void loadRoom();
+    void supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? ''));
   }, [loadRoom]);
 
   useEffect(() => {
@@ -223,7 +225,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
         {loading ? <p className="flex items-center gap-2 text-xs text-ink-500"><Loader2 size={13} className="animate-spin" /> Loading shared queue…</p>
           : !room ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-md text-xs text-ink-400">Create one shared queue for everyone with access to this chat.</p><button type="button" onClick={() => void startQueue()} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-50"><Users size={13} /> Start shared queue</button></div>
           : <>
-            {currentItem ? <div className="rounded-xl border border-primary-400/20 bg-primary-500/[0.06] p-3"><div className="mb-1 flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-primary-200">Shared now playing</span><button type="button" onClick={() => void playNext()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-white/[0.1] px-2 py-1 text-[10px] text-ink-300 hover:bg-white/[0.06] disabled:opacity-40"><SkipForward size={11} /> Next</button></div><MediaEmbed text={currentItem.external_url} /></div>
+            {currentItem ? <div className="rounded-xl border border-primary-400/20 bg-primary-500/[0.06] p-3"><div className="mb-1 flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-primary-200">Shared now playing</span><button type="button" onClick={() => void playNext()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-white/[0.1] px-2 py-1 text-[10px] text-ink-300 hover:bg-white/[0.06] disabled:opacity-40"><SkipForward size={11} /> Next</button></div><MediaEmbed text={currentItem.external_url} syncRoomId={room.id} canControl={currentItem.added_by === userId} /></div>
               : <p className="rounded-lg border border-dashed border-white/[0.1] px-3 py-4 text-center text-xs text-ink-500">Nothing is selected. Add a link to begin.</p>}
             <form onSubmit={(event) => void addToQueue(event)} className="flex flex-col gap-2 sm:flex-row">
               <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Paste a Spotify or YouTube link…" aria-label="Spotify or YouTube link" className="min-w-0 flex-1 rounded-lg border border-white/[0.09] bg-ink-950 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/40" />
@@ -234,7 +236,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
               <div className="flex items-center justify-between"><p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-400"><ListMusic size={12} /> Queue</p><span className="text-[10px] tabular-nums text-ink-600">{queue.length} items</span></div>
               {queue.length === 0 ? <p className="py-2 text-xs text-ink-600">The queue is empty.</p> : queue.map((item, index) => <div key={item.id} className={'flex items-center gap-2 rounded-lg px-2.5 py-2 ' + (item.id === room.current_item_id ? 'bg-primary-500/10' : 'bg-white/[0.025]')}><span className="w-5 shrink-0 text-center text-[10px] tabular-nums text-ink-600">{index + 1}</span><span className="min-w-0 flex-1 truncate text-[11px] text-ink-300">{item.provider === 'spotify' ? 'Spotify' : 'YouTube'} · {item.external_url}</span>{item.id === room.current_item_id ? <span className="shrink-0 text-[9px] font-semibold text-primary-200">NOW</span> : null}<button type="button" onClick={() => void removeItem(item)} disabled={busy} aria-label="Remove from shared queue" className="shrink-0 rounded p-1 text-ink-600 hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-40"><X size={12} /></button></div>)}
             </div>
-            <p className="text-[10px] leading-relaxed text-ink-600">Spotify playlists can be imported into matched YouTube videos. Track matching uses title, artist and duration; uncertain matches are skipped. Each participant still needs to start playback locally.</p>
+            <p className="text-[10px] leading-relaxed text-ink-600">Spotify playlists can be imported into matched YouTube videos. Track matching uses title, artist and duration; uncertain matches are skipped. The person who added the current track controls shared playback. Everyone must load the player and allow audio in their browser; playback position is periodically corrected across listeners.</p>
           </>}
         {error ? <p role="alert" className="text-[11px] text-red-300">{error}</p> : null}
         {notice ? <p role="status" className="text-[11px] text-emerald-300">{notice}</p> : null}
