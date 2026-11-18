@@ -91,7 +91,7 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
   // Each Spotify track can trigger a YouTube search.list request (100 quota units).
   // Read at most the first 50 playlist entries to keep one import bounded.
   while (offset < 50) {
-    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&offset=${offset}`, {
+    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=${Math.min(50, 50 - offset)}&offset=${offset}`, {
       headers: { Authorization: "Bearer " + accessToken },
     });
     if (response.status === 401) throw new Error("Your Spotify session expired. Connect Spotify again.");
