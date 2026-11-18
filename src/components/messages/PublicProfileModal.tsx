@@ -158,7 +158,6 @@ export function PublicProfileModal({ userId, onClose, onMessage }: Props) {
     setRelationLoading(true);
     setRelationError('');
     setRelationProfiles([]);
-    const column = type === 'followers' ? 'follower_id' : 'following_id';
     const { data: relationRows, error: relationQueryError } = await supabase
       .from('follows')
       .select('follower_id, following_id')
