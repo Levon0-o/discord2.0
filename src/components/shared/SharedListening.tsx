@@ -208,10 +208,16 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
       const matches = (data?.tracks ?? []).filter((track: { match?: { url?: string } | null }) => track.match?.url);
       if (!matches.length) throw new Error('No playable YouTube videos were found in this playlist.');
       const added: SharedListeningQueueItem[] = [];
+      let failedAdds = 0;
       for (const track of matches) {
-        const item = await addSharedListeningQueueItem(room.id, 'youtube', track.match.url);
-        added.push(item);
+        try {
+          const item = await addSharedListeningQueueItem(room.id, 'youtube', track.match.url);
+          added.push(item);
+        } catch {
+          failedAdds += 1;
+        }
       }
+      if (!added.length) throw new Error('The playlist was read, but none of its videos could be added to the shared queue. Check your connection and try again.');
       const nextQueue = [...queue, ...added];
       setQueue(nextQueue);
       if (!room.current_item_id && added[0]) {
@@ -219,9 +225,11 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
         setRoom(updatedRoom);
       }
       setUrl('');
-      const skipped = Math.max(0, Number(data.total ?? matches.length) - added.length);
+      const unmatched = Math.max(0, Number(data.total ?? matches.length) - matches.length);
       const quotaNote = data.truncated ? ' Only the first 50 Spotify playlist entries were checked to limit YouTube API quota usage.' : '';
-      setNotice(`Imported ${added.length} of ${data.total ?? added.length} tracks.${skipped ? ` ${skipped} unavailable or unmatched videos were skipped.` : ''}${quotaNote}`);
+      const skippedNote = unmatched ? ` ${unmatched} unavailable or unmatched videos were skipped.` : '';
+      const failedNote = failedAdds ? ` ${failedAdds} matched videos could not be added to the queue.` : '';
+      setNotice(`Imported ${added.length} of ${data.total ?? added.length} tracks.${skippedNote}${failedNote}${quotaNote}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not import this playlist.');
     } finally {
