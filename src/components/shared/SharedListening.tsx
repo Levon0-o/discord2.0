@@ -21,6 +21,32 @@ interface SharedListeningProps {
   roomId: string;
 }
 
+function isYouTubePlaylistUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    const rawHost = url.hostname.toLowerCase();
+    const host = rawHost.startsWith('www.') ? rawHost.slice(4) : rawHost;
+    return url.protocol === 'https:' && ['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)
+      && url.pathname === '/playlist' && /^[a-zA-Z0-9_-]{10,100}$/.test(url.searchParams.get('list') ?? '');
+  } catch {
+    return false;
+  }
+}
+
+function isSpotifyPlaylistUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'open.spotify.com') return false;
+    const parts = url.pathname.split('/').filter(Boolean);
+    const localized = /^intl(?:-[a-z]{2})?$/i.test(parts[0] ?? '');
+    const type = localized ? parts[1] : parts[0];
+    const id = localized ? parts[2] : parts[1];
+    return type === 'playlist' && /^[a-zA-Z0-9]{10,64}$/.test(id ?? '');
+  } catch {
+    return false;
+  }
+}
+
 function getProvider(urlValue: string): SharedListeningProvider | null {
   try {
     const url = new URL(urlValue.trim());
@@ -29,12 +55,13 @@ function getProvider(urlValue: string): SharedListeningProvider | null {
     if (host === 'open.spotify.com') {
       const parts = url.pathname.split('/').filter(Boolean);
       const localized = /^intl(?:-[a-z]{2})?$/i.test(parts[0] ?? '');
-      const type = localized ? parts[2] : parts[0];
-      const id = localized ? parts[3] : parts[1];
+      const type = localized ? parts[1] : parts[0];
+      const id = localized ? parts[2] : parts[1];
       return ['track', 'album', 'playlist', 'episode', 'show'].includes(type ?? '') && /^[a-zA-Z0-9]{10,64}$/.test(id ?? '') ? 'spotify' : null;
     }
     if (host === 'youtu.be') return /^[a-zA-Z0-9_-]{11}$/.test(url.pathname.split('/').filter(Boolean)[0] ?? '') ? 'youtube' : null;
     if (['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)) {
+      if (url.pathname === '/playlist') return null;
       const id = url.pathname === '/watch' ? url.searchParams.get('v') : url.pathname.split('/')[2];
       return /^\/(watch|embed|shorts|live)(\/|$)/.test(url.pathname) && /^[a-zA-Z0-9_-]{11}$/.test(id ?? '') ? 'youtube' : null;
     }
@@ -126,6 +153,10 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
     event.preventDefault();
     if (!room || busy) return;
     const trimmed = url.trim();
+    if (isSpotifyPlaylistUrl(trimmed) || isYouTubePlaylistUrl(trimmed)) {
+      await importPlaylist();
+      return;
+    }
     const provider = getProvider(trimmed);
     if (!provider) {
       setError('Paste a valid Spotify or YouTube link.');
@@ -151,42 +182,63 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
     }
   }
 
-  async function importSpotifyPlaylist() {
+  async function importPlaylist() {
     if (!room || busy || importing) return;
     setImporting(true);
     setError('');
     setNotice('');
     try {
-      const spotifyAccessToken = await getSpotifyAccessToken();
-      if (!spotifyAccessToken) {
-        setImporting(false);
-        setNotice('Connect your Spotify account to continue.');
-        await beginSpotifyAuthorization();
-        return;
+      const spotifyPlaylist = isSpotifyPlaylistUrl(url);
+      let spotifyAccessToken: string | null = null;
+      if (spotifyPlaylist) {
+        spotifyAccessToken = await getSpotifyAccessToken();
+        if (!spotifyAccessToken) {
+          setImporting(false);
+          setNotice('Connect your Spotify account to import playlists you own or collaborate on.');
+          await beginSpotifyAuthorization();
+          return;
+        }
+        setSpotifyConnected(true);
       }
-      setSpotifyConnected(true);
       const { data, error: importError } = await supabase.functions.invoke('spotify-playlist-import', {
-        body: { url: url.trim(), spotifyAccessToken },
+        body: spotifyPlaylist ? { url: url.trim(), spotifyAccessToken } : { url: url.trim() },
       });
       if (importError) throw importError;
       if (data?.error) throw new Error(data.error);
       const matches = (data?.tracks ?? []).filter((track: { match?: { url?: string } | null }) => track.match?.url);
-      if (!matches.length) throw new Error('No confident YouTube matches were found. Try another playlist or check the API setup.');
+      if (!matches.length) throw new Error('No playable YouTube videos were found in this playlist.');
       const added: SharedListeningQueueItem[] = [];
+      let failedAdds = 0;
       for (const track of matches) {
-        const item = await addSharedListeningQueueItem(room.id, 'youtube', track.match.url);
-        added.push(item);
+        try {
+          const item = await addSharedListeningQueueItem(room.id, 'youtube', track.match.url);
+          added.push(item);
+        } catch {
+          failedAdds += 1;
+        }
       }
-      const nextQueue = [...queue, ...added];
-      setQueue(nextQueue);
-      if (!room.current_item_id && added[0]) {
+      if (!added.length) throw new Error('The playlist was read, but none of its videos could be added to the shared queue. Check your connection and try again.');
+      // Re-read shared state after inserts so concurrent listeners' changes are not overwritten locally.
+      await refreshQueue(room.id);
+      const latestRoom = await fetchSharedListeningRoom(roomType, roomId);
+      if (!latestRoom?.current_item_id && added[0]) {
         const updatedRoom = await setSharedListeningCurrentItem(room.id, added[0].id);
         setRoom(updatedRoom);
+      } else if (latestRoom) {
+        setRoom(latestRoom);
       }
       setUrl('');
-      setNotice(`Imported ${added.length} of ${data.total} tracks. ${data.total - added.length} tracks had no confident match and were skipped.`);
+      const unmatched = Math.max(0, Number(data.total ?? matches.length) - matches.length);
+      const quotaNote = data.truncated
+        ? spotifyPlaylist
+          ? ` Only the first ${data.total} of ${data.playlistTotal ?? 'the'} Spotify playlist entries were checked to limit YouTube API quota usage.`
+          : ` Only the first 100 source entries were checked; this importer currently caps YouTube playlist imports at 100 entries per request.`
+        : '';
+      const skippedNote = unmatched ? ` ${unmatched} unavailable or unmatched videos were skipped.` : '';
+      const failedNote = failedAdds ? ` ${failedAdds} matched videos could not be added to the queue.` : '';
+      setNotice(`Imported ${added.length} of ${data.total ?? added.length} tracks.${skippedNote}${failedNote}${quotaNote}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not import this Spotify playlist.');
+      setError(err instanceof Error ? err.message : 'Could not import this playlist.');
     } finally {
       setImporting(false);
     }
@@ -245,15 +297,15 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
             {currentItem ? <div className="rounded-xl border border-primary-400/20 bg-primary-500/[0.06] p-3"><div className="mb-1 flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-primary-200">Shared now playing</span><button type="button" onClick={() => void playNext()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-white/[0.1] px-2 py-1 text-[10px] text-ink-300 hover:bg-white/[0.06] disabled:opacity-40"><SkipForward size={11} /> Next</button></div><MediaEmbed text={currentItem.external_url} syncRoomId={room.id} canControl={currentItem.added_by === userId} /></div>
               : <p className="rounded-lg border border-dashed border-white/[0.1] px-3 py-4 text-center text-xs text-ink-500">Nothing is selected. Add a link to begin.</p>}
             <form onSubmit={(event) => void addToQueue(event)} className="flex flex-col gap-2 sm:flex-row">
-              <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Paste a Spotify or YouTube link…" aria-label="Spotify or YouTube link" className="min-w-0 flex-1 rounded-lg border border-white/[0.09] bg-ink-950 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/40" />
+              <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Paste a Spotify or YouTube playlist link…" aria-label="Spotify or YouTube link" className="min-w-0 flex-1 rounded-lg border border-white/[0.09] bg-ink-950 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/40" />
               <button type="submit" disabled={busy || importing || !url.trim()} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2.5 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-40"><Plus size={13} /> Add link</button>
-              {url.includes('open.spotify.com/') && url.includes('/playlist/') ? <button type="button" onClick={() => void importSpotifyPlaylist()} disabled={busy || importing || !url.trim()} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-40">{importing ? <Loader2 size={13} className="animate-spin" /> : <Music2 size={13} />} {importing ? 'Matching tracks…' : spotifyConnected ? 'Import playlist' : 'Connect Spotify & import'}</button> : null}
+              {(isSpotifyPlaylistUrl(url) || isYouTubePlaylistUrl(url)) ? <button type="button" onClick={() => void importPlaylist()} disabled={busy || importing || !url.trim()} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-40">{importing ? <Loader2 size={13} className="animate-spin" /> : <Music2 size={13} />} {importing ? 'Importing playlist…' : isYouTubePlaylistUrl(url) ? 'Import YouTube playlist' : spotifyConnected ? 'Import Spotify playlist' : 'Connect Spotify & import'}</button> : null}
             </form>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between"><p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-400"><ListMusic size={12} /> Queue</p><span className="text-[10px] tabular-nums text-ink-600">{queue.length} items</span></div>
               {queue.length === 0 ? <p className="py-2 text-xs text-ink-600">The queue is empty.</p> : queue.map((item, index) => <div key={item.id} className={'flex items-center gap-2 rounded-lg px-2.5 py-2 ' + (item.id === room.current_item_id ? 'bg-primary-500/10' : 'bg-white/[0.025]')}><span className="w-5 shrink-0 text-center text-[10px] tabular-nums text-ink-600">{index + 1}</span><span className="min-w-0 flex-1 truncate text-[11px] text-ink-300">{item.provider === 'spotify' ? 'Spotify' : 'YouTube'} · {item.external_url}</span>{item.id === room.current_item_id ? <span className="shrink-0 text-[9px] font-semibold text-primary-200">NOW</span> : null}<button type="button" onClick={() => void removeItem(item)} disabled={busy} aria-label="Remove from shared queue" className="shrink-0 rounded p-1 text-ink-600 hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-40"><X size={12} /></button></div>)}
             </div>
-            <p className="text-[10px] leading-relaxed text-ink-600">Spotify playlists can be imported into matched YouTube videos. Track matching uses title, artist and duration; uncertain matches are skipped. The person who added the current track controls shared playback. Everyone must load the player and allow audio in their browser; playback position is periodically corrected across listeners.</p>
+            <p className="text-[10px] leading-relaxed text-ink-600">Spotify playlists you own or collaborate on are matched to YouTube videos. Public YouTube playlists can be imported directly, including playlists made by other people. The person who added the current track controls shared playback. Everyone must load the player and allow audio in their browser; playback position is periodically corrected across listeners.</p>
           </>}
         {error ? <p role="alert" className="text-[11px] text-red-300">{error}</p> : null}
         {notice ? <p role="status" className="text-[11px] text-emerald-300">{notice}</p> : null}

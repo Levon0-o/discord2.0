@@ -1192,7 +1192,7 @@ export function DirectMessagesSection({
               : undefined;
 
             const name = conversation.kind === 'group'
-              ? conversation.title || conversationMembers
+              ? conversation.title || membersForConversation(conversation.id)
                   .filter((member) => member.user_id !== userId)
                   .map((member) => profiles[member.user_id]?.display_name || profiles[member.user_id]?.username)
                   .filter(Boolean)

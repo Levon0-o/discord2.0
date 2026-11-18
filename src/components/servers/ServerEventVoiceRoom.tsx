@@ -278,7 +278,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
           const delay = connectionState === 'failed' ? 0 : 5000;
           const timer = window.setTimeout(() => {
             reconnectTimersRef.current.delete(peerId);
-            if (!joinedRef.current || peersRef.current.get(peerId) !== peer || peer.connectionState === 'connected' || peer.connectionState === 'closed') return;
+            if (!joinedRef.current || peersRef.current.get(peerId) !== peer || (peer.connectionState as RTCPeerConnectionState) === 'connected' || peer.connectionState === 'closed') return;
             const nextAttempt = (reconnectAttemptsRef.current.get(peerId) ?? 0) + 1;
             reconnectAttemptsRef.current.set(peerId, nextAttempt);
             // The lexicographically first participant owns renegotiation to avoid offer collisions.
@@ -303,7 +303,7 @@ export function ServerEventVoiceRoom({ eventId, eventTitle, userId, members, onC
                 }
               })();
             }
-            if (nextAttempt < 3 && peer.connectionState !== 'connected') {
+            if (nextAttempt < 3 && (peer.connectionState as RTCPeerConnectionState) !== 'connected') {
               const retryDelay = Math.min(5000 * nextAttempt, 10000);
               const retryTimer = window.setTimeout(() => {
                 reconnectTimersRef.current.delete(peerId);

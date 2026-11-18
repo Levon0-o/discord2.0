@@ -84,8 +84,8 @@ function findMediaTarget(text: string): MediaTarget | null {
       if (host === 'open.spotify.com') {
         const parts = url.pathname.split('/').filter(Boolean);
         const hasLocalePrefix = /^intl(?:-[a-z]{2})?$/i.test(parts[0] ?? '');
-        const type = hasLocalePrefix ? parts[2] : parts[0];
-        const id = hasLocalePrefix ? parts[3] : parts[1];
+        const type = hasLocalePrefix ? parts[1] : parts[0];
+        const id = hasLocalePrefix ? parts[2] : parts[1];
         if (['track', 'album', 'playlist', 'episode', 'show'].includes(type ?? '') && /^[a-zA-Z0-9]{10,64}$/.test(id ?? '')) {
           return {
             provider: 'spotify',
@@ -113,10 +113,11 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
   const syncChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [playing, setPlaying] = useState(false);
   const [syncReady, setSyncReady] = useState(false);
+  const playerReadyRef = useRef(false);
+  const channelReadyRef = useRef(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const volumeRef = useRef(volume);
   const playerId = useId().replace(/:/g, '');
-  const isYouTube = target?.provider === 'youtube';
   const isSpotify = target?.provider === 'spotify';
 
   useEffect(() => {
@@ -139,7 +140,18 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
           origin: window.location.origin,
         },
         events: {
-          onReady: (event) => { event.target.setVolume(volumeRef.current); setSyncReady(true); if (syncRoomId) window.setTimeout(() => { const player = playerRef.current; const channel = syncChannelRef.current; if (!player || !channel) return; if (canControl) void channel.send({ type: 'broadcast', event: 'command', payload: { action: player.getPlayerState() === 1 ? 'play' : 'pause', time: player.getCurrentTime(), sentAt: Date.now() } }); else void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} }); }, 300); },
+          onReady: (event) => {
+            event.target.setVolume(volumeRef.current);
+            playerReadyRef.current = true;
+            if (!syncRoomId || channelReadyRef.current) setSyncReady(true);
+            if (syncRoomId) window.setTimeout(() => {
+              const player = playerRef.current;
+              const channel = syncChannelRef.current;
+              if (!player || !channel) return;
+              if (canControl) void channel.send({ type: 'broadcast', event: 'command', payload: { action: player.getPlayerState() === 1 ? 'play' : 'pause', time: player.getCurrentTime(), sentAt: Date.now() } });
+              else void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
+            }, 300);
+          },
           onStateChange: (event) => setPlaying(event.data === 1),
         },
       });
@@ -149,6 +161,8 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
 
     return () => {
       cancelled = true;
+      playerReadyRef.current = false;
+      setSyncReady(false);
       playerRef.current?.destroy();
       playerRef.current = null;
     };
@@ -176,13 +190,23 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
       const player = playerRef.current;
       void channel.send({ type: 'broadcast', event: 'command', payload: { action: player.getPlayerState() === 1 ? 'play' : 'pause', time: player.getCurrentTime(), sentAt: Date.now(), sender: 'leader' } });
     }).subscribe((status) => {
-      if (status === 'SUBSCRIBED') void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
+      if (status === 'SUBSCRIBED') {
+        channelReadyRef.current = true;
+        if (playerReadyRef.current) setSyncReady(true);
+        void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
+      }
     });
     const heartbeat = canControl ? window.setInterval(() => {
       const player = playerRef.current;
       if (player?.getPlayerState() === 1) void channel.send({ type: 'broadcast', event: 'command', payload: { action: 'sync', time: player.getCurrentTime(), sentAt: Date.now() } });
     }, 2500) : null;
-    return () => { if (heartbeat !== null) window.clearInterval(heartbeat); syncChannelRef.current = null; void supabase.removeChannel(channel); };
+    return () => {
+      if (heartbeat !== null) window.clearInterval(heartbeat);
+      channelReadyRef.current = false;
+      setSyncReady(false);
+      syncChannelRef.current = null;
+      void supabase.removeChannel(channel);
+    };
   }, [loaded, syncRoomId, target?.provider, target?.provider === 'youtube' ? target.videoId : null, canControl]);
 
   function enableSyncedAudio() {

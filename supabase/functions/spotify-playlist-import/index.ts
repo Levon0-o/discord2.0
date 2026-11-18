@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 type SpotifyTrack = { name: string; artists: Array<{ name: string }>; duration_ms: number };
 type Match = { videoId: string; title: string; channelTitle: string; durationSeconds: number; score: number };
+type YouTubeSearchItem = { id?: { videoId?: string }; snippet?: { title?: string; channelTitle?: string } };
+type YouTubeVideoDetailsItem = { id: string; contentDetails?: { duration?: string } };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +18,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function playlistIdFromUrl(value: string): string | null {
+function spotifyPlaylistId(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.hostname !== "open.spotify.com") return null;
@@ -28,6 +30,41 @@ function playlistIdFromUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function youtubePlaylistId(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    if (url.protocol !== "https:" || !["youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) return null;
+    if (url.pathname !== "/playlist") return null;
+    const id = url.searchParams.get("list") ?? "";
+    return /^[A-Za-z0-9_-]{10,100}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+async function youtubeApiError(response: Response, context: "playlist" | "search" | "details"): Promise<string> {
+  let reason = "";
+  try {
+    const payload = await response.json();
+    reason = payload.error?.errors?.[0]?.reason ?? payload.error?.status ?? "";
+  } catch {
+    // Ignore a non-JSON API error response and use the status-based fallback.
+  }
+  if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
+    return "YouTube API daily quota is exhausted. Try again after the quota resets or increase the project's YouTube Data API quota.";
+  }
+  if (reason === "playlistNotFound" || response.status === 404) {
+    return "YouTube could not find this playlist. Check that the link is correct and the playlist is public.";
+  }
+  if (reason === "playlistItemsNotAccessible" || response.status === 403 && context === "playlist") {
+    return "YouTube cannot read this playlist. Check that it is public and that the API key has YouTube Data API v3 enabled.";
+  }
+  if (context === "search") return "YouTube track search failed. Check the API key and its quota.";
+  if (context === "details") return "YouTube could not verify the matched video details.";
+  return "Could not read this YouTube playlist. Check that it is public and that the API key has YouTube Data API v3 enabled.";
 }
 
 function normalize(value: string): string {
@@ -49,60 +86,90 @@ function scoreMatch(track: SpotifyTrack, title: string, channel: string, duratio
   return Math.max(0, Math.min(1, score));
 }
 
-async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<SpotifyTrack[]> {
+async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<{ tracks: SpotifyTrack[]; truncated: boolean; playlistTotal: number }> {
   const tracks: SpotifyTrack[] = [];
   let offset = 0;
-  while (offset < 100) {
-    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&offset=${offset}`, {
+  let truncated = false;
+  let playlistTotal = 0;
+  // Each Spotify track can trigger a YouTube search.list request (100 quota units).
+  // Read at most the first 50 playlist entries to keep one import bounded.
+  while (offset < 50) {
+    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=${Math.min(50, 50 - offset)}&offset=${offset}`, {
       headers: { Authorization: "Bearer " + accessToken },
     });
-    if (response.status === 401) {
-      throw new Error("Your Spotify session expired. Disconnect and connect Spotify again.");
-    }
-    if (response.status === 403) {
-      throw new Error("Spotify only provides playlist tracks when you own the playlist or are a collaborator. Check that you connected the account that has access.");
-    }
-    if (response.status === 404) {
-      throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
-    }
+    if (response.status === 401) throw new Error("Your Spotify session expired. Connect Spotify again.");
+    if (response.status === 403) throw new Error("Spotify only exposes playlist tracks to the owner or a collaborator. For someone else's public playlist, paste its YouTube playlist link instead.");
+    if (response.status === 404) throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
     if (!response.ok) {
       const details = await response.text();
       throw new Error("Could not read Spotify playlist (" + response.status + "): " + details.slice(0, 180));
     }
     const data = await response.json();
     const items = Array.isArray(data.items) ? data.items : [];
+    playlistTotal = Number.isFinite(Number(data.total)) ? Number(data.total) : playlistTotal;
     for (const entry of items) {
       const raw = entry.item ?? entry.track;
       if (!raw || raw.type !== "track" || !raw.name || !Array.isArray(raw.artists)) continue;
       tracks.push({ name: raw.name, artists: raw.artists, duration_ms: raw.duration_ms ?? 0 });
     }
+    truncated = Boolean(data.next);
     if (!data.next || items.length === 0) break;
     offset += items.length;
   }
-  return tracks;
+  return { tracks, truncated, playlistTotal };
+}
+
+async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string): Promise<{ videos: Array<{ videoId: string; title: string; channelTitle: string }>; truncated: boolean }> {
+  const videos: Array<{ videoId: string; title: string; channelTitle: string }> = [];
+  let pageToken = "";
+  let scannedEntries = 0;
+  while (scannedEntries < 100) {
+    const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+    url.searchParams.set("part", "snippet,contentDetails");
+    url.searchParams.set("playlistId", playlistId);
+    url.searchParams.set("maxResults", String(Math.min(50, 100 - scannedEntries)));
+    url.searchParams.set("key", apiKey);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(await youtubeApiError(response, "playlist"));
+    const data = await response.json();
+    const entries = Array.isArray(data.items) ? data.items : [];
+    scannedEntries += entries.length;
+    for (const entry of entries) {
+      const videoId = entry.contentDetails?.videoId ?? entry.snippet?.resourceId?.videoId;
+      const title = entry.snippet?.title ?? "";
+      const channelTitle = entry.snippet?.videoOwnerChannelTitle ?? entry.snippet?.channelTitle ?? "";
+      if (videoId && title && title !== "Deleted video" && title !== "Private video") {
+        videos.push({ videoId, title, channelTitle });
+      }
+    }
+    pageToken = data.nextPageToken ?? "";
+    if (!pageToken || entries.length === 0) break;
+  }
+  return { videos, truncated: Boolean(pageToken) };
 }
 
 async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Match | null> {
   const artist = track.artists.map((item) => item.name).join(" ");
   const query = encodeURIComponent(`${artist} ${track.name} official audio`);
   const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=5&q=${query}&key=${apiKey}`);
-  if (!response.ok) throw new Error("YouTube search failed. Check the YouTube Data API key and quota.");
+  if (!response.ok) throw new Error(await youtubeApiError(response, "search"));
   const data = await response.json();
-  const candidates = (data.items ?? []).map((item: Record<string, any>) => ({
-    videoId: item.id?.videoId as string,
-    title: item.snippet?.title as string,
-    channelTitle: item.snippet?.channelTitle as string,
-  })).filter((item: { videoId: string; title: string }) => item.videoId && item.title);
+  const candidates = (data.items ?? []).map((item: YouTubeSearchItem) => ({
+    videoId: item.id?.videoId ?? "",
+    title: item.snippet?.title ?? "",
+    channelTitle: item.snippet?.channelTitle ?? "",
+  })).filter((item: { videoId: string; title: string }) => item.videoId.length > 0 && item.title.length > 0);
   if (!candidates.length) return null;
-
   const detailsUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
   detailsUrl.searchParams.set("part", "contentDetails");
   detailsUrl.searchParams.set("id", candidates.map((item: { videoId: string }) => item.videoId).join(","));
   detailsUrl.searchParams.set("key", apiKey);
   const detailsResponse = await fetch(detailsUrl);
-  if (!detailsResponse.ok) throw new Error("Could not verify YouTube video durations.");
+  if (!detailsResponse.ok) throw new Error(await youtubeApiError(detailsResponse, "details"));
   const details = await detailsResponse.json();
-  const durations = new Map<string, number>((details.items ?? []).map((item: Record<string, any>) => [item.id, parseIsoDuration(item.contentDetails?.duration ?? "")]));
+  const durationEntries: Array<[string, number]> = (details.items ?? []).map((item: YouTubeVideoDetailsItem) => [item.id, parseIsoDuration(item.contentDetails?.duration ?? "")]);
+  const durations = new Map<string, number>(durationEntries);
   const ranked = candidates.map((candidate: { videoId: string; title: string; channelTitle: string }) => {
     const durationSeconds = durations.get(candidate.videoId) ?? 0;
     return { ...candidate, durationSeconds, score: scoreMatch(track, candidate.title, candidate.channelTitle, durationSeconds) };
@@ -121,19 +188,35 @@ serve(async (request) => {
 
   try {
     const youtubeApiKey = Deno.env.get("YOUTUBE_DATA_API_KEY");
-    if (!youtubeApiKey) {
-      return json({ error: "Server setup required: configure YOUTUBE_DATA_API_KEY in Supabase Edge Function secrets." }, 503);
-    }
+    if (!youtubeApiKey) return json({ error: "Server setup required: configure YOUTUBE_DATA_API_KEY in Supabase Edge Function secrets." }, 503);
 
     const body = await request.json();
-    const playlistId = playlistIdFromUrl(String(body.url ?? ""));
-    const spotifyAccessToken = String(body.spotifyAccessToken ?? "");
-    if (!playlistId) return json({ error: "Paste a valid Spotify playlist URL." }, 400);
-    if (!spotifyAccessToken || spotifyAccessToken.length > 4096) {
-      return json({ error: "Connect your Spotify account before importing a playlist." }, 401);
+    const url = String(body.url ?? "");
+    const ytPlaylistId = youtubePlaylistId(url);
+    if (ytPlaylistId) {
+      const playlist = await fetchYouTubePlaylistVideos(ytPlaylistId, youtubeApiKey);
+      if (!playlist.videos.length) return json({ error: "No playable public videos were found in this YouTube playlist." }, 422);
+      const tracks = playlist.videos.map((video, index) => ({
+        originalTitle: video.title,
+        artist: video.channelTitle,
+        order: index,
+        match: {
+          title: video.title,
+          videoId: video.videoId,
+          url: "https://www.youtube.com/watch?v=" + video.videoId,
+          score: 1,
+        },
+      }));
+      return json({ source: "youtube", playlistId: ytPlaylistId, total: tracks.length, matched: tracks.length, truncated: playlist.truncated, tracks });
     }
 
-    const tracks = await fetchSpotifyTracks(playlistId, spotifyAccessToken);
+    const spotifyId = spotifyPlaylistId(url);
+    const spotifyAccessToken = String(body.spotifyAccessToken ?? "");
+    if (!spotifyId) return json({ error: "Paste a valid Spotify playlist link or a public YouTube playlist link." }, 400);
+    if (!spotifyAccessToken || spotifyAccessToken.length > 4096) return json({ error: "Connect your Spotify account before importing this playlist." }, 401);
+
+    const playlist = await fetchSpotifyTracks(spotifyId, spotifyAccessToken);
+    const tracks = playlist.tracks;
     if (!tracks.length) return json({ error: "No playable tracks were found. Make sure this playlist contains tracks and that you own it or collaborate on it." }, 422);
 
     const results = [];
@@ -153,8 +236,7 @@ serve(async (request) => {
         } : null,
       });
     }
-
-    return json({ playlistId, total: tracks.length, matched: results.filter((item) => item.match).length, tracks: results });
+    return json({ source: "spotify", playlistId: spotifyId, total: tracks.length, playlistTotal: playlist.playlistTotal, matched: results.filter((item) => item.match).length, truncated: playlist.truncated, tracks: results });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Playlist import failed." }, 500);
   }
