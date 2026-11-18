@@ -120,27 +120,29 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
 async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string): Promise<{ videos: Array<{ videoId: string; title: string; channelTitle: string }>; truncated: boolean }> {
   const videos: Array<{ videoId: string; title: string; channelTitle: string }> = [];
   let pageToken = "";
-  while (videos.length < 100) {
+  let scannedEntries = 0;
+  while (scannedEntries < 100) {
     const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
     url.searchParams.set("part", "snippet,contentDetails");
     url.searchParams.set("playlistId", playlistId);
-    url.searchParams.set("maxResults", "50");
+    url.searchParams.set("maxResults", String(Math.min(50, 100 - scannedEntries)));
     url.searchParams.set("key", apiKey);
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const response = await fetch(url);
     if (!response.ok) throw new Error(await youtubeApiError(response, "playlist"));
     const data = await response.json();
-    for (const entry of data.items ?? []) {
+    const entries = Array.isArray(data.items) ? data.items : [];
+    scannedEntries += entries.length;
+    for (const entry of entries) {
       const videoId = entry.contentDetails?.videoId ?? entry.snippet?.resourceId?.videoId;
       const title = entry.snippet?.title ?? "";
       const channelTitle = entry.snippet?.videoOwnerChannelTitle ?? entry.snippet?.channelTitle ?? "";
       if (videoId && title && title !== "Deleted video" && title !== "Private video") {
         videos.push({ videoId, title, channelTitle });
       }
-      if (videos.length >= 100) break;
     }
     pageToken = data.nextPageToken ?? "";
-    if (!pageToken || !(data.items ?? []).length) break;
+    if (!pageToken || entries.length === 0) break;
   }
   return { videos, truncated: Boolean(pageToken) };
 }
