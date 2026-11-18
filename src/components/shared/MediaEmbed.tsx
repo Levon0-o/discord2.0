@@ -138,7 +138,7 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
           origin: window.location.origin,
         },
         events: {
-          onReady: (event) => { event.target.setVolume(volumeRef.current); setSyncReady(true); },
+          onReady: (event) => { event.target.setVolume(volumeRef.current); setSyncReady(true); if (syncRoomId) window.setTimeout(() => void syncChannelRef.current?.send({ type: 'broadcast', event: 'sync-request', payload: {} }), 300); },
           onStateChange: (event) => setPlaying(event.data === 1),
         },
       });
@@ -159,12 +159,17 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
     syncChannelRef.current = channel;
     channel.on('broadcast', { event: 'command' }, ({ payload }) => {
       const player = playerRef.current;
-      if (!player || payload?.sender === 'leader') return;
+      if (!player) return;
       const elapsed = Math.max(0, (Date.now() - Number(payload.sentAt ?? Date.now())) / 1000);
       if (typeof payload.time === 'number') player.seekTo(payload.time + (payload.action === 'play' ? elapsed : 0), true);
       if (payload.action === 'play') player.playVideo();
       if (payload.action === 'pause') player.pauseVideo();
       if (payload.action === 'seek') player.seekTo(Number(payload.time) || 0, true);
+      if (payload.action === 'sync') {
+        const targetTime = Number(payload.time) + elapsed;
+        if (player.getPlayerState() !== 1) player.playVideo();
+        if (Math.abs(player.getCurrentTime() - targetTime) > 1.25) player.seekTo(targetTime, true);
+      }
     }).on('broadcast', { event: 'sync-request' }, () => {
       if (!canControl || !playerRef.current) return;
       const player = playerRef.current;
@@ -172,7 +177,11 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
     }).subscribe((status) => {
       if (status === 'SUBSCRIBED') void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
     });
-    return () => { syncChannelRef.current = null; void supabase.removeChannel(channel); };
+    const heartbeat = canControl ? window.setInterval(() => {
+      const player = playerRef.current;
+      if (player?.getPlayerState() === 1) void channel.send({ type: 'broadcast', event: 'command', payload: { action: 'sync', time: player.getCurrentTime(), sentAt: Date.now() } });
+    }, 2500) : null;
+    return () => { if (heartbeat !== null) window.clearInterval(heartbeat); syncChannelRef.current = null; void supabase.removeChannel(channel); };
   }, [loaded, syncRoomId, target?.provider, target?.provider === 'youtube' ? target.videoId : null, canControl]);
 
   function sendPlaybackCommand(action: 'play' | 'pause' | 'seek', time?: number) {
