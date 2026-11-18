@@ -113,6 +113,7 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
   const syncChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [playing, setPlaying] = useState(false);
   const [syncReady, setSyncReady] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const volumeRef = useRef(volume);
   const playerId = useId().replace(/:/g, '');
   const isYouTube = target?.provider === 'youtube';
@@ -184,6 +185,17 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
     return () => { if (heartbeat !== null) window.clearInterval(heartbeat); syncChannelRef.current = null; void supabase.removeChannel(channel); };
   }, [loaded, syncRoomId, target?.provider, target?.provider === 'youtube' ? target.videoId : null, canControl]);
 
+  function enableSyncedAudio() {
+    const player = playerRef.current;
+    const channel = syncChannelRef.current;
+    if (!player || !channel) return;
+    player.playVideo();
+    setAudioEnabled(true);
+    window.setTimeout(() => {
+      player.pauseVideo();
+      void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
+    }, 250);
+  }
   function sendPlaybackCommand(action: 'play' | 'pause' | 'seek', time?: number) {
     if (!canControl || !playerRef.current || !syncChannelRef.current) return;
     const currentTime = typeof time === 'number' ? time : playerRef.current.getCurrentTime();
@@ -223,7 +235,7 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
             <div ref={playerHostRef} id={playerId} className="aspect-video w-full" />
             {playerError ? <p role="alert" className="px-3 py-2 text-[10px] text-red-300">{playerError}</p> : null}
             {syncRoomId ? <div className="flex items-center gap-2 border-t border-white/[0.06] px-3 py-2">
-              {canControl ? <><button type="button" onClick={() => sendPlaybackCommand(playing ? "pause" : "play")} className="rounded-md bg-primary-500 px-3 py-1.5 text-[10px] font-semibold text-white">{playing ? <Pause size={12} className="inline" /> : <Play size={12} className="inline" />} {playing ? "Pause for everyone" : "Play for everyone"}</button><button type="button" onClick={() => sendPlaybackCommand("seek", Math.max(0, (playerRef.current?.getCurrentTime() ?? 0) - 10))} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">−10s</button><button type="button" onClick={() => sendPlaybackCommand("seek", (playerRef.current?.getCurrentTime() ?? 0) + 10)} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">+10s</button></> : <span className="text-[10px] text-ink-500">{syncReady ? "Connected to shared playback" : "Connecting shared player…"}</span>}
+              {canControl ? <><button type="button" onClick={() => sendPlaybackCommand(playing ? "pause" : "play")} className="rounded-md bg-primary-500 px-3 py-1.5 text-[10px] font-semibold text-white">{playing ? <Pause size={12} className="inline" /> : <Play size={12} className="inline" />} {playing ? "Pause for everyone" : "Play for everyone"}</button><button type="button" onClick={() => sendPlaybackCommand("seek", Math.max(0, (playerRef.current?.getCurrentTime() ?? 0) - 10))} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">−10s</button><button type="button" onClick={() => sendPlaybackCommand("seek", (playerRef.current?.getCurrentTime() ?? 0) + 10)} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">+10s</button></> : <><button type="button" onClick={enableSyncedAudio} disabled={!syncReady || audioEnabled} className="rounded-md border border-white/10 px-3 py-1.5 text-[10px] text-ink-300 disabled:opacity-50">{audioEnabled ? "Audio enabled" : "Enable synced audio"}</button><span className="text-[10px] text-ink-500">{syncReady ? "Waiting for playlist host" : "Connecting shared player…"}</span></>}
             </div> : null}
             <div className="flex items-center gap-3 border-t border-white/[0.06] px-3 py-2.5">
               <Volume2 size={14} className="shrink-0 text-ink-400" />
