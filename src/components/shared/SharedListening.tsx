@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { ListMusic, Loader2, Music2, Plus, SkipForward, Users, X } from 'lucide-react';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
 import { supabase } from '@/lib/supabase';
+import { beginSpotifyAuthorization, consumeSpotifyAuthStatus, getSpotifyAccessToken, hasSpotifySession } from '@/lib/spotifyAuth';
 import {
   addSharedListeningQueueItem,
   fetchSharedListeningQueue,
@@ -54,6 +55,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
   const [notice, setNotice] = useState('');
   const [userId, setUserId] = useState('');
   const [importing, setImporting] = useState(false);
+  const [spotifyConnected, setSpotifyConnected] = useState(hasSpotifySession());
 
   const refreshQueue = useCallback(async (listeningRoomId: string) => {
     const items = await fetchSharedListeningQueue(listeningRoomId);
@@ -78,6 +80,13 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
   useEffect(() => {
     void loadRoom();
     void supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? ''));
+    const authStatus = consumeSpotifyAuthStatus();
+    if (authStatus?.success) {
+      setSpotifyConnected(true);
+      setNotice('Spotify connected. Click Import playlist again.');
+    } else if (authStatus?.error) {
+      setError(authStatus.error);
+    }
   }, [loadRoom]);
 
   useEffect(() => {
@@ -148,8 +157,16 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
     setError('');
     setNotice('');
     try {
+      const spotifyAccessToken = await getSpotifyAccessToken();
+      if (!spotifyAccessToken) {
+        setImporting(false);
+        setNotice('Connect your Spotify account to continue.');
+        await beginSpotifyAuthorization();
+        return;
+      }
+      setSpotifyConnected(true);
       const { data, error: importError } = await supabase.functions.invoke('spotify-playlist-import', {
-        body: { url: url.trim() },
+        body: { url: url.trim(), spotifyAccessToken },
       });
       if (importError) throw importError;
       if (data?.error) throw new Error(data.error);
@@ -230,7 +247,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
             <form onSubmit={(event) => void addToQueue(event)} className="flex flex-col gap-2 sm:flex-row">
               <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Paste a Spotify or YouTube link…" aria-label="Spotify or YouTube link" className="min-w-0 flex-1 rounded-lg border border-white/[0.09] bg-ink-950 px-3 py-2.5 text-xs text-ink-100 outline-none placeholder:text-ink-600 focus:border-primary-400/40" />
               <button type="submit" disabled={busy || importing || !url.trim()} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2.5 text-xs font-semibold text-white hover:bg-primary-400 disabled:opacity-40"><Plus size={13} /> Add link</button>
-              {url.includes('open.spotify.com/') && url.includes('/playlist/') ? <button type="button" onClick={() => void importSpotifyPlaylist()} disabled={busy || importing || !url.trim()} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-40">{importing ? <Loader2 size={13} className="animate-spin" /> : <Music2 size={13} />} {importing ? 'Matching tracks…' : 'Import playlist'}</button> : null}
+              {url.includes('open.spotify.com/') && url.includes('/playlist/') ? <button type="button" onClick={() => void importSpotifyPlaylist()} disabled={busy || importing || !url.trim()} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/15 disabled:opacity-40">{importing ? <Loader2 size={13} className="animate-spin" /> : <Music2 size={13} />} {importing ? 'Matching tracks…' : spotifyConnected ? 'Import playlist' : 'Connect Spotify & import'}</button> : null}
             </form>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between"><p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-400"><ListMusic size={12} /> Queue</p><span className="text-[10px] tabular-nums text-ink-600">{queue.length} items</span></div>

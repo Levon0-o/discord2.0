@@ -1,5 +1,4 @@
-
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { SectionView } from '@/components/sections/SectionView';
 import { AuthPage } from '@/components/auth/AuthPage';
@@ -7,11 +6,18 @@ import { ProfileBootstrap } from '@/components/auth/ProfileBootstrap';
 import { NAV_SECTIONS } from '@/config/navigation';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAuth } from '@/contexts/AuthContext';
+import { handleSpotifyOAuthRedirect } from '@/lib/spotifyAuth';
 
 function App() {
   const { section, navigate } = useActiveSection();
   const { session, loading, configured, signOut } = useAuth();
   const [requestedConversationId, setRequestedConversationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void handleSpotifyOAuthRedirect().then((returnTo) => {
+      if (returnTo) window.location.replace(returnTo);
+    });
+  }, []);
 
   const activeSection =
     NAV_SECTIONS.find((item) => item.id === section) ?? NAV_SECTIONS[0];

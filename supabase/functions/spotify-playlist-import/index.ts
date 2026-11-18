@@ -31,8 +31,8 @@ function playlistIdFromUrl(value: string): string | null {
 }
 
 function normalize(value: string): string {
-  return value.toLowerCase().normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "")
-    .replace(/\\b(official|video|audio|lyrics?|hd|4k|visualizer|topic)\\b/g, " ")
+  return value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(official|video|audio|lyrics?|hd|4k|visualizer|topic)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ").trim();
 }
 
@@ -49,30 +49,25 @@ function scoreMatch(track: SpotifyTrack, title: string, channel: string, duratio
   return Math.max(0, Math.min(1, score));
 }
 
-async function getSpotifyToken(clientId: string, clientSecret: string): Promise<string> {
-  const credentials = btoa(clientId + ":" + clientSecret);
-  const response = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { Authorization: "Basic " + credentials, "Content-Type": "application/x-www-form-urlencoded" },
-    body: "grant_type=client_credentials",
-  });
-  if (!response.ok) throw new Error("Spotify authentication failed. Check the Spotify API secrets.");
-  const data = await response.json();
-  return data.access_token as string;
-}
-
-async function fetchSpotifyTracks(playlistId: string, token: string): Promise<SpotifyTrack[]> {
+async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<SpotifyTrack[]> {
   const tracks: SpotifyTrack[] = [];
   let offset = 0;
   while (offset < 100) {
     const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&offset=${offset}`, {
-      headers: { Authorization: "Bearer " + token },
+      headers: { Authorization: "Bearer " + accessToken },
     });
+    if (response.status === 401) {
+      throw new Error("Your Spotify session expired. Disconnect and connect Spotify again.");
+    }
+    if (response.status === 403) {
+      throw new Error("Spotify only provides playlist tracks when you own the playlist or are a collaborator. Check that you connected the account that has access.");
+    }
+    if (response.status === 404) {
+      throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
+    }
     if (!response.ok) {
       const details = await response.text();
-      throw new Error(response.status === 404 || response.status === 403
-        ? "Spotify did not allow access to this playlist. It must be public and accessible to your Spotify app."
-        : "Could not read Spotify playlist: " + details.slice(0, 180));
+      throw new Error("Could not read Spotify playlist (" + response.status + "): " + details.slice(0, 180));
     }
     const data = await response.json();
     const items = Array.isArray(data.items) ? data.items : [];
@@ -116,7 +111,7 @@ async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Ma
 }
 
 function parseIsoDuration(value: string): number {
-  const match = value.match(/PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?/);
+  const match = value.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   return match ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0) : 0;
 }
 
@@ -125,20 +120,21 @@ serve(async (request) => {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   try {
-    const spotifyClientId = Deno.env.get("SPOTIFY_CLIENT_ID");
-    const spotifyClientSecret = Deno.env.get("SPOTIFY_CLIENT_SECRET");
     const youtubeApiKey = Deno.env.get("YOUTUBE_DATA_API_KEY");
-    if (!spotifyClientId || !spotifyClientSecret || !youtubeApiKey) {
-      return json({ error: "Server setup required: configure SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET and YOUTUBE_DATA_API_KEY in Supabase Edge Function secrets." }, 503);
+    if (!youtubeApiKey) {
+      return json({ error: "Server setup required: configure YOUTUBE_DATA_API_KEY in Supabase Edge Function secrets." }, 503);
     }
 
     const body = await request.json();
     const playlistId = playlistIdFromUrl(String(body.url ?? ""));
+    const spotifyAccessToken = String(body.spotifyAccessToken ?? "");
     if (!playlistId) return json({ error: "Paste a valid Spotify playlist URL." }, 400);
+    if (!spotifyAccessToken || spotifyAccessToken.length > 4096) {
+      return json({ error: "Connect your Spotify account before importing a playlist." }, 401);
+    }
 
-    const token = await getSpotifyToken(spotifyClientId, spotifyClientSecret);
-    const tracks = await fetchSpotifyTracks(playlistId, token);
-    if (!tracks.length) return json({ error: "No playable tracks were found in this playlist." }, 422);
+    const tracks = await fetchSpotifyTracks(playlistId, spotifyAccessToken);
+    if (!tracks.length) return json({ error: "No playable tracks were found. Make sure this playlist contains tracks and that you own it or collaborate on it." }, 422);
 
     const results = [];
     for (const [index, track] of tracks.entries()) {
