@@ -232,7 +232,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
       const quotaNote = data.truncated
         ? spotifyPlaylist
           ? ` Only the first ${data.total} of ${data.playlistTotal ?? 'the'} Spotify playlist entries were checked to limit YouTube API quota usage.`
-          : ` Only the first ${data.total} available videos were imported; this importer currently caps YouTube playlists at 100 videos per request.`
+          : ` Only the first 100 source entries were checked; this importer currently caps YouTube playlist imports at 100 entries per request.`
         : '';
       const skippedNote = unmatched ? ` ${unmatched} unavailable or unmatched videos were skipped.` : '';
       const failedNote = failedAdds ? ` ${failedAdds} matched videos could not be added to the queue.` : '';
