@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { ExternalLink, Music2, Play, Volume2, Youtube } from 'lucide-react';
+import { ExternalLink, Music2, Pause, Play, Volume2, Youtube } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 type MediaTarget =
   | { provider: 'youtube'; title: string; sourceUrl: string; embedUrl: string; videoId: string }
@@ -8,6 +9,11 @@ type MediaTarget =
 interface YouTubePlayer {
   destroy: () => void;
   setVolume: (volume: number) => void;
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  getCurrentTime: () => number;
+  getPlayerState: () => number;
 }
 
 interface YouTubePlayerEvent {
@@ -20,7 +26,7 @@ interface YouTubeApi {
     options: {
       videoId: string;
       playerVars?: Record<string, string | number>;
-      events?: { onReady?: (event: YouTubePlayerEvent) => void };
+      events?: { onReady?: (event: YouTubePlayerEvent) => void; onStateChange?: (event: { data: number }) => void };
     },
   ) => YouTubePlayer;
 }
@@ -97,13 +103,17 @@ function findMediaTarget(text: string): MediaTarget | null {
   return null;
 }
 
-export function MediaEmbed({ text }: { text: string }) {
+export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: string; syncRoomId?: string; canControl?: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [volume, setVolume] = useState(70);
   const [playerError, setPlayerError] = useState('');
   const target = findMediaTarget(text);
   const playerHostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
+  const syncChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [syncReady, setSyncReady] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const volumeRef = useRef(volume);
   const playerId = useId().replace(/:/g, '');
   const isYouTube = target?.provider === 'youtube';
@@ -124,12 +134,13 @@ export function MediaEmbed({ text }: { text: string }) {
         videoId: target.videoId,
         playerVars: {
           autoplay: 0,
-          controls: 1,
+          controls: 0,
           playsinline: 1,
           origin: window.location.origin,
         },
         events: {
-          onReady: (event) => event.target.setVolume(volumeRef.current),
+          onReady: (event) => { event.target.setVolume(volumeRef.current); setSyncReady(true); if (syncRoomId) window.setTimeout(() => { const player = playerRef.current; const channel = syncChannelRef.current; if (!player || !channel) return; if (canControl) void channel.send({ type: 'broadcast', event: 'command', payload: { action: player.getPlayerState() === 1 ? 'play' : 'pause', time: player.getCurrentTime(), sentAt: Date.now() } }); else void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} }); }, 300); },
+          onStateChange: (event) => setPlaying(event.data === 1),
         },
       });
     }).catch((error: unknown) => {
@@ -143,6 +154,56 @@ export function MediaEmbed({ text }: { text: string }) {
     };
   }, [loaded, target?.provider, target?.provider === 'youtube' ? target.videoId : null]);
 
+  useEffect(() => {
+    if (!loaded || !syncRoomId || !target || target.provider !== 'youtube') return;
+    const channel = supabase.channel('shared-media:' + syncRoomId + ':' + target.videoId, { config: { broadcast: { self: false } } });
+    syncChannelRef.current = channel;
+    channel.on('broadcast', { event: 'command' }, ({ payload }) => {
+      const player = playerRef.current;
+      if (!player) return;
+      const elapsed = Math.max(0, (Date.now() - Number(payload.sentAt ?? Date.now())) / 1000);
+      if (typeof payload.time === 'number') player.seekTo(payload.time + (payload.action === 'play' ? elapsed : 0), true);
+      if (payload.action === 'play') player.playVideo();
+      if (payload.action === 'pause') player.pauseVideo();
+      if (payload.action === 'seek') player.seekTo(Number(payload.time) || 0, true);
+      if (payload.action === 'sync') {
+        const targetTime = Number(payload.time) + elapsed;
+        if (player.getPlayerState() !== 1) player.playVideo();
+        if (Math.abs(player.getCurrentTime() - targetTime) > 1.25) player.seekTo(targetTime, true);
+      }
+    }).on('broadcast', { event: 'sync-request' }, () => {
+      if (!canControl || !playerRef.current) return;
+      const player = playerRef.current;
+      void channel.send({ type: 'broadcast', event: 'command', payload: { action: player.getPlayerState() === 1 ? 'play' : 'pause', time: player.getCurrentTime(), sentAt: Date.now(), sender: 'leader' } });
+    }).subscribe((status) => {
+      if (status === 'SUBSCRIBED') void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
+    });
+    const heartbeat = canControl ? window.setInterval(() => {
+      const player = playerRef.current;
+      if (player?.getPlayerState() === 1) void channel.send({ type: 'broadcast', event: 'command', payload: { action: 'sync', time: player.getCurrentTime(), sentAt: Date.now() } });
+    }, 2500) : null;
+    return () => { if (heartbeat !== null) window.clearInterval(heartbeat); syncChannelRef.current = null; void supabase.removeChannel(channel); };
+  }, [loaded, syncRoomId, target?.provider, target?.provider === 'youtube' ? target.videoId : null, canControl]);
+
+  function enableSyncedAudio() {
+    const player = playerRef.current;
+    const channel = syncChannelRef.current;
+    if (!player || !channel) return;
+    player.playVideo();
+    setAudioEnabled(true);
+    window.setTimeout(() => {
+      player.pauseVideo();
+      void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
+    }, 250);
+  }
+  function sendPlaybackCommand(action: 'play' | 'pause' | 'seek', time?: number) {
+    if (!canControl || !playerRef.current || !syncChannelRef.current) return;
+    const currentTime = typeof time === 'number' ? time : playerRef.current.getCurrentTime();
+    if (action === 'play') playerRef.current.playVideo();
+    if (action === 'pause') playerRef.current.pauseVideo();
+    if (action === 'seek') playerRef.current.seekTo(currentTime, true);
+    void syncChannelRef.current.send({ type: 'broadcast', event: 'command', payload: { action, time: currentTime, sentAt: Date.now(), sender: 'leader' } });
+  }
   if (!target) return null;
 
   const height = isSpotify && target.tall ? 352 : isSpotify ? 152 : undefined;
@@ -173,6 +234,9 @@ export function MediaEmbed({ text }: { text: string }) {
           <div>
             <div ref={playerHostRef} id={playerId} className="aspect-video w-full" />
             {playerError ? <p role="alert" className="px-3 py-2 text-[10px] text-red-300">{playerError}</p> : null}
+            {syncRoomId ? <div className="flex items-center gap-2 border-t border-white/[0.06] px-3 py-2">
+              {canControl ? <><button type="button" onClick={() => sendPlaybackCommand(playing ? "pause" : "play")} className="rounded-md bg-primary-500 px-3 py-1.5 text-[10px] font-semibold text-white">{playing ? <Pause size={12} className="inline" /> : <Play size={12} className="inline" />} {playing ? "Pause for everyone" : "Play for everyone"}</button><button type="button" onClick={() => sendPlaybackCommand("seek", Math.max(0, (playerRef.current?.getCurrentTime() ?? 0) - 10))} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">−10s</button><button type="button" onClick={() => sendPlaybackCommand("seek", (playerRef.current?.getCurrentTime() ?? 0) + 10)} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">+10s</button></> : <><button type="button" onClick={enableSyncedAudio} disabled={!syncReady || audioEnabled} className="rounded-md border border-white/10 px-3 py-1.5 text-[10px] text-ink-300 disabled:opacity-50">{audioEnabled ? "Audio enabled" : "Enable synced audio"}</button><span className="text-[10px] text-ink-500">{syncReady ? "Waiting for playlist host" : "Connecting shared player…"}</span></>}
+            </div> : null}
             <div className="flex items-center gap-3 border-t border-white/[0.06] px-3 py-2.5">
               <Volume2 size={14} className="shrink-0 text-ink-400" />
               <input

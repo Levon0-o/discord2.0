@@ -1,0 +1,165 @@
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+
+type SpotifyTrack = { name: string; artists: Array<{ name: string }>; duration_ms: number };
+type Match = { videoId: string; title: string; channelTitle: string; durationSeconds: number; score: number };
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function playlistIdFromUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname !== "open.spotify.com") return null;
+    const parts = url.pathname.split("/").filter(Boolean);
+    const localized = /^intl(?:-[a-z]{2})?$/i.test(parts[0] ?? "");
+    const type = localized ? parts[1] : parts[0];
+    const id = localized ? parts[2] : parts[1];
+    return type === "playlist" && /^[A-Za-z0-9]{10,64}$/.test(id ?? "") ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalize(value: string): string {
+  return value.toLowerCase().normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/\\b(official|video|audio|lyrics?|hd|4k|visualizer|topic)\\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function scoreMatch(track: SpotifyTrack, title: string, channel: string, durationSeconds: number): number {
+  const expectedTitle = normalize(track.name);
+  const expectedArtist = normalize(track.artists.map((artist) => artist.name).join(" "));
+  const candidate = normalize(title);
+  const channelName = normalize(channel);
+  const titleHit = candidate.includes(expectedTitle) || expectedTitle.includes(candidate);
+  const artistHit = candidate.includes(expectedArtist) || channelName.includes(expectedArtist);
+  const durationDelta = Math.abs(durationSeconds - track.duration_ms / 1000);
+  let score = (titleHit ? 0.58 : 0.15) + (artistHit ? 0.32 : 0) + (durationDelta <= 4 ? 0.1 : durationDelta <= 12 ? 0.05 : 0);
+  if (/live|cover|karaoke|sped up|slowed|remix/.test(normalize(title)) && !/live|cover|karaoke|sped up|slowed|remix/.test(normalize(track.name))) score -= 0.2;
+  return Math.max(0, Math.min(1, score));
+}
+
+async function getSpotifyToken(clientId: string, clientSecret: string): Promise<string> {
+  const credentials = btoa(clientId + ":" + clientSecret);
+  const response = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: { Authorization: "Basic " + credentials, "Content-Type": "application/x-www-form-urlencoded" },
+    body: "grant_type=client_credentials",
+  });
+  if (!response.ok) throw new Error("Spotify authentication failed. Check the Spotify API secrets.");
+  const data = await response.json();
+  return data.access_token as string;
+}
+
+async function fetchSpotifyTracks(playlistId: string, token: string): Promise<SpotifyTrack[]> {
+  const tracks: SpotifyTrack[] = [];
+  let offset = 0;
+  while (offset < 100) {
+    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&offset=${offset}`, {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!response.ok) {
+      const details = await response.text();
+      throw new Error(response.status === 404 || response.status === 403
+        ? "Spotify did not allow access to this playlist. It must be public and accessible to your Spotify app."
+        : "Could not read Spotify playlist: " + details.slice(0, 180));
+    }
+    const data = await response.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    for (const entry of items) {
+      const raw = entry.item ?? entry.track;
+      if (!raw || raw.type !== "track" || !raw.name || !Array.isArray(raw.artists)) continue;
+      tracks.push({ name: raw.name, artists: raw.artists, duration_ms: raw.duration_ms ?? 0 });
+    }
+    if (!data.next || items.length === 0) break;
+    offset += items.length;
+  }
+  return tracks;
+}
+
+async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Match | null> {
+  const artist = track.artists.map((item) => item.name).join(" ");
+  const query = encodeURIComponent(`${artist} ${track.name} official audio`);
+  const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=5&q=${query}&key=${apiKey}`);
+  if (!response.ok) throw new Error("YouTube search failed. Check the YouTube Data API key and quota.");
+  const data = await response.json();
+  const candidates = (data.items ?? []).map((item: Record<string, any>) => ({
+    videoId: item.id?.videoId as string,
+    title: item.snippet?.title as string,
+    channelTitle: item.snippet?.channelTitle as string,
+  })).filter((item: { videoId: string; title: string }) => item.videoId && item.title);
+  if (!candidates.length) return null;
+
+  const detailsUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
+  detailsUrl.searchParams.set("part", "contentDetails");
+  detailsUrl.searchParams.set("id", candidates.map((item: { videoId: string }) => item.videoId).join(","));
+  detailsUrl.searchParams.set("key", apiKey);
+  const detailsResponse = await fetch(detailsUrl);
+  if (!detailsResponse.ok) throw new Error("Could not verify YouTube video durations.");
+  const details = await detailsResponse.json();
+  const durations = new Map<string, number>((details.items ?? []).map((item: Record<string, any>) => [item.id, parseIsoDuration(item.contentDetails?.duration ?? "")]));
+  const ranked = candidates.map((candidate: { videoId: string; title: string; channelTitle: string }) => {
+    const durationSeconds = durations.get(candidate.videoId) ?? 0;
+    return { ...candidate, durationSeconds, score: scoreMatch(track, candidate.title, candidate.channelTitle, durationSeconds) };
+  }).sort((a: Match, b: Match) => b.score - a.score);
+  return ranked[0] ?? null;
+}
+
+function parseIsoDuration(value: string): number {
+  const match = value.match(/PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?/);
+  return match ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0) : 0;
+}
+
+serve(async (request) => {
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+
+  try {
+    const spotifyClientId = Deno.env.get("SPOTIFY_CLIENT_ID");
+    const spotifyClientSecret = Deno.env.get("SPOTIFY_CLIENT_SECRET");
+    const youtubeApiKey = Deno.env.get("YOUTUBE_DATA_API_KEY");
+    if (!spotifyClientId || !spotifyClientSecret || !youtubeApiKey) {
+      return json({ error: "Server setup required: configure SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET and YOUTUBE_DATA_API_KEY in Supabase Edge Function secrets." }, 503);
+    }
+
+    const body = await request.json();
+    const playlistId = playlistIdFromUrl(String(body.url ?? ""));
+    if (!playlistId) return json({ error: "Paste a valid Spotify playlist URL." }, 400);
+
+    const token = await getSpotifyToken(spotifyClientId, spotifyClientSecret);
+    const tracks = await fetchSpotifyTracks(playlistId, token);
+    if (!tracks.length) return json({ error: "No playable tracks were found in this playlist." }, 422);
+
+    const results = [];
+    for (const [index, track] of tracks.entries()) {
+      const match = await findYouTubeMatch(track, youtubeApiKey);
+      results.push({
+        originalTitle: track.name,
+        artist: track.artists.map((item) => item.name).join(", "),
+        durationMs: track.duration_ms,
+        order: index,
+        match: match && match.score >= 0.72 ? {
+          title: match.title,
+          videoId: match.videoId,
+          url: "https://www.youtube.com/watch?v=" + match.videoId,
+          score: match.score,
+          durationSeconds: match.durationSeconds,
+        } : null,
+      });
+    }
+
+    return json({ playlistId, total: tracks.length, matched: results.filter((item) => item.match).length, tracks: results });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Playlist import failed." }, 500);
+  }
+});
