@@ -1340,7 +1340,7 @@ export function DirectMessagesSection({
                 )}
                 <button
                   type="button"
-                  onClick={() => setShowPinnedMessages((value) => !value)
+                  onClick={() => setShowPinnedMessages((value) => !value)}
                   className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs transition ${showPinnedMessages ? 'border-primary-400/40 bg-primary-500/15 text-primary-200' : 'border-white/10 text-ink-400 hover:bg-white/[0.05] hover:text-ink-100'}`}
                   aria-expanded={showPinnedMessages}
                 >
