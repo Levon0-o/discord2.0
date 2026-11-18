@@ -32,6 +32,6 @@ Deploy `spotify-playlist-import` from the Supabase Dashboard or with the Supabas
 
 - Spotify imports search YouTube using track title, artist and duration; uncertain matches are skipped.
 - YouTube playlist imports add the playlist's available videos directly, in source order.
-- Public YouTube playlist imports are capped at 100 videos per request. Spotify imports inspect at most the first 50 playlist entries per request.
+- Public YouTube playlist imports inspect at most the first 100 source entries per request; deleted/private entries are skipped. Spotify imports inspect at most the first 50 playlist entries per request.
 - Spotify matching can consume substantial YouTube quota: each track search uses `search.list` (100 quota units), plus video-detail lookups. The 50-entry cap bounds a single import to roughly 5,000 search quota units in the worst case. The UI reports when a longer Spotify playlist was truncated.
 - Test with a short playlist first. The importer does not download or copy audio; playback uses YouTube embeds.
