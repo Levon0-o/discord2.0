@@ -1,6 +1,9 @@
-# Spotify playlist import setup
+# Playlist import setup
 
-The importer uses Spotify Authorization Code with PKCE. Each user connects their own Spotify account; the app does not store a Spotify client secret. Spotify playlist items are only available for playlists the connected user owns or collaborates on under the February 2026 Web API rules.
+The shared-listening importer supports two playlist sources:
+
+1. **Spotify playlists** — each user connects their own Spotify account with Authorization Code + PKCE. Spotify only returns playlist items when the connected user owns the playlist or is a collaborator. Public visibility alone does not grant item access under the February 2026 Web API rules.
+2. **Public YouTube playlists** — paste a YouTube playlist URL. The importer reads public playlist items directly through the YouTube Data API, preserving their order. Private playlists and unavailable/deleted videos cannot be imported.
 
 ## Spotify app configuration
 
@@ -11,20 +14,24 @@ In the Spotify Developer Dashboard:
    `https://afterdarkapp.vercel.app/`
 3. Copy the Spotify Client ID.
 
-Add the following environment variable to the Vercel project and redeploy:
+Add this environment variable to the Vercel project and redeploy:
 
-- `VITE_SPOTIFY_CLIENT_ID` — the Spotify app Client ID (public identifier; never put a client secret in Vite).
+- `VITE_SPOTIFY_CLIENT_ID` — the Spotify Client ID (public identifier; never put a client secret in Vite).
 
-The app uses the scopes `playlist-read-private` and `playlist-read-collaborative`. Users must sign in with an account that owns the playlist or is a collaborator.
+The app requests `playlist-read-private` and `playlist-read-collaborative`. Users must sign in with an account that owns the Spotify playlist or collaborates on it.
 
 ## Supabase Edge Function
 
-Only the YouTube key is required as a Supabase function secret:
+The only required Supabase function secret is:
 
 - `YOUTUBE_DATA_API_KEY`
 
-Deploy `spotify-playlist-import` from the Supabase Dashboard or with the Supabase CLI. Keep Supabase JWT verification enabled. The function receives a short-lived Spotify access token from the authenticated browser session and uses it only to read playlist items.
+Deploy `spotify-playlist-import` from the Supabase Dashboard or with the Supabase CLI. Keep Supabase JWT verification enabled. Spotify access tokens are sent from the authenticated browser session only for Spotify imports. YouTube playlist imports do not require Spotify OAuth.
 
-## Matching and quota
+## Matching, limits and quota
 
-The importer preserves Spotify playlist order and imports only YouTube matches scoring at least 0.72 based on title, artist, and duration. Uncertain matches are skipped. YouTube Data API search costs quota per track; the importer currently caps playlists at 100 tracks. Test with a short playlist first.
+- Spotify imports search YouTube using track title, artist and duration; uncertain matches are skipped.
+- YouTube playlist imports add the playlist's available videos directly, in source order.
+- Both import paths are capped at 100 items per request.
+- YouTube playlist listing uses the YouTube Data API `playlistItems.list` endpoint. Spotify-to-YouTube matching additionally uses YouTube search and video details, which consumes more quota.
+- Test with a short playlist first. The importer does not download or copy audio; playback uses YouTube embeds.
