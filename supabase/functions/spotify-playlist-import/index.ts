@@ -43,6 +43,28 @@ function youtubePlaylistId(value: string): string | null {
   }
 }
 
+async function youtubeApiError(response: Response, context: "playlist" | "search" | "details"): Promise<string> {
+  let reason = "";
+  try {
+    const payload = await response.json();
+    reason = payload.error?.errors?.[0]?.reason ?? payload.error?.status ?? "";
+  } catch {
+    // Ignore a non-JSON API error response and use the status-based fallback.
+  }
+  if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
+    return "YouTube API daily quota is exhausted. Try again after the quota resets or increase the project's YouTube Data API quota.";
+  }
+  if (reason === "playlistNotFound" || response.status === 404) {
+    return "YouTube could not find this playlist. Check that the link is correct and the playlist is public.";
+  }
+  if (reason === "playlistItemsNotAccessible" || response.status === 403 && context === "playlist") {
+    return "YouTube cannot read this playlist. Check that it is public and that the API key has YouTube Data API v3 enabled.";
+  }
+  if (context === "search") return "YouTube track search failed. Check the API key and its quota.";
+  if (context === "details") return "YouTube could not verify the matched video details.";
+  return "Could not read this YouTube playlist. Check that it is public and that the API key has YouTube Data API v3 enabled.";
+}
+
 function normalize(value: string): string {
   return value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .replace(/\b(official|video|audio|lyrics?|hd|4k|visualizer|topic)\b/g, " ")
@@ -100,10 +122,7 @@ async function fetchYouTubePlaylistVideos(playlistId: string, apiKey: string) {
     url.searchParams.set("key", apiKey);
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const response = await fetch(url);
-    if (!response.ok) {
-      const details = await response.text();
-      throw new Error("Could not read this YouTube playlist. Make sure it is public and the YouTube API key is valid. " + details.slice(0, 120));
-    }
+    if (!response.ok) throw new Error(await youtubeApiError(response, "playlist"));
     const data = await response.json();
     for (const entry of data.items ?? []) {
       const videoId = entry.contentDetails?.videoId ?? entry.snippet?.resourceId?.videoId;
@@ -124,7 +143,7 @@ async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Ma
   const artist = track.artists.map((item) => item.name).join(" ");
   const query = encodeURIComponent(`${artist} ${track.name} official audio`);
   const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=5&q=${query}&key=${apiKey}`);
-  if (!response.ok) throw new Error("YouTube search failed. Check the YouTube Data API key and quota.");
+  if (!response.ok) throw new Error(await youtubeApiError(response, "search"));
   const data = await response.json();
   const candidates = (data.items ?? []).map((item: Record<string, any>) => ({
     videoId: item.id?.videoId as string,
@@ -137,7 +156,7 @@ async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Ma
   detailsUrl.searchParams.set("id", candidates.map((item: { videoId: string }) => item.videoId).join(","));
   detailsUrl.searchParams.set("key", apiKey);
   const detailsResponse = await fetch(detailsUrl);
-  if (!detailsResponse.ok) throw new Error("Could not verify YouTube video durations.");
+  if (!detailsResponse.ok) throw new Error(await youtubeApiError(detailsResponse, "details"));
   const details = await detailsResponse.json();
   const durations = new Map<string, number>((details.items ?? []).map((item: Record<string, any>) => [item.id, parseIsoDuration(item.contentDetails?.duration ?? "")]));
   const ranked = candidates.map((candidate: { videoId: string; title: string; channelTitle: string }) => {
