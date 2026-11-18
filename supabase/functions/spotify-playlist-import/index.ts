@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 type SpotifyTrack = { name: string; artists: Array<{ name: string }>; duration_ms: number };
 type Match = { videoId: string; title: string; channelTitle: string; durationSeconds: number; score: number };
+type YouTubeSearchItem = { id?: { videoId?: string }; snippet?: { title?: string; channelTitle?: string } };
+type YouTubeVideoDetailsItem = { id: string; contentDetails?: { duration?: string } };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -153,11 +155,11 @@ async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Ma
   const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=5&q=${query}&key=${apiKey}`);
   if (!response.ok) throw new Error(await youtubeApiError(response, "search"));
   const data = await response.json();
-  const candidates = (data.items ?? []).map((item: Record<string, any>) => ({
-    videoId: item.id?.videoId as string,
-    title: item.snippet?.title as string,
-    channelTitle: item.snippet?.channelTitle as string,
-  })).filter((item: { videoId: string; title: string }) => item.videoId && item.title);
+  const candidates = (data.items ?? []).map((item: YouTubeSearchItem) => ({
+    videoId: item.id?.videoId ?? "",
+    title: item.snippet?.title ?? "",
+    channelTitle: item.snippet?.channelTitle ?? "",
+  })).filter((item: { videoId: string; title: string }) => item.videoId.length > 0 && item.title.length > 0);
   if (!candidates.length) return null;
   const detailsUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
   detailsUrl.searchParams.set("part", "contentDetails");
@@ -166,7 +168,8 @@ async function findYouTubeMatch(track: SpotifyTrack, apiKey: string): Promise<Ma
   const detailsResponse = await fetch(detailsUrl);
   if (!detailsResponse.ok) throw new Error(await youtubeApiError(detailsResponse, "details"));
   const details = await detailsResponse.json();
-  const durations = new Map<string, number>((details.items ?? []).map((item: Record<string, any>) => [item.id, parseIsoDuration(item.contentDetails?.duration ?? "")]));
+  const durationEntries: Array<[string, number]> = (details.items ?? []).map((item: YouTubeVideoDetailsItem) => [item.id, parseIsoDuration(item.contentDetails?.duration ?? "")]);
+  const durations = new Map<string, number>(durationEntries);
   const ranked = candidates.map((candidate: { videoId: string; title: string; channelTitle: string }) => {
     const durationSeconds = durations.get(candidate.videoId) ?? 0;
     return { ...candidate, durationSeconds, score: scoreMatch(track, candidate.title, candidate.channelTitle, durationSeconds) };
