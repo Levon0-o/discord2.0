@@ -118,7 +118,6 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
   const [audioEnabled, setAudioEnabled] = useState(false);
   const volumeRef = useRef(volume);
   const playerId = useId().replace(/:/g, '');
-  const isYouTube = target?.provider === 'youtube';
   const isSpotify = target?.provider === 'spotify';
 
   useEffect(() => {
