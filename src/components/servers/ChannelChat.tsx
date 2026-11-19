@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   Hash, MessageSquare, Paperclip, RefreshCw, Send, Reply, Pencil,
   Trash2, Pin, X, Check, Copy, FileText, AtSign, Search, Users, Circle, Bell, BellOff, Bookmark, BarChart3, Forward, Megaphone,
@@ -92,11 +92,13 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [mobileActionsMessageId, setMobileActionsMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLElement | null>>({});
   const shouldScrollToBottomRef = useRef(true);
+  const messageLongPressTimerRef = useRef<number | null>(null);
+  const messageLongPressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const lastTypingBroadcastRef = useRef(0);
@@ -288,8 +290,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
             if (next.thread_id === activeThreadRoot?.id) setThreadMessages((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
             { const parentThreadId = next.thread_id; setThreadCounts((current) => ({ ...current, [parentThreadId]: (current[parentThreadId] ?? 0) + 1 })); }
           } else {
+            shouldScrollToBottomRef.current = true;
             setMessages((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
-            if (next.author_id !== userId) shouldScrollToBottomRef.current = true;
           }
         } else if (payload.eventType === 'UPDATE' && next?.id) {
           if (next.thread_id) setThreadMessages((current) => current.map((item) => item.id === next.id ? next : item));
@@ -343,6 +345,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                   fetchChannelThreadCounts(latestMessages.map((message) => message.id)),
                 ]);
                 if (!active) return;
+                shouldScrollToBottomRef.current = true;
                 setMessages(latestMessages);
                 setHasMore(latestMessages.length === 100);
                 setReactions(latestReactions);
@@ -411,10 +414,16 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   }, [activeThreadRoot?.id]);
 
   useEffect(() => {
-    if (!shouldScrollToBottomRef.current) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    shouldScrollToBottomRef.current = false;
-  }, [messages]);
+    if (!shouldScrollToBottomRef.current || loading) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      shouldScrollToBottomRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, loading]);
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -665,6 +674,41 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
     }
   }
 
+  function clearMessageLongPress() {
+    if (messageLongPressTimerRef.current !== null) {
+      window.clearTimeout(messageLongPressTimerRef.current);
+      messageLongPressTimerRef.current = null;
+    }
+    messageLongPressOriginRef.current = null;
+  }
+
+  function handleMessagePointerDown(event: ReactPointerEvent<HTMLElement>, messageId: string) {
+    if (event.pointerType !== 'touch') return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('button, a, input, textarea, select, summary')) return;
+
+    clearMessageLongPress();
+    messageLongPressOriginRef.current = { x: event.clientX, y: event.clientY };
+    messageLongPressTimerRef.current = window.setTimeout(() => {
+      setMobileActionsMessageId(messageId);
+      messageLongPressTimerRef.current = null;
+    }, 480);
+  }
+
+  function handleMessagePointerMove(event: ReactPointerEvent<HTMLElement>) {
+    const origin = messageLongPressOriginRef.current;
+    if (!origin || messageLongPressTimerRef.current === null) return;
+    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 12) {
+      clearMessageLongPress();
+    }
+  }
+
+  useEffect(() => () => {
+    if (messageLongPressTimerRef.current !== null) {
+      window.clearTimeout(messageLongPressTimerRef.current);
+    }
+  }, []);
+
   async function muteChannelNotifications(durationMs: number | null) {
     setSavingNotificationPreference(true);
     setError('');
@@ -840,6 +884,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       {error ? <p role="alert" className="shrink-0 border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">{error}</p> : null}
 
       <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className="flex min-h-full flex-col justify-end">
         {hasMore && !loading ? (
           <div className="mb-5 text-center">
             <button type="button" onClick={() => void handleLoadOlder()} disabled={loadingOlder} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-ink-400 transition hover:bg-white/[0.05] disabled:opacity-50">
@@ -870,7 +915,22 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
               const replyTarget = message.reply_to_id ? messagesById.get(message.reply_to_id) : null;
               const groupedReactions = QUICK_REACTIONS.map((emoji) => ({ emoji, users: messageReactions.filter((item) => item.emoji === emoji) })).filter((item) => item.users.length);
               return (
-                <article key={message.id} ref={(node) => { messageRefs.current[message.id] = node; }} className={`group relative rounded-xl px-2 py-2 transition-colors hover:bg-white/[0.025] ${index === 0 ? 'mt-0' : grouped ? 'mt-0.5' : 'mt-4'}`}>
+                <article
+                  key={message.id}
+                  ref={(node) => { messageRefs.current[message.id] = node; }}
+                  onPointerDown={(event) => handleMessagePointerDown(event, message.id)}
+                  onPointerMove={handleMessagePointerMove}
+                  onPointerUp={clearMessageLongPress}
+                  onPointerCancel={clearMessageLongPress}
+                  onPointerLeave={clearMessageLongPress}
+                  onContextMenu={(event) => {
+                    if (event.target instanceof Element && event.target.closest('button, a, input, textarea, select, summary')) return;
+                    event.preventDefault();
+                    clearMessageLongPress();
+                    setMobileActionsMessageId(message.id);
+                  }}
+                  className={'group relative rounded-xl px-2 py-2 transition-colors hover:bg-white/[0.025] ' + (index === 0 ? 'mt-0' : grouped ? 'mt-0.5' : 'mt-4')}
+                >
                   <div className="flex gap-3">
                     <div className="flex w-9 shrink-0 justify-center">
                       {grouped ? <span className="pt-1 text-[9px] text-transparent group-hover:text-ink-500">{formatTime(message.created_at)}</span> : (
@@ -979,7 +1039,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                         </div>
                       ) : null}
                       {groupedReactions.length ? <div className="mt-1.5 flex flex-wrap gap-1">{groupedReactions.map(({ emoji, users }) => <button key={emoji} type="button" onClick={() => void handleReaction(message.id, emoji)} className={`rounded-full border px-2 py-0.5 text-xs transition ${users.some((item) => item.user_id === userId) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-300 hover:border-white/20'}`}>{emoji} {users.length}</button>)}</div> : null}
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1 opacity-100 transition-opacity sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                      <div role="group" onClickCapture={() => setMobileActionsMessageId(null)} aria-label="Message actions" className={'mt-1.5 flex-wrap items-center gap-1 transition-opacity ' + (mobileActionsMessageId === message.id ? 'flex' : 'hidden') + ' sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:flex sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'}>
                         <button type="button" title="Open thread" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><MessageSquare size={13} /></button>
                         <button type="button" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md px-1.5 py-1 text-[10px] text-ink-500 hover:text-primary-200">{threadCounts[message.id] ?? 0} replies</button>
                         {message.body.trim() && !polls.some((poll) => poll.message_id === message.id) ? <button type="button" title="Forward message" onClick={() => { setForwardingMessage(message); setForwardTargetChannelId(availableChannels.find((channel) => channel.id !== channelId)?.id ?? ''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Forward size={13} /></button> : null}
@@ -998,9 +1058,9 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                 </article>
               );
             })}
-            <div ref={messagesEndRef} />
           </div>
         )}
+        </div>
       </div>
 
       {activeThreadRoot ? (
