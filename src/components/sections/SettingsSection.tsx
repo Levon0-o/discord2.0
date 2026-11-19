@@ -89,17 +89,18 @@ export function SettingsSection() {
     }
 
     setSavingPassword(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    setSavingPassword(false);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
 
-    if (updateError) {
-      setError(updateError.message);
-      return;
+      setPassword('');
+      setConfirmPassword('');
+      setNotice('Your password has been updated successfully.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update your password. Please try again.');
+    } finally {
+      setSavingPassword(false);
     }
-
-    setPassword('');
-    setConfirmPassword('');
-    setNotice('Your password has been updated successfully.');
   }
 
   async function handleSignOut() {
