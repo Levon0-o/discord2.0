@@ -37,17 +37,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let alive = true;
 
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!alive) return;
-      if (error) console.error('Could not restore Supabase session:', error.message);
-      setSession(data.session);
-      setLoading(false);
-    });
+    let receivedAuthEvent = false;
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      receivedAuthEvent = true;
       setSession(nextSession);
+      setLoading(false);
+    });
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      // An auth event is authoritative. Do not let a slower initial session
+      // lookup overwrite a newer sign-in, refresh, or sign-out event.
+      if (!alive || receivedAuthEvent) return;
+      if (error) console.error('Could not restore Supabase session:', error.message);
+      setSession(data.session);
+      setLoading(false);
+    }).catch((error: unknown) => {
+      if (!alive || receivedAuthEvent) return;
+      console.error('Could not restore Supabase session:', error);
+      setSession(null);
       setLoading(false);
     });
 
@@ -67,18 +77,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     let activity: LivePresence = document.visibilityState === 'visible' ? 'online' : 'idle';
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastActivityEventAt = 0;
+    let lastPublishedActivity: LivePresence | null = null;
+    let lastPublishedAt = 0;
 
     const channel = supabase.channel('afterdark-live-presence', {
       config: { presence: { key: userId } },
     });
 
-    const publishPresence = async () => {
+    const publishPresence = async (force = false) => {
       if (!active) return;
-      await channel.track({
-        user_id: userId,
-        activity_status: activity,
-        last_seen_at: new Date().toISOString(),
-      });
+      const now = Date.now();
+      // Pointer movement can fire dozens of times per second. Track presence
+      // only on status changes or at most once per minute while active.
+      if (!force && activity === lastPublishedActivity && now - lastPublishedAt < 60_000) return;
+
+      lastPublishedActivity = activity;
+      lastPublishedAt = now;
+      try {
+        const status = await channel.track({
+          user_id: userId,
+          activity_status: activity,
+          last_seen_at: new Date(now).toISOString(),
+        });
+        if (status !== 'ok' && active) lastPublishedAt = 0;
+      } catch {
+        if (active) lastPublishedAt = 0;
+      }
     };
 
     const refreshPresence = () => {
@@ -99,24 +124,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const setActive = () => {
-      if (!active) return;
-      activity = document.visibilityState === 'visible' ? 'online' : 'idle';
-      void publishPresence();
+      if (!active || document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      // Throttle noisy pointermove/scroll events while still extending the
+      // five-minute idle window often enough for normal interaction.
+      if (now - lastActivityEventAt < 10_000) return;
+      lastActivityEventAt = now;
+
+      const becameOnline = activity !== 'online';
+      activity = 'online';
       if (idleTimer) clearTimeout(idleTimer);
-      if (activity === 'online') {
-        idleTimer = setTimeout(() => {
-          activity = 'idle';
-          void publishPresence();
-        }, 5 * 60 * 1000);
-      }
+      if (becameOnline) void publishPresence(true);
+
+      idleTimer = setTimeout(() => {
+        if (!active || document.visibilityState !== 'visible') return;
+        activity = 'idle';
+        void publishPresence(true);
+      }, 5 * 60 * 1000);
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') setActive();
-      else {
-        activity = 'idle';
+      if (document.visibilityState === 'visible') {
+        lastActivityEventAt = 0;
+        setActive();
+      } else {
+        lastActivityEventAt = Date.now();
         if (idleTimer) clearTimeout(idleTimer);
-        void publishPresence();
+        if (activity !== 'idle') {
+          activity = 'idle';
+          void publishPresence(true);
+        }
       }
     };
 
@@ -130,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .on('presence', { event: 'leave' }, refreshPresence)
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          void publishPresence();
+          void publishPresence(true);
           refreshPresence();
         }
       });
