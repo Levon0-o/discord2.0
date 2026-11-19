@@ -203,7 +203,29 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
       const { data, error: importError } = await supabase.functions.invoke('spotify-playlist-import', {
         body: spotifyPlaylist ? { url: url.trim(), spotifyAccessToken } : { url: url.trim() },
       });
-      if (importError) throw importError;
+      if (importError) {
+        // Supabase FunctionsHttpError keeps the non-2xx Response in context.
+        // Read its JSON body so the user sees the Edge Function's real error
+        // instead of only "Edge Function returned a non-2xx status code".
+        const context = (importError as { context?: unknown }).context;
+        if (context instanceof Response) {
+          const response = context.clone();
+          const responseText = await response.text();
+          let serverMessage = "";
+          try {
+            const payload = JSON.parse(responseText);
+            if (typeof payload?.error === "string") serverMessage = payload.error;
+            else if (typeof payload?.message === "string") serverMessage = payload.message;
+          } catch {
+            // Some gateway/runtime failures return plain text instead of JSON.
+          }
+          if (!serverMessage && responseText) serverMessage = responseText.slice(0, 500);
+          throw new Error(serverMessage
+            ? `Playlist import failed (HTTP ${response.status}): ${serverMessage}`
+            : `Playlist import failed (HTTP ${response.status}): ${importError.message}`);
+        }
+        throw importError;
+      }
       if (data?.error) throw new Error(data.error);
       const matches = (data?.tracks ?? []).filter((track: { match?: { url?: string } | null }) => track.match?.url);
       if (!matches.length) throw new Error('No playable YouTube videos were found in this playlist.');
