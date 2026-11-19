@@ -85,7 +85,7 @@ export function AppShell({
               {children}
             </main>
 
-            <RightPanel />
+            <RightPanel onNavigate={handleNavigate} />
           </div>
         </div>
       </div>
