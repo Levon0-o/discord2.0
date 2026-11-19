@@ -171,32 +171,86 @@ export function ExploreSection() {
   }, [userId]);
 
   useEffect(() => {
+    let active = true;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+
+    const refreshFeed = async () => {
+      if (!active) return;
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      try {
+        await loadPosts(true, appliedPostSearch, tab === 'trending');
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : 'Could not refresh Explore.');
+      } finally {
+        refreshInFlight = false;
+        if (active && refreshQueued) {
+          refreshQueued = false;
+          scheduleRefresh();
+        }
+      }
+    };
+
+    function scheduleRefresh() {
+      if (!active) return;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void refreshFeed();
+      }, 300);
+    }
+
     void loadPosts(false, appliedPostSearch, tab === 'trending');
     const channel = supabase
       .channel('explore-global-feed')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => { void loadPosts(true, appliedPostSearch, tab === 'trending'); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, scheduleRefresh)
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      active = false;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      void supabase.removeChannel(channel);
+    };
   }, [loadPosts, appliedPostSearch, tab]);
 
   useEffect(() => {
     let active = true;
+    let searchTimer: ReturnType<typeof setTimeout> | null = null;
     if (tab !== 'people' || search.trim().length < 3) {
       setPeople([]);
       return;
     }
-    const run = async () => {
-      try {
-        const results = await searchUsers(search);
-        if (active) setPeople(results);
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : 'Could not search users.');
-      }
+
+    searchTimer = setTimeout(() => {
+      const run = async () => {
+        try {
+          const results = await searchUsers(search.trim());
+          if (active) setPeople(results);
+        } catch (cause) {
+          if (active) setError(cause instanceof Error ? cause.message : 'Could not search users.');
+        }
+      };
+      void run();
+    }, 250);
+
+    return () => {
+      active = false;
+      if (searchTimer) clearTimeout(searchTimer);
     };
-    void run();
-    return () => { active = false; };
   }, [search, tab]);
 
   const visibleProfilePosts = profileContentTab === 'videos' ? profilePosts.filter((item) => item.media_type === 'video') : profilePosts;
