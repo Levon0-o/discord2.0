@@ -420,8 +420,8 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
 
     const frame = window.requestAnimationFrame(() => {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      shouldScrollToBottomRef.current = false;
     });
-    shouldScrollToBottomRef.current = false;
     return () => window.cancelAnimationFrame(frame);
   }, [messages, loading]);
 
@@ -1039,7 +1039,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
                         </div>
                       ) : null}
                       {groupedReactions.length ? <div className="mt-1.5 flex flex-wrap gap-1">{groupedReactions.map(({ emoji, users }) => <button key={emoji} type="button" onClick={() => void handleReaction(message.id, emoji)} className={`rounded-full border px-2 py-0.5 text-xs transition ${users.some((item) => item.user_id === userId) ? 'border-primary-400/40 bg-primary-500/10 text-primary-200' : 'border-white/[0.08] bg-ink-900/70 text-ink-300 hover:border-white/20'}`}>{emoji} {users.length}</button>)}</div> : null}
-                      <div onClickCapture={() => setMobileActionsMessageId(null)} aria-label="Message actions" className={'mt-1.5 flex-wrap items-center gap-1 transition-opacity ' + (mobileActionsMessageId === message.id ? 'flex' : 'hidden') + ' sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:flex sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'}>
+                      <div role="group" onClickCapture={() => setMobileActionsMessageId(null)} aria-label="Message actions" className={'mt-1.5 flex-wrap items-center gap-1 transition-opacity ' + (mobileActionsMessageId === message.id ? 'flex' : 'hidden') + ' sm:absolute sm:right-2 sm:top-2 sm:mt-0 sm:flex sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'}>
                         <button type="button" title="Open thread" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><MessageSquare size={13} /></button>
                         <button type="button" onClick={() => { setActiveThreadRoot(message); setThreadDraft(''); }} className="rounded-md px-1.5 py-1 text-[10px] text-ink-500 hover:text-primary-200">{threadCounts[message.id] ?? 0} replies</button>
                         {message.body.trim() && !polls.some((poll) => poll.message_id === message.id) ? <button type="button" title="Forward message" onClick={() => { setForwardingMessage(message); setForwardTargetChannelId(availableChannels.find((channel) => channel.id !== channelId)?.id ?? ''); }} className="rounded-md border border-white/[0.08] bg-ink-950/95 p-1.5 text-ink-400 hover:text-primary-200"><Forward size={13} /></button> : null}
