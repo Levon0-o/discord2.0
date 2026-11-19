@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ListMusic, Loader2, Music2, Plus, SkipForward, Users, X } from 'lucide-react';
+import { ListMusic, Loader2, Music2, Play, Plus, SkipForward, Users, X } from 'lucide-react';
 import { MediaEmbed } from '@/components/shared/MediaEmbed';
 import { supabase } from '@/lib/supabase';
 import { beginSpotifyAuthorization, consumeSpotifyAuthStatus, getSpotifyAccessToken, hasSpotifySession } from '@/lib/spotifyAuth';
@@ -283,6 +283,24 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
     }
   }
 
+  async function selectQueueItem(item: SharedListeningQueueItem) {
+    if (!room || busy || item.id === room.current_item_id) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const updated = await setSharedListeningCurrentItem(room.id, item.id);
+      setRoom(updated);
+      setNotice(item.provider === 'youtube'
+        ? 'Track selected. Load the YouTube player to start listening together.'
+        : 'Track selected. Spotify embeds play independently; choose a YouTube track for synchronized playback.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not select this track.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removeItem(item: SharedListeningQueueItem) {
     if (!room || busy) return;
     setBusy(true);
@@ -326,7 +344,7 @@ export function SharedListening({ roomType, roomId }: SharedListeningProps) {
             </form>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between"><p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-400"><ListMusic size={12} /> Queue</p><span className="text-[10px] tabular-nums text-ink-600">{queue.length} items</span></div>
-              {queue.length === 0 ? <p className="py-2 text-xs text-ink-600">The queue is empty.</p> : queue.map((item, index) => <div key={item.id} className={'flex items-center gap-2 rounded-lg px-2.5 py-2 ' + (item.id === room.current_item_id ? 'bg-primary-500/10' : 'bg-white/[0.025]')}><span className="w-5 shrink-0 text-center text-[10px] tabular-nums text-ink-600">{index + 1}</span><span className="min-w-0 flex-1 truncate text-[11px] text-ink-300">{item.provider === 'spotify' ? 'Spotify' : 'YouTube'} · {item.external_url}</span>{item.id === room.current_item_id ? <span className="shrink-0 text-[9px] font-semibold text-primary-200">NOW</span> : null}<button type="button" onClick={() => void removeItem(item)} disabled={busy} aria-label="Remove from shared queue" className="shrink-0 rounded p-1 text-ink-600 hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-40"><X size={12} /></button></div>)}
+              {queue.length === 0 ? <p className="py-2 text-xs text-ink-600">The queue is empty.</p> : queue.map((item, index) => <div key={item.id} className={'flex items-center gap-2 rounded-lg px-2.5 py-2 ' + (item.id === room.current_item_id ? 'bg-primary-500/10' : 'bg-white/[0.025]')}><span className="w-5 shrink-0 text-center text-[10px] tabular-nums text-ink-600">{index + 1}</span><span className="min-w-0 flex-1 truncate text-[11px] text-ink-300">{item.provider === 'spotify' ? 'Spotify' : 'YouTube'} · {item.external_url}</span>{item.id === room.current_item_id ? <span className="shrink-0 text-[9px] font-semibold text-primary-200">NOW</span> : <button type="button" onClick={() => void selectQueueItem(item)} disabled={busy} aria-label="Play this track for the shared room" title="Select this track for everyone" className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary-400/20 px-2 py-1 text-[10px] font-semibold text-primary-200 hover:bg-primary-500/10 disabled:opacity-40"><Play size={10} /> Play</button>}<button type="button" onClick={() => void removeItem(item)} disabled={busy} aria-label="Remove from shared queue" className="shrink-0 rounded p-1 text-ink-600 hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-40"><X size={12} /></button></div>)}
             </div>
             <p className="text-[10px] leading-relaxed text-ink-600">Spotify playlists you own or collaborate on are matched to YouTube videos. Public YouTube playlists can be imported directly, including playlists made by other people. The person who added the current track controls shared playback. Everyone must load the player and allow audio in their browser; playback position is periodically corrected across listeners.</p>
           </>}
