@@ -365,10 +365,35 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
         }
       });
     // Vote rows are private under RLS, so other members' changes may not be broadcast to this client.
-    const pollRefreshInterval = window.setInterval(() => { void refreshPolls(); }, 15000);
+    // Keep the fallback poll while this chat is visible, but pause background requests.
+    let pollRefreshInterval: number | null = null;
+    const stopPollRefresh = () => {
+      if (pollRefreshInterval !== null) {
+        window.clearInterval(pollRefreshInterval);
+        pollRefreshInterval = null;
+      }
+    };
+    const startPollRefresh = () => {
+      if (pollRefreshInterval !== null || document.visibilityState !== 'visible') return;
+      pollRefreshInterval = window.setInterval(() => {
+        if (document.visibilityState === 'visible') void refreshPolls();
+      }, 15000);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshPolls();
+        startPollRefresh();
+      } else {
+        stopPollRefresh();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    startPollRefresh();
+
     return () => {
       active = false;
-      window.clearInterval(pollRefreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      stopPollRefresh();
       void supabase.removeChannel(channel);
     };
   }, [channelId, userId, activeThreadRoot?.id, refreshPolls, refreshAnnouncements]);
