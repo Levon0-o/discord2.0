@@ -647,11 +647,11 @@ export function ServerDetail({
         </div>
       ) : (
         <>
-        <div className="mb-2 flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.08] bg-ink-900/95 p-2 md:hidden">
-          <button type="button" onClick={() => setMobilePanel('channels')} aria-expanded={mobilePanel === 'channels'} className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold transition', mobilePanel === 'channels' ? 'bg-primary-500/15 text-primary-200' : 'text-ink-300 hover:bg-white/[0.05]')}>
+        <div className="mb-2 flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.08] bg-ink-900/95 p-2 lg:hidden">
+          <button type="button" onClick={() => setMobilePanel((current) => current === 'channels' ? null : 'channels')} aria-expanded={mobilePanel === 'channels'} className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold transition', mobilePanel === 'channels' ? 'bg-primary-500/15 text-primary-200' : 'text-ink-300 hover:bg-white/[0.05]')}>
             <Hash size={15} className="shrink-0" /><span className="min-w-0 flex-1 truncate">{activeChannel ? `# ${activeChannel.name}` : server.name}</span><ChevronDown size={14} className="shrink-0" />
           </button>
-          <button type="button" onClick={() => setMobilePanel('members')} aria-expanded={mobilePanel === 'members'} className={cn('flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition', mobilePanel === 'members' ? 'bg-primary-500/15 text-primary-200' : 'text-ink-300 hover:bg-white/[0.05]')}><Users size={15} /><span>{members.length}</span></button>
+          <button type="button" onClick={() => setMobilePanel((current) => current === 'members' ? null : 'members')} aria-expanded={mobilePanel === 'members'} className={cn('flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition', mobilePanel === 'members' ? 'bg-primary-500/15 text-primary-200' : 'text-ink-300 hover:bg-white/[0.05]')}><Users size={15} /><span>{members.length}</span></button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden lg:grid lg:grid-cols-[190px_minmax(0,1fr)_170px] lg:gap-3">
           {/* LEFT: SERVER AND CHANNELS */}
@@ -933,7 +933,7 @@ export function ServerDetail({
                     <button
                       type="button"
                       disabled={!canManageRoles || isSelf}
-                      onClick={() => setSelectedMember(member)}
+                      onClick={() => { setSelectedMember(member); setMobilePanel(null); }}
                       title={
                         isSelf
                           ? 'You cannot edit your own roles here'
