@@ -173,15 +173,66 @@ export function SocialFeed() {
   }, [userId]);
 
   useEffect(() => {
+    let active = true;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+
+    const refreshFeed = async () => {
+      if (!active) return;
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      try {
+        await loadPosts(true);
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Could not refresh the feed.');
+          setRefreshing(false);
+        }
+      } finally {
+        refreshInFlight = false;
+        if (active && refreshQueued) {
+          refreshQueued = false;
+          scheduleRefresh();
+        }
+      }
+    };
+
+    // A single user action can emit several database changes (for example,
+    // a post and its related comment/like rows). Coalesce those notifications
+    // into one feed refresh and keep refreshes sequential if the network is slow.
+    function scheduleRefresh() {
+      if (!active) return;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void refreshFeed();
+      }, 300);
+    }
+
     void loadPosts();
     const channel = supabase
       .channel('social-feed-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { void loadPosts(true); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => { void loadPosts(true); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => { void loadPosts(true); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, scheduleRefresh)
       .subscribe();
 
-    return () => { void supabase.removeChannel(channel); };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      active = false;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      void supabase.removeChannel(channel);
+    };
   }, [loadPosts]);
 
   const publishPost = async () => {
