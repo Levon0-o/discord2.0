@@ -220,9 +220,65 @@ export function Dashboard({
   }
 
   useEffect(() => {
+    let active = true;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+
+    const refreshDashboard = async () => {
+      if (!active) return;
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      try {
+        await loadDashboard(true);
+      } finally {
+        refreshInFlight = false;
+        if (active && refreshQueued) {
+          refreshQueued = false;
+          scheduleRefresh();
+        }
+      }
+    };
+
+    function scheduleRefresh() {
+      if (!active) return;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void refreshDashboard();
+      }, 300);
+    }
+
     void loadDashboard();
 
-    // Dashboard data is refreshed when the signed-in account changes.
+    const channel = userId ? supabase
+      .channel('dashboard-live:' + userId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests', filter: 'sender_id=eq.' + userId }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests', filter: 'receiver_id=eq.' + userId }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'server_members', filter: 'user_id=eq.' + userId }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_members', filter: 'user_id=eq.' + userId }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: 'id=eq.' + userId }, scheduleRefresh)
+      .subscribe() : null;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh();
+    };
+    window.addEventListener('focus', scheduleRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      active = false;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      window.removeEventListener('focus', scheduleRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (channel) void supabase.removeChannel(channel);
+    };
+    // Dashboard data is scoped to the signed-in account.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
