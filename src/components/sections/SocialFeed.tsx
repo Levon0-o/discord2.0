@@ -205,14 +205,14 @@ export function SocialFeed() {
     // A single user action can emit several database changes (for example,
     // a post and its related comment/like rows). Coalesce those notifications
     // into one feed refresh and keep refreshes sequential if the network is slow.
-    const scheduleRefresh = () => {
+    function scheduleRefresh() {
       if (!active) return;
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
         void refreshFeed();
       }, 300);
-    };
+    }
 
     void loadPosts();
     const channel = supabase
