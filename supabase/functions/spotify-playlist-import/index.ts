@@ -120,7 +120,7 @@ async function diagnoseSpotifyPlaylistAccess(playlistId: string, accessToken: st
   };
 }
 
-function spotifyPlaylistAccessError(diagnostics: SpotifyAccessDiagnostics, profileStatus: number, playlistStatus: number): string {
+function spotifyPlaylistAccessError(diagnostics: SpotifyAccessDiagnostics): string {
   const account = diagnostics.accountName
     ? `${diagnostics.accountName} (ID: ${diagnostics.accountId ?? "unavailable"})`
     : `ID: ${diagnostics.accountId ?? "unavailable"}`;
@@ -160,7 +160,7 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
     if (response.status === 403) {
       const requestId = response.headers.get("x-spotify-request-id") ?? response.headers.get("spotify-request-id");
       const diagnostics = await diagnoseSpotifyPlaylistAccess(playlistId, accessToken, requestId);
-      throw new Error(spotifyPlaylistAccessError(diagnostics, diagnostics.profileStatus, diagnostics.playlistStatus));
+      throw new Error(spotifyPlaylistAccessError(diagnostics));
     }
     if (response.status === 404) throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
     if (!response.ok) {
