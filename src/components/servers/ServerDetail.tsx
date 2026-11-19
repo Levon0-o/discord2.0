@@ -110,6 +110,7 @@ export function ServerDetail({
   const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<'channels' | 'members' | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -645,9 +646,16 @@ export function ServerDetail({
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
         </div>
       ) : (
+        <>
+        <div className="mb-2 flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.08] bg-ink-900/95 p-2 lg:hidden">
+          <button type="button" onClick={() => setMobilePanel((current) => current === 'channels' ? null : 'channels')} aria-expanded={mobilePanel === 'channels'} className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold transition', mobilePanel === 'channels' ? 'bg-primary-500/15 text-primary-200' : 'text-ink-300 hover:bg-white/[0.05]')}>
+            <Hash size={15} className="shrink-0" /><span className="min-w-0 flex-1 truncate">{activeChannel ? `# ${activeChannel.name}` : server.name}</span><ChevronDown size={14} className="shrink-0" />
+          </button>
+          <button type="button" onClick={() => setMobilePanel((current) => current === 'members' ? null : 'members')} aria-expanded={mobilePanel === 'members'} className={cn('flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition', mobilePanel === 'members' ? 'bg-primary-500/15 text-primary-200' : 'text-ink-300 hover:bg-white/[0.05]')}><Users size={15} /><span>{members.length}</span></button>
+        </div>
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden lg:grid lg:grid-cols-[190px_minmax(0,1fr)_170px] lg:gap-3">
           {/* LEFT: SERVER AND CHANNELS */}
-          <aside className="panel flex min-h-0 max-h-[31dvh] shrink-0 flex-col overflow-y-auto lg:max-h-none lg:shrink lg:overflow-hidden">
+          <aside className={cn('panel min-h-0 flex-col overflow-hidden', mobilePanel === 'channels' ? 'flex flex-1' : 'hidden lg:flex')}>
             <div className="shrink-0 border-b border-white/[0.06] p-3">
               <button
                 type="button"
@@ -795,6 +803,7 @@ export function ServerDetail({
                               onClick={() => {
                                 setSelectedMember(null);
                                 setActiveChannelId(channel.id);
+                                setMobilePanel(null);
                               }}
                               className={cn(
                                 'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition',
@@ -850,7 +859,7 @@ export function ServerDetail({
           </aside>
 
           {/* CENTER: CHAT, ROLE MANAGER OR MEMBER ROLE MANAGER */}
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden lg:flex-none">
+          <div className={cn('min-h-0 min-w-0 overflow-hidden lg:flex-none', mobilePanel === null ? 'flex flex-1' : 'hidden lg:block')}>
             {selectedMember ? (
               <MemberRoleManager
                 serverId={server.id}
@@ -899,7 +908,7 @@ export function ServerDetail({
           </div>
 
           {/* RIGHT: MEMBERS */}
-          <aside className="panel flex min-h-0 flex-col overflow-hidden">
+          <aside className={cn('panel min-h-0 flex-col overflow-hidden', mobilePanel === 'members' ? 'flex flex-1' : 'hidden lg:flex')}>
             <div className="shrink-0 border-b border-white/[0.06] px-3 py-2.5">
               <h2 className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
                 Members — {members.length}
@@ -924,7 +933,7 @@ export function ServerDetail({
                     <button
                       type="button"
                       disabled={!canManageRoles || isSelf}
-                      onClick={() => setSelectedMember(member)}
+                      onClick={() => { setSelectedMember(member); setMobilePanel(null); }}
                       title={
                         isSelf
                           ? 'You cannot edit your own roles here'
@@ -992,6 +1001,7 @@ export function ServerDetail({
             </ul>
           </aside>
         </div>
+        </>
       )}
 
 

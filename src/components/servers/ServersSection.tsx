@@ -228,7 +228,7 @@ export function ServersSection() {
 
   if (inviteCode.trim()) {
     return (
-      <div className="flex min-h-[calc(100vh-7rem)] w-full items-center justify-center overflow-hidden rounded-3xl bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.16),transparent_55%),linear-gradient(145deg,rgba(10,14,26,0.96),rgba(5,8,16,0.99))] px-4 py-10 sm:px-8">
+      <div className="flex h-full min-h-0 w-full items-center justify-center overflow-y-auto rounded-3xl bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.16),transparent_55%),linear-gradient(145deg,rgba(10,14,26,0.96),rgba(5,8,16,0.99))] px-4 py-10 sm:px-8">
         <section className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-ink-950/90 shadow-2xl shadow-black/50 backdrop-blur-xl" aria-live="polite">
           {invitePreview?.banner_url ? (
             <div className="relative h-40 w-full sm:h-52">
@@ -280,7 +280,7 @@ export function ServersSection() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full min-h-0 space-y-6 overflow-y-auto">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-500/15 ring-1 ring-primary-400/20">
