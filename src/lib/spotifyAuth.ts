@@ -67,7 +67,7 @@ export async function beginSpotifyAuthorization(): Promise<void> {
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: CLIENT_ID,
-    scope: 'playlist-read-private playlist-read-collaborative',
+    scope: 'playlist-read-private playlist-read-collaborative user-read-private',
     redirect_uri: REDIRECT_URI,
     code_challenge_method: 'S256',
     code_challenge: challenge,
