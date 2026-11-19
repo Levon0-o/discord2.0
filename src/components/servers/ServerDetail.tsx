@@ -645,9 +645,9 @@ export function ServerDetail({
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-400/25 border-t-primary-400" />
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[190px_minmax(0,1fr)_170px]">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden lg:grid lg:grid-cols-[190px_minmax(0,1fr)_170px] lg:gap-3">
           {/* LEFT: SERVER AND CHANNELS */}
-          <aside className="panel flex min-h-0 flex-col overflow-hidden">
+          <aside className="panel flex min-h-0 max-h-[31dvh] shrink-0 flex-col overflow-y-auto lg:max-h-none lg:shrink lg:overflow-hidden">
             <div className="shrink-0 border-b border-white/[0.06] p-3">
               <button
                 type="button"
@@ -850,7 +850,7 @@ export function ServerDetail({
           </aside>
 
           {/* CENTER: CHAT, ROLE MANAGER OR MEMBER ROLE MANAGER */}
-          <div className="min-h-0 min-w-0 overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden lg:flex-none">
             {selectedMember ? (
               <MemberRoleManager
                 serverId={server.id}
