@@ -93,6 +93,8 @@ type SpotifyAccessDiagnostics = {
   playlistOwnerId: string | null;
   playlistOwnerName: string | null;
   collaborative: boolean | null;
+  profileStatus: number;
+  playlistStatus: number;
   requestId: string | null;
 };
 
@@ -112,6 +114,8 @@ async function diagnoseSpotifyPlaylistAccess(playlistId: string, accessToken: st
     playlistOwnerId: typeof playlist?.owner?.id === "string" ? playlist.owner.id : null,
     playlistOwnerName: typeof playlist?.owner?.display_name === "string" ? playlist.owner.display_name : null,
     collaborative: typeof playlist?.collaborative === "boolean" ? playlist.collaborative : null,
+    profileStatus: profileResponse.status,
+    playlistStatus: playlistResponse.status,
     requestId,
   };
 }
@@ -126,7 +130,7 @@ function spotifyPlaylistAccessError(diagnostics: SpotifyAccessDiagnostics, profi
   const details = [
     `Connected Spotify account: ${account}.`,
     `Playlist: ${diagnostics.playlistName ?? "name unavailable"}; owner: ${owner}.`,
-    `Spotify profile endpoint status: ${profileStatus}; playlist metadata status: ${playlistStatus}.`,
+    `Spotify profile endpoint status: ${diagnostics.profileStatus}; playlist metadata status: ${diagnostics.playlistStatus}.`,
     diagnostics.collaborative === null ? "Collaborative status unavailable." : `Playlist collaborative: ${diagnostics.collaborative}.`,
     diagnostics.requestId ? `Spotify request ID: ${diagnostics.requestId}.` : "Spotify did not return a request ID.",
   ];
@@ -156,7 +160,7 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
     if (response.status === 403) {
       const requestId = response.headers.get("x-spotify-request-id") ?? response.headers.get("spotify-request-id");
       const diagnostics = await diagnoseSpotifyPlaylistAccess(playlistId, accessToken, requestId);
-      throw new Error(spotifyPlaylistAccessError(diagnostics, 0, 0));
+      throw new Error(spotifyPlaylistAccessError(diagnostics, diagnostics.profileStatus, diagnostics.playlistStatus));
     }
     if (response.status === 404) throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
     if (!response.ok) {
