@@ -81,7 +81,7 @@ export function AppShell({
           </header>
 
           <div className="flex min-h-0 min-w-0 flex-1 gap-4 px-3 pb-24 pt-3 sm:px-5 md:gap-6 md:px-6 md:py-6 md:pb-6 xl:px-8">
-            <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+            <main className={activeSection === 'servers' ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden' : 'min-h-0 min-w-0 flex-1 overflow-y-auto'}>
               {children}
             </main>
 
