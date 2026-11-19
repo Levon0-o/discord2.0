@@ -366,7 +366,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
       });
     // Vote rows are private under RLS, so other members' changes may not be broadcast to this client.
     // Keep the fallback poll while this chat is visible, but pause background requests.
-    let pollRefreshInterval: ReturnType<typeof window.setInterval> | null = null;
+    let pollRefreshInterval: number | null = null;
     const stopPollRefresh = () => {
       if (pollRefreshInterval !== null) {
         window.clearInterval(pollRefreshInterval);
