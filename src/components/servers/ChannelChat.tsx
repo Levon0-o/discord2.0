@@ -97,7 +97,7 @@ export function ChannelChat({ channelId, channelName, channelTopic, slowmodeSeco
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Record<string, HTMLElement | null>>({});
   const shouldScrollToBottomRef = useRef(true);
-  const messageLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messageLongPressTimerRef = useRef<number | null>(null);
   const messageLongPressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
