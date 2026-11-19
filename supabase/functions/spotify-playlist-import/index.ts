@@ -86,6 +86,65 @@ function scoreMatch(track: SpotifyTrack, title: string, channel: string, duratio
   return Math.max(0, Math.min(1, score));
 }
 
+type SpotifyAccessDiagnostics = {
+  accountId: string | null;
+  accountName: string | null;
+  playlistName: string | null;
+  playlistOwnerId: string | null;
+  playlistOwnerName: string | null;
+  collaborative: boolean | null;
+  profileStatus: number;
+  playlistStatus: number;
+  requestId: string | null;
+};
+
+async function diagnoseSpotifyPlaylistAccess(playlistId: string, accessToken: string, requestId: string | null): Promise<SpotifyAccessDiagnostics> {
+  const headers = { Authorization: "Bearer " + accessToken };
+  const [profileResponse, playlistResponse] = await Promise.all([
+    fetch("https://api.spotify.com/v1/me", { headers }),
+    fetch(`https://api.spotify.com/v1/playlists/${playlistId}?fields=id,name,owner(id,display_name),collaborative`, { headers }),
+  ]);
+
+  const profile = profileResponse.ok ? await profileResponse.json() : null;
+  const playlist = playlistResponse.ok ? await playlistResponse.json() : null;
+  return {
+    accountId: typeof profile?.id === "string" ? profile.id : null,
+    accountName: typeof profile?.display_name === "string" ? profile.display_name : null,
+    playlistName: typeof playlist?.name === "string" ? playlist.name : null,
+    playlistOwnerId: typeof playlist?.owner?.id === "string" ? playlist.owner.id : null,
+    playlistOwnerName: typeof playlist?.owner?.display_name === "string" ? playlist.owner.display_name : null,
+    collaborative: typeof playlist?.collaborative === "boolean" ? playlist.collaborative : null,
+    profileStatus: profileResponse.status,
+    playlistStatus: playlistResponse.status,
+    requestId,
+  };
+}
+
+function spotifyPlaylistAccessError(diagnostics: SpotifyAccessDiagnostics): string {
+  const account = diagnostics.accountName
+    ? `${diagnostics.accountName} (ID: ${diagnostics.accountId ?? "unavailable"})`
+    : `ID: ${diagnostics.accountId ?? "unavailable"}`;
+  const owner = diagnostics.playlistOwnerName
+    ? `${diagnostics.playlistOwnerName} (ID: ${diagnostics.playlistOwnerId ?? "unavailable"})`
+    : `ID: ${diagnostics.playlistOwnerId ?? "unavailable"}`;
+  const details = [
+    `Connected Spotify account: ${account}.`,
+    `Playlist: ${diagnostics.playlistName ?? "name unavailable"}; owner: ${owner}.`,
+    `Spotify profile endpoint status: ${diagnostics.profileStatus}; playlist metadata status: ${diagnostics.playlistStatus}.`,
+    diagnostics.collaborative === null ? "Collaborative status unavailable." : `Playlist collaborative: ${diagnostics.collaborative}.`,
+    diagnostics.requestId ? `Spotify request ID: ${diagnostics.requestId}.` : "Spotify did not return a request ID.",
+  ];
+
+  if (diagnostics.accountId && diagnostics.playlistOwnerId && diagnostics.accountId === diagnostics.playlistOwnerId) {
+    details.unshift("Spotify says this account owns the playlist, but the items endpoint still returned 403. This points to an app/account-level Spotify API restriction rather than the playlist being owned by another account.");
+  } else if (diagnostics.accountId && diagnostics.playlistOwnerId) {
+    details.unshift("The connected Spotify account does not match the playlist owner. A playlist appearing in your Spotify library does not necessarily mean you own it or can read its items.");
+  } else {
+    details.unshift("Spotify denied access to playlist items. The diagnostics could not fully verify the account and playlist owner; reconnect Spotify to grant the profile permission.");
+  }
+  return details.join(" ");
+}
+
 async function fetchSpotifyTracks(playlistId: string, accessToken: string): Promise<{ tracks: SpotifyTrack[]; truncated: boolean; playlistTotal: number }> {
   const tracks: SpotifyTrack[] = [];
   let offset = 0;
@@ -98,7 +157,11 @@ async function fetchSpotifyTracks(playlistId: string, accessToken: string): Prom
       headers: { Authorization: "Bearer " + accessToken },
     });
     if (response.status === 401) throw new Error("Your Spotify session expired. Connect Spotify again.");
-    if (response.status === 403) throw new Error("Spotify only exposes playlist tracks to the owner or a collaborator. For someone else's public playlist, paste its YouTube playlist link instead.");
+    if (response.status === 403) {
+      const requestId = response.headers.get("x-spotify-request-id") ?? response.headers.get("spotify-request-id");
+      const diagnostics = await diagnoseSpotifyPlaylistAccess(playlistId, accessToken, requestId);
+      throw new Error(spotifyPlaylistAccessError(diagnostics));
+    }
     if (response.status === 404) throw new Error("Spotify could not find this playlist, or it is not accessible to the connected account.");
     if (!response.ok) {
       const details = await response.text();
