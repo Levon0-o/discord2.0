@@ -113,6 +113,8 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
   const syncChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [playing, setPlaying] = useState(false);
   const [syncReady, setSyncReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
+  const [syncRetry, setSyncRetry] = useState(0);
   const playerReadyRef = useRef(false);
   const channelReadyRef = useRef(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -170,6 +172,9 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
 
   useEffect(() => {
     if (!loaded || !syncRoomId || !target || target.provider !== 'youtube') return;
+    channelReadyRef.current = false;
+    setSyncReady(false);
+    setSyncStatus('connecting');
     const channel = supabase.channel('shared-media:' + syncRoomId + ':' + target.videoId, { config: { broadcast: { self: false } } });
     syncChannelRef.current = channel;
     channel.on('broadcast', { event: 'command' }, ({ payload }) => {
@@ -192,8 +197,13 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
     }).subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         channelReadyRef.current = true;
+        setSyncStatus('connected');
         if (playerReadyRef.current) setSyncReady(true);
         void channel.send({ type: 'broadcast', event: 'sync-request', payload: {} });
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        channelReadyRef.current = false;
+        setSyncReady(false);
+        setSyncStatus('error');
       }
     });
     const heartbeat = canControl ? window.setInterval(() => {
@@ -207,7 +217,7 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
       syncChannelRef.current = null;
       void supabase.removeChannel(channel);
     };
-  }, [loaded, syncRoomId, target?.provider, target?.provider === 'youtube' ? target.videoId : null, canControl]);
+  }, [loaded, syncRoomId, target?.provider, target?.provider === 'youtube' ? target.videoId : null, canControl, syncRetry]);
 
   function enableSyncedAudio() {
     const player = playerRef.current;
@@ -259,8 +269,9 @@ export function MediaEmbed({ text, syncRoomId, canControl = false }: { text: str
             <div ref={playerHostRef} id={playerId} className="aspect-video w-full" />
             {playerError ? <p role="alert" className="px-3 py-2 text-[10px] text-red-300">{playerError}</p> : null}
             {syncRoomId ? <div className="flex items-center gap-2 border-t border-white/[0.06] px-3 py-2">
-              {canControl ? <><button type="button" onClick={() => sendPlaybackCommand(playing ? "pause" : "play")} className="rounded-md bg-primary-500 px-3 py-1.5 text-[10px] font-semibold text-white">{playing ? <Pause size={12} className="inline" /> : <Play size={12} className="inline" />} {playing ? "Pause for everyone" : "Play for everyone"}</button><button type="button" onClick={() => sendPlaybackCommand("seek", Math.max(0, (playerRef.current?.getCurrentTime() ?? 0) - 10))} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">−10s</button><button type="button" onClick={() => sendPlaybackCommand("seek", (playerRef.current?.getCurrentTime() ?? 0) + 10)} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300">+10s</button></> : <><button type="button" onClick={enableSyncedAudio} disabled={!syncReady || audioEnabled} className="rounded-md border border-white/10 px-3 py-1.5 text-[10px] text-ink-300 disabled:opacity-50">{audioEnabled ? "Audio enabled" : "Enable synced audio"}</button><span className="text-[10px] text-ink-500">{syncReady ? "Waiting for playlist host" : "Connecting shared player…"}</span></>}
+              {canControl ? <><button type="button" disabled={!syncReady} onClick={() => sendPlaybackCommand(playing ? "pause" : "play")} className="rounded-md bg-primary-500 px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40">{playing ? <Pause size={12} className="inline" /> : <Play size={12} className="inline" />} {playing ? "Pause for everyone" : "Play for everyone"}</button><button type="button" disabled={!syncReady} onClick={() => sendPlaybackCommand("seek", Math.max(0, (playerRef.current?.getCurrentTime() ?? 0) - 10))} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300 disabled:opacity-40">−10s</button><button type="button" disabled={!syncReady} onClick={() => sendPlaybackCommand("seek", (playerRef.current?.getCurrentTime() ?? 0) + 10)} className="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-ink-300 disabled:opacity-40">+10s</button></> : <><button type="button" onClick={enableSyncedAudio} disabled={!syncReady || audioEnabled} className="rounded-md border border-white/10 px-3 py-1.5 text-[10px] text-ink-300 disabled:opacity-50">{audioEnabled ? "Audio enabled" : "Enable synced audio"}</button><span className="text-[10px] text-ink-500">{syncReady ? "Connected · waiting for host" : syncStatus === 'error' ? 'Connection failed' : 'Connecting shared player…'}</span>{syncStatus === 'error' ? <button type="button" onClick={() => setSyncRetry((value) => value + 1)} className="rounded-md border border-red-400/20 px-2 py-1 text-[10px] text-red-200 hover:bg-red-500/10">Retry</button> : null}</>}
             </div> : null}
+            {syncRoomId && syncStatus === 'error' && canControl ? <div className="flex items-center justify-between border-t border-red-400/10 px-3 py-2"><span className="text-[10px] text-red-300">Shared playback connection failed.</span><button type="button" onClick={() => setSyncRetry((value) => value + 1)} className="rounded-md border border-red-400/20 px-2 py-1 text-[10px] text-red-200 hover:bg-red-500/10">Retry connection</button></div> : null}
             <div className="flex items-center gap-3 border-t border-white/[0.06] px-3 py-2.5">
               <Volume2 size={14} className="shrink-0 text-ink-400" />
               <input
